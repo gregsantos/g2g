@@ -44,7 +44,7 @@ When the verifier FAILs, each finding becomes a fix task and the whole spec re-v
 
 ### F-004 [medium] Preflight deletes .g2g-goal assuming any existing one is from a crash
 
-**File:** `plugin/commands/build.md` · **Category:** bug · **Effort:** small · **Status:** open
+**File:** `plugin/commands/build.md` · **Category:** bug · **Effort:** small · **Status:** addressed: 2
 
 Phase 1 step 1 removes a pre-existing .g2g-goal unconditionally. If a second /g2g:build starts in the same checkout while a first is live, it silently disarms the first build's goal. The session-scoped hook means the first session stays bound to a condition whose file is gone, and two orchestrators then race on the same branch and spec.
 
@@ -52,7 +52,7 @@ Phase 1 step 1 removes a pre-existing .g2g-goal unconditionally. If a second /g2
 
 ### F-005 [medium] No CI runs make check or plugin validation on pull requests
 
-**File:** `.github/workflows` · **Category:** test-coverage · **Effort:** small · **Status:** open
+**File:** `.github/workflows` · **Category:** test-coverage · **Effort:** small · **Status:** addressed: 2
 
 All verification is local. The improve flywheel opens PRs whose trustworthiness depends on checks running somewhere a human can see them; without CI, a merged flywheel PR is only as verified as the tick that produced it claimed.
 
@@ -60,7 +60,7 @@ All verification is local. The improve flywheel opens PRs whose trustworthiness 
 
 ### F-015 [medium] Predictable world-writable /tmp sidecar paths allow symlink-overwrite attack
 
-**File:** `plugin/commands/improve.md` · **Category:** security · **Effort:** medium · **Status:** open
+**File:** `plugin/commands/improve.md` · **Category:** security · **Effort:** medium · **Status:** addressed: 2
 
 The improve launcher derives every runtime path from a second-granular, fully predictable timestamp in the world-writable /tmp directory: TS=$(date +%Y%m%d-%H%M%S), WT=/tmp/g2g-improve-$TS (improve.md:50), then writes sidecars > "$WT.log" and echo $! > "$WT.pid" (improve.md:68). improve-cycle.md writes/reads "$(pwd).selected.json" = /tmp/g2g-improve-<ts>.selected.json, and improve-nightly.md repeats the same /tmp/g2g-improve-$TS pattern. While git worktree add refuses a pre-existing worktree directory, the .log/.pid/.selected.json sidecars are plain shell redirects that follow symlinks and use no O_EXCL. On a multi-user host a local attacker who guesses the timestamp can pre-plant a symlink at /tmp/g2g-improve-<ts>.log pointing at a victim-owned file; the > redirect then truncates and overwrites that file with the invoking user's privileges (CWE-59 / CWE-377). The same predictability also exposes review findings and build logs (which may contain repo source snippets) to any local user reading /tmp.
 
@@ -398,4 +398,4 @@ go.md, build.md, review.md and improve.md all reference the default branch (for 
 
 ---
 
-**Open vs addressed:** 44 open · 3 addressed · 47 total
+**Open vs addressed:** 41 open · 6 addressed · 47 total

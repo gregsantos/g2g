@@ -71,7 +71,7 @@
       "description": "Phase 1 step 1 removes a pre-existing .g2g-goal unconditionally. If a second /g2g:build starts in the same checkout while a first is live, it silently disarms the first build's goal. The session-scoped hook means the first session stays bound to a condition whose file is gone, and two orchestrators then race on the same branch and spec.",
       "suggestion": "Enforce one build per checkout: when arming, write a sidecar (or a pid/timestamp line inside .g2g-goal); preflight aborts with a clear message when the recorded pid is alive or the goal is fresher than a threshold, and only treats it as crash debris otherwise.",
       "effort": "small",
-      "addressed": null
+      "addressed": 2
     },
     {
       "id": "F-005",
@@ -82,7 +82,7 @@
       "description": "All verification is local. The improve flywheel opens PRs whose trustworthiness depends on checks running somewhere a human can see them; without CI, a merged flywheel PR is only as verified as the tick that produced it claimed.",
       "suggestion": "Add a GitHub Actions workflow running make lint + bats tests/ on every PR (shellcheck and bats install cleanly on ubuntu runners; keep make validate local-only since it needs the claude CLI, or gate it behind an optional job). This also makes the flywheel's own PRs independently checked.",
       "effort": "small",
-      "addressed": null
+      "addressed": 2
     },
     {
       "id": "F-006",
@@ -196,7 +196,7 @@
         "CWE-377",
         "CWE-59"
       ],
-      "addressed": null
+      "addressed": 2
     },
     {
       "id": "F-016",
