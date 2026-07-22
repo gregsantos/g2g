@@ -34,7 +34,7 @@
         "plugin/commands/build.md",
         "plugin/agents/g2g-builder.md"
       ],
-      "addressed": null
+      "addressed": 1
     },
     {
       "id": "F-002",
@@ -48,7 +48,7 @@
       "references": [
         "docs/G2G_PLUGIN_REF.md"
       ],
-      "addressed": null
+      "addressed": 1
     },
     {
       "id": "F-003",
@@ -59,7 +59,7 @@
       "description": "When the verifier FAILs, each finding becomes a fix task and the whole spec re-verifies, repeatedly, bounded only by the global TURN_CAP/HOURS_CAP. A verifier/builder disagreement can ping-pong at the finish line and consume the entire remaining budget without ever routing to the partial-PR path until the global cap guillotines it.",
       "suggestion": "Cap re-verification rounds explicitly (e.g. 2): after the Nth FAIL round, route to Phase 5's draft partial PR with the verifier's outstanding findings listed in the PR body. Keep the per-finding cap checks that already exist.",
       "effort": "small",
-      "addressed": null
+      "addressed": 1
     },
     {
       "id": "F-004",

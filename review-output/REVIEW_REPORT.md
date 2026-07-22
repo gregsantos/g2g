@@ -18,7 +18,7 @@
 
 ### F-001 [high] Review-finding text flows unsanitized into builder-executed criteria
 
-**File:** `plugin/commands/spec.md` · **category:** security · **effort:** medium · **addressed:** open
+**File:** `plugin/commands/spec.md` · **category:** security · **effort:** medium · **addressed:** 1
 
 The --from-findings path copies finding titles/descriptions/suggestions into spec task descriptions and acceptance criteria, which Bash-capable builders then act on. A malicious or poisoned finding (e.g. from reviewing untrusted repo content) could embed instructions the builder executes. The improve.enabled opt-in gate contains the blast radius but does not harden the boundary itself.
 
@@ -28,7 +28,7 @@ The --from-findings path copies finding titles/descriptions/suggestions into spe
 
 ### F-002 [medium] Every review is a full five-category sweep — no incremental mode
 
-**File:** `plugin/commands/review.md` · **category:** architecture · **effort:** medium · **addressed:** open
+**File:** `plugin/commands/review.md` · **category:** architecture · **effort:** medium · **addressed:** 1
 
 Each /g2g:review fans out all configured categories over all sourceDirs regardless of what changed since the last review. Measured cost of the full sweep was ~$7.8 on a small repo; this dominates improve-tick economics and discourages frequent cadence.
 
@@ -36,7 +36,7 @@ Each /g2g:review fans out all configured categories over all sourceDirs regardle
 
 ### F-003 [medium] Phase 4 fix-and-reverify loop has no round cap of its own
 
-**File:** `plugin/commands/build.md` · **category:** bug · **effort:** small · **addressed:** open
+**File:** `plugin/commands/build.md` · **category:** bug · **effort:** small · **addressed:** 1
 
 When the verifier FAILs, each finding becomes a fix task and the whole spec re-verifies, repeatedly, bounded only by the global TURN_CAP/HOURS_CAP. A verifier/builder disagreement can ping-pong at the finish line and consume the entire remaining budget without ever routing to the partial-PR path until the global cap guillotines it.
 
@@ -270,4 +270,4 @@ The is this artifact gitignored, and if so warn/abort with the migration pointer
 
 ---
 
-**Open vs addressed:** 31 open, 0 addressed (of 31 total).
+**Open vs addressed:** 28 open, 3 addressed (of 31 total).
