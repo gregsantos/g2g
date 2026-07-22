@@ -24,23 +24,45 @@ fallback.
 
 ## Busy checks — skip rather than stack
 1. For each `git worktree list` entry whose path contains
-   `g2g-improve-`, the worktree is `<path>` = `<RUNDIR>/worktree` —
-   i.e. `<RUNDIR>` is that path's parent directory, the `mktemp -d`
-   run root created in Launch step 2. Runtime files are SIDECARS
-   inside `<RUNDIR>`, next to (never inside) the worktree, where they
-   would trip build.md's clean-tree preflight: pid at
-   `<RUNDIR>/tick.pid`, log at `<RUNDIR>/tick.log`.
-   - `<RUNDIR>/tick.pid` exists and its PID is alive (`kill -0`): a
-     tick is RUNNING — report path/branch/pid and STOP.
+   `g2g-improve-`, FIRST classify its layout — the two coexist during
+   any upgrade across 0.2.4, so never assume one. The worktree path's
+   OWN basename decides:
+   - **Current layout (0.2.4+):** basename is exactly `worktree` AND its
+     parent's basename matches `g2g-improve-*`. Then `<RUNDIR>` = that
+     parent — the `mktemp -d` run root from Launch step 2 — and the
+     SIDECARS live inside it, next to (never inside) the worktree, where
+     they would trip build.md's clean-tree preflight: pid at
+     `<RUNDIR>/tick.pid`, log at `<RUNDIR>/tick.log`. Its cleanup removes
+     the run root whole (`rm -rf "<RUNDIR>"`) — it holds only the
+     worktree and those sidecars.
+   - **Legacy layout (pre-0.2.4):** the path's OWN basename matches
+     `g2g-improve-*` (the worktree IS the timestamped dir, with no
+     `worktree` child). Its sidecars sit BESIDE it: pid at `<path>.pid`,
+     log at `<path>.log`. There is NO run root to recurse into — its
+     cleanup is `git worktree remove <path>` then
+     `rm -f "<path>.pid" "<path>.log"` ONLY. Its parent is the shared
+     temp base (`/tmp` or `$TMPDIR`); treating that as a run root and
+     `rm -rf`-ing it would destroy unrelated user data.
+   HARD GUARD: only ever `rm -rf` a directory that is a validated
+   `g2g-improve-*` run root whose single child is exactly `worktree`. A
+   matching entry that fits NEITHER layout above (unexpected shape) is
+   reported and STOPS the launch — never delete anything you could not
+   classify.
+   Then, using that layout's pid-sidecar path:
+   - pid sidecar exists and its PID is alive (`kill -0`): a tick is
+     RUNNING — report path/branch/pid and STOP.
    - pid sidecar exists, process dead: a CRASHED tick — report the
-     path and branch, tell the human to inspect it and remove it with
-     `git worktree remove --force <path>` then `rm -rf <RUNDIR>`
-     (removes the worktree and its sidecars together) when done, and
-     STOP. Never remove it yourself.
+     path and branch, tell the human to inspect it and remove it (current:
+     `git worktree remove --force <path>` then `rm -rf "<RUNDIR>"`;
+     legacy: `git worktree remove --force <path>` then
+     `rm -f "<path>.pid" "<path>.log"`) when done, and STOP. Never remove
+     it yourself.
    - no pid sidecar: the cycle finished — if `git -C <path> status
-     --porcelain` is empty, run `git worktree remove <path>` and
-     `rm -rf <RUNDIR>` (its work is pushed or it did nothing) and
-     continue; otherwise report the leftover state and STOP.
+     --porcelain` is empty, remove it with that layout's cleanup (current:
+     `git worktree remove <path>` then `rm -rf "<RUNDIR>"`; legacy:
+     `git worktree remove <path>` then `rm -f "<path>.pid" "<path>.log"`)
+     — its work is pushed or it did nothing — and continue; otherwise
+     report the leftover state and STOP.
 2. `gh pr list --state open --json headRefName`: any open PR on a
    `g2g/improve-*` branch → report it and STOP (the previous cycle's
    PR awaits human review; don't pile on). If gh fails, warn that this
