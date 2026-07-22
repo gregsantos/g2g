@@ -15,7 +15,11 @@
       "make check"
     ]
   },
-  "verifier": null,
+  "verifier": {
+    "verdict": "PASS",
+    "date": "2026-07-22",
+    "summary": "All 3 tasks verified against full branch diff (main...HEAD, 20 criteria); make check exit 0; F-015/F-004/F-005 addressed with no findings"
+  },
   "tasks": [
     {
       "id": "T-001",
