@@ -7,11 +7,11 @@
     "focus": ["code-quality", "test-coverage", "architecture", "security", "bug"]
   },
   "summary": {
-    "total": 13,
+    "total": 14,
     "critical": 0,
     "high": 1,
     "medium": 4,
-    "low": 8,
+    "low": 9,
     "info": 0
   },
   "findings": [
@@ -155,8 +155,19 @@
       "severity": "low",
       "file": "plugin/commands/review.md",
       "title": "Findings backlog has no GitHub-issue visibility for teams",
-      "description": "The committed findings.json is the machine's source of truth (offline-deterministic, worktree-visible, atomically reconciled inside fix PRs), but teams that live in GitHub issues cannot see or discuss the backlog without opening the JSON. Two-way sync or issues-as-backlog would trade away offline determinism and graceful no-gh degradation, so those shapes are explicitly out of scope.",
-      "suggestion": "One-way export only, JSON stays authoritative: after a review, optionally file/update one GitHub issue per open finding (labeled g2g, body from the finding, id in the title); reconciliation (Phase I-5) closes exported issues whose finding gets a merged PR. Skip silently when gh is unavailable. Never read issue state back into selection.",
+      "description": "The committed findings.json is the machine's source of truth (offline-deterministic, worktree-visible, atomically reconciled inside fix PRs), but teams that live in GitHub issues cannot see or discuss the backlog without opening the JSON. Two-way sync or issues-as-backlog would trade away offline determinism and graceful no-gh degradation, so those shapes are explicitly out of scope. Selection must never read issue state.",
+      "suggestion": "One-way export, JSON authoritative, in three phases. Phase 1 (this finding's scope): add an optional 'issue' (number) field to the findings schema (update the reviewing-codebase skill table and tests); implement export as a bats-testable script plugin/scripts/g2g-issues.sh (findings.json in, gh issue create calls out — test with a fake gh shim on PATH) called as review.md's last step; per open finding without an issue, create one issue labeled g2g, title '[F-0XX] <title>', body from the finding plus a footer stating findings.json is authoritative; create-once, no content sync; gate behind .claude/g2g.json github.issueExport (default false); skip with a note when gh is unavailable, never fail the review. Phase 2: fix-spec PR bodies include 'Closes #<issue>' lines so GitHub closes issues natively on merge; improve-cycle step 1a reopens the issue of any finding it reopens; stale-marked findings get their issue closed as not-planned. Phase 3 (deferred, separate opt-in, blocked on F-001 hardening): import of human-filed g2g-finding-labeled issues at review time — untrusted public input, do not build before F-001 is merged and proven.",
+      "effort": "medium",
+      "addressed": null
+    },
+    {
+      "id": "F-014",
+      "category": "test-coverage",
+      "severity": "low",
+      "file": "plugin/evals/spec-generation/prompt.md",
+      "title": "Eval strategy lacks hill-climbing groundwork: ledger, breadth, baselines",
+      "description": "The eval suite has one case and no score history, and the eval harness is entitlement-gated. Once it opens, eval scores could serve as an objective function for improving the plugin's own prompts (propose a command-prompt variant, re-score, keep it if the tagged score rises across N runs) — genuine agent self-improvement rather than only codebase improvement. That requires groundwork that does not exist yet: without a committed baseline there is nothing to climb, and with one case any climb overfits to a single prompt.",
+      "suggestion": "Three pieces, all useful even before climbing: (1) grow the suite to ~5-8 cases covering each command's core behavior (spec quality, build orchestration decisions, review finding quality, status accuracy), tagged by area so a change to one command is scored against its own cases; keep every grader proportional, never pass/fail, with headroom below 1.0; (2) commit a distilled score ledger (sibling of the tick ledger, e.g. evals/results ledger entry per run: date, case, score, runs, model) so baseline and trend exist, and gate CI with --threshold as the regression floor; (3) once (1) and (2) exist, express the climbing loop in existing machinery: an improve fix-spec whose acceptance criterion is 'tagged eval score >= committed baseline across >=3 runs' for a proposed prompt change. No new orchestration — it is a build whose verification command happens to be an eval.",
       "effort": "medium",
       "addressed": null
     }
