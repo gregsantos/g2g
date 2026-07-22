@@ -22,11 +22,16 @@ Operator runbook: [docs/G2G_PLUGIN_REF.md](docs/G2G_PLUGIN_REF.md).
 
 # Validation
 
-Run after any change to shell scripts, templates, or tests:
+Run after any change to shell scripts, templates, command/agent
+markdown, or tests:
 
-- Both: `make check`
+- All: `make check` (lint + manifest validation + bats)
 - Tests: `make test` (requires bats-core: `brew install bats-core`)
 - Lint: `make lint` (requires shellcheck: `brew install shellcheck`)
+- Behavioral: `make smoke` — real headless build against a throwaway
+  sandbox; costs API dollars and minutes. Run as the merge gate for
+  changes to `plugin/commands/` or `plugin/agents/`; never wire it
+  into check.
 
 # Project structure
 
@@ -41,7 +46,8 @@ g2g/
 │   ├── hooks/hooks.json              # Stop hook — goal enforcement
 │   ├── scripts/g2g-evidence.sh       # Deterministic evidence generator
 │   ├── templates/                    # /g2g:init config starters (g2g-*.json)
-│   └── routines/                     # Scheduled-run templates
+│   ├── routines/                     # Scheduled-run templates
+│   └── evals/                        # plugin-eval cases (harness in early access)
 ├── specs/                            # Spec JSONs — must stay git-tracked
 ├── review-output/                    # Findings backlog — must stay git-tracked
 ├── docs/G2G_PLUGIN_REF.md            # Operator runbook
