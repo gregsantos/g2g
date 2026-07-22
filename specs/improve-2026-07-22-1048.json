@@ -70,7 +70,7 @@
         "make check passes locally (adding the workflow file does not break existing lint/validate/test)."
       ],
       "dependsOn": [],
-      "status": "pending",
+      "status": "in_progress",
       "passes": false,
       "attempts": 0,
       "effort": "small",
