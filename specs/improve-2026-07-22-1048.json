@@ -70,11 +70,11 @@
         "make check passes locally (adding the workflow file does not break existing lint/validate/test)."
       ],
       "dependsOn": [],
-      "status": "in_progress",
-      "passes": false,
+      "status": "complete",
+      "passes": true,
       "attempts": 0,
       "effort": "small",
-      "notes": ""
+      "notes": "Added .github/workflows/ci.yml triggering on pull_request; installs shellcheck+bats via apt, runs make lint + make test on ubuntu-latest; no validate/check (claude CLI not on runner); YAML parses; make check passed locally"
     }
   ]
 }
