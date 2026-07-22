@@ -10,9 +10,9 @@
 | critical | 0 |
 | high | 1 |
 | medium | 9 |
-| low | 21 |
+| low | 22 |
 | info | 0 |
-| **total** | **31** |
+| **total** | **32** |
 
 ## HIGH (1)
 
@@ -58,47 +58,47 @@ All verification is local. The improve flywheel opens PRs whose trustworthiness 
 
 **Suggestion:** Add a GitHub Actions workflow running make lint + bats tests/ on every PR (shellcheck and bats install cleanly on ubuntu runners; keep make validate local-only since it needs the claude CLI, or gate it behind an optional job). This also makes the flywheel's own PRs independently checked.
 
-### F-014 [medium] Predictable world-writable /tmp sidecar paths allow symlink-overwrite attack
+### F-015 [medium] Predictable world-writable /tmp sidecar paths allow symlink-overwrite attack
 
-**File:** `plugin/commands/improve.md:68` · **category:** security · **effort:** medium · **addressed:** open
+**File:** `plugin/commands/improve.md` · **category:** security · **effort:** medium · **addressed:** open
 
 The improve launcher derives every runtime path from a second-granular, fully predictable timestamp in the world-writable /tmp directory: TS=$(date +%Y%m%d-%H%M%S), WT=/tmp/g2g-improve-$TS (improve.md:50), then writes sidecars > "$WT.log" and echo $! > "$WT.pid" (improve.md:68). improve-cycle.md writes/reads "$(pwd).selected.json" = /tmp/g2g-improve-<ts>.selected.json, and improve-nightly.md repeats the same /tmp/g2g-improve-$TS pattern. While git worktree add refuses a pre-existing worktree directory, the .log/.pid/.selected.json sidecars are plain shell redirects that follow symlinks and use no O_EXCL. On a multi-user host a local attacker who guesses the timestamp can pre-plant a symlink at /tmp/g2g-improve-<ts>.log pointing at a victim-owned file; the > redirect then truncates and overwrites that file with the invoking user's privileges (CWE-59 / CWE-377). The same predictability also exposes review findings and build logs (which may contain repo source snippets) to any local user reading /tmp.
 
 **Suggestion:** Create the run root with mktemp -d (unpredictable, 0700) and place the worktree and all sidecars under it, or at minimum write sidecars with set -o noclobber / : > "$file" guards and refuse to proceed if any sidecar path already exists or is a symlink. Document that improve must not run on a shared host with the current predictable-path scheme.
 
-### F-017 [medium] Phase 5 deletes .g2g-goal only after a fallible push/PR step
+### F-018 [medium] Phase 5 deletes .g2g-goal only after a fallible push/PR step
 
-**File:** `plugin/commands/build.md:186` · **category:** bug · **effort:** small · **addressed:** open
+**File:** `plugin/commands/build.md` · **category:** bug · **effort:** small · **addressed:** open
 
 On the terminal partial-stop path (Phase 5), the orchestrator is told to Push the branch once and open a DRAFT PR ... Delete .g2g-goal before finishing — push/gh come first, deletion second, with no handling for a push or gh pr create failure. If the push fails (e.g. no origin remote — which /g2g:init only WARNs about and does not block, or auth/network failure), the procedure has no abort branch that still deletes .g2g-goal. In Phase 5 the goal condition is unmet (tasks not all passed), so the only way the session can stop is deletion; leaving .g2g-goal armed means the Stop hook keeps blocking the session, and the run cannot cleanly terminate. This contradicts CLAUDE.md's invariant never leave a terminal path that skips deleting it. Notably the Phase 4 conflict path (step 5) already deletes .g2g-goal FIRST, then aborts the rebase and pushes — showing the delete-first pattern is intended; Phase 5 (and Phase 4 step 6) use the risky order.
 
 **Suggestion:** In Phase 5, delete .g2g-goal before the push/PR step (mirroring the Phase 4 conflict path), or make the push/PR step's failure route explicit: on push or gh failure, still delete .g2g-goal, then report the terminal outcome honestly (branch left local, no PR). Ensure every terminal path deletes .g2g-goal regardless of whether the push/PR succeeds.
 
-### F-019 [medium] Config section contradicts itself on whether models is live
+### F-020 [medium] Config section contradicts itself on whether models is live
 
-**File:** `plugin/README.md:134` · **category:** code-quality · **effort:** small · **addressed:** open
+**File:** `plugin/README.md` · **category:** code-quality · **effort:** small · **addressed:** open
 
 The Config section's intro sentence (line 134) states models and artifactPaths are deliberately reserved, but the detailed bullet at line 141 says models — live now for builder and verifier and documents active model routing consumed by /g2g:build (default sonnet builder / inherit verifier). The two statements directly contradict each other. This is stale summary text left behind when model routing was added (commit 5b2464b). An operator reading the intro will believe model routing does nothing and never configure it; only artifactPaths remains genuinely reserved. build.md Phase 3 step 6 and Phase 4 step 1 both rely on models being live.
 
 **Suggestion:** Update line 134 to list models among the live fields (e.g. ...reviewFocus, sourceDirs, and models are live; artifactPaths is deliberately reserved), leaving only artifactPaths as reserved.
 
-### F-027 [medium] Templates set models.builder to inherit, overriding the documented sonnet default
+### F-028 [medium] Templates set models.builder to inherit, overriding the documented sonnet default
 
-**File:** `plugin/templates/g2g-node.json:13` · **category:** architecture · **effort:** small · **addressed:** open
+**File:** `plugin/templates/g2g-node.json` · **category:** architecture · **effort:** small · **addressed:** open
 
 README Config (line 141) and build.md Phase 3 step 6 (line 118) define the builder model default as sonnet, with an explicit design rationale (tasks are pre-decomposed with explicit criteria, a Sonnet-shaped job). But all four templates (g2g-node/python/bash/greenfield.json, each line 13) and this repo's own .claude/g2g.json ship "models": { "builder": "inherit" }. Because build.md only falls through to the sonnet default when the field is absent, every repo onboarded via /g2g:init gets builder=inherit, so the documented default and its cost rationale never take effect in practice. The coded default, the documented default, and the shipped config value disagree.
 
 **Suggestion:** Reconcile the three: either set "builder": "sonnet" in the templates to match the documented/coded default, or omit the key so build.md's fall-through applies — and update README/build.md if inherit is actually the intended shipped behavior.
 
-### F-028 [medium] Config defaults duplicated across commands, templates, and docs with no single source
+### F-029 [medium] Config defaults duplicated across commands, templates, and docs with no single source
 
-**File:** `plugin/commands/init.md:67` · **category:** architecture · **effort:** medium · **addressed:** open
+**File:** `plugin/commands/init.md` · **category:** architecture · **effort:** medium · **addressed:** open
 
 The defaultBudgets numbers (buildTurnsFactor 2, buildHours 2, improveTurns 50, improveUsd 25, improveFindings 3) and the five reviewFocus categories are re-stated inline in many places: build.md (Phase 1 step 6), improve.md (Launch step 1), improve-cycle.md, init.md (lines 67-70), README Config, all four templates, and templates.bats. There is no canonical defaults location; each consumer restates the magic numbers. Changing one default requires editing ~8 files in lockstep, and drift is already visible (this repo's g2g.json carries improveHours: 1, a key no template ships and no command reads). This is a missing-abstraction / high-duplication coupling problem in a plugin explicitly aimed at fighting entropy.
 
 **Suggestion:** Make the shipped templates the single source of default values and have the command procedures reference the default from the matching template rather than re-listing the numbers; at minimum stop re-enumerating the numbers in init.md when it is already copying the template verbatim.
 
-## LOW (21)
+## LOW (22)
 
 ### F-006 [low] Fresh builders lose repo-specific lessons between tasks and sessions
 
@@ -160,59 +160,67 @@ Verifier-PASSed specs remain alongside pending ones indefinitely; /g2g:status ru
 
 **File:** `plugin/commands/review.md` · **category:** architecture · **effort:** medium · **addressed:** open
 
-The committed findings.json is the machine's source of truth (offline-deterministic, worktree-visible, atomically reconciled inside fix PRs), but teams that live in GitHub issues cannot see or discuss the backlog without opening the JSON. Two-way sync or issues-as-backlog would trade away offline determinism and graceful no-gh degradation, so those shapes are explicitly out of scope.
+The committed findings.json is the machine's source of truth (offline-deterministic, worktree-visible, atomically reconciled inside fix PRs), but teams that live in GitHub issues cannot see or discuss the backlog without opening the JSON. Two-way sync or issues-as-backlog would trade away offline determinism and graceful no-gh degradation, so those shapes are explicitly out of scope. Selection must never read issue state.
 
-**Suggestion:** One-way export only, JSON stays authoritative: after a review, optionally file/update one GitHub issue per open finding (labeled g2g, body from the finding, id in the title); reconciliation (Phase I-5) closes exported issues whose finding gets a merged PR. Skip silently when gh is unavailable. Never read issue state back into selection.
+**Suggestion:** One-way export, JSON authoritative, in three phases. Phase 1 (this finding's scope): add an optional 'issue' (number) field to the findings schema (update the reviewing-codebase skill table and tests); implement export as a bats-testable script plugin/scripts/g2g-issues.sh (findings.json in, gh issue create calls out — test with a fake gh shim on PATH) called as review.md's last step; per open finding without an issue, create one issue labeled g2g, title '[F-0XX] <title>', body from the finding plus a footer stating findings.json is authoritative; create-once, no content sync; gate behind .claude/g2g.json github.issueExport (default false); skip with a note when gh is unavailable, never fail the review. Phase 2: fix-spec PR bodies include 'Closes #<issue>' lines so GitHub closes issues natively on merge; improve-cycle step 1a reopens the issue of any finding it reopens; stale-marked findings get their issue closed as not-planned. Phase 3 (deferred, separate opt-in, blocked on F-001 hardening): import of human-filed g2g-finding-labeled issues at review time — untrusted public input, do not build before F-001 is merged and proven.
 
-### F-015 [low] Spec verificationCommands executed via bash -c with no sandboxing or trust gate
+### F-014 [low] Eval strategy lacks hill-climbing groundwork: ledger, breadth, baselines
 
-**File:** `plugin/scripts/g2g-evidence.sh:39` · **category:** security · **effort:** small · **addressed:** open
+**File:** `plugin/evals/spec-generation/prompt.md` · **category:** test-coverage · **effort:** medium · **addressed:** open
+
+The eval suite has one case and no score history, and the eval harness is entitlement-gated. Once it opens, eval scores could serve as an objective function for improving the plugin's own prompts (propose a command-prompt variant, re-score, keep it if the tagged score rises across N runs) — genuine agent self-improvement rather than only codebase improvement. That requires groundwork that does not exist yet: without a committed baseline there is nothing to climb, and with one case any climb overfits to a single prompt.
+
+**Suggestion:** Three pieces, all useful even before climbing: (1) grow the suite to ~5-8 cases covering each command's core behavior (spec quality, build orchestration decisions, review finding quality, status accuracy), tagged by area so a change to one command is scored against its own cases; keep every grader proportional, never pass/fail, with headroom below 1.0; (2) commit a distilled score ledger (sibling of the tick ledger, e.g. evals/results ledger entry per run: date, case, score, runs, model) so baseline and trend exist, and gate CI with --threshold as the regression floor; (3) once (1) and (2) exist, express the climbing loop in existing machinery: an improve fix-spec whose acceptance criterion is 'tagged eval score >= committed baseline across >=3 runs' for a proposed prompt change. No new orchestration — it is a build whose verification command happens to be an eval.
+
+### F-016 [low] Spec verificationCommands executed via bash -c with no sandboxing or trust gate
+
+**File:** `plugin/scripts/g2g-evidence.sh` · **category:** security · **effort:** small · **addressed:** open
 
 In --full mode the evidence script runs each context.verificationCommands entry through bash -c "$cmd" (line 39). These strings are read verbatim from the spec JSON. Although /g2g:spec normally sources them from .claude/g2g.json or documented repo commands, a spec is a standalone artifact that can be authored or shared independently of the repo (e.g. a user hands another user specs/feature.json and runs /g2g:build). Building such a spec is arbitrary local code execution the moment the completion evidence runs with --full — there is no allowlist, confirmation, or trust boundary distinguishing a config-sourced command from one embedded in an untrusted spec file. This is a distinct artifact/flow from the review-finding-text class (F-001), which concerns builder-executed acceptance criteria, not evidence-script verificationCommands.
 
 **Suggestion:** Document in the spec skill and build.md that a spec's verificationCommands are executed as shell and must be trusted like a Makefile; consider echoing the exact commands for confirmation before the first --full run, or gating --full execution behind an explicit opt-in when the spec is not the one this session generated.
 
-### F-016 [low] Completion gate trusts an LLM to distinguish real tool output from model-authored text
+### F-017 [low] Completion gate trusts an LLM to distinguish real tool output from model-authored text
 
-**File:** `plugin/hooks/hooks.json:8` · **category:** security · **effort:** medium · **addressed:** open
+**File:** `plugin/hooks/hooks.json` · **category:** security · **effort:** medium · **addressed:** open
 
 The Stop-hook goal condition (hooks.json:8, mirrored in build.md Phase 2) is satisfied only when a G2G EVIDENCE block was produced by running the script as a real command execution (visible as tool output), not authored as plain assistant text. Enforcement is delegated to a Haiku prompt judging the raw transcript. Bash-capable builder subagents — which execute acceptance criteria derived from untrusted review-finding text (the F-001 class) — write into that same transcript. A builder (or prompt-injected content) that emits a fabricated, correctly formatted evidence block could plausibly cause the evaluator to mis-classify model-authored text as tool output and allow the session to stop prematurely, defeating the goal-enforcement invariant. Impact is limited (a false stop yields an incomplete build, not a merged PR, since the verifier and PR gate still stand), so this is a robustness/trust-boundary weakness rather than a direct breach.
 
 **Suggestion:** Do not rely solely on the model to authenticate provenance: have the evidence script emit a per-run nonce/marker that the orchestrator records out-of-band (e.g. in .g2g-goal) and require the hook to match it, or key the terminal condition on the deterministic .g2g-goal deletion event plus recorded PR/verifier state rather than on transcript text an untrusted subagent can imitate.
 
-### F-018 [low] Malformed spec (missing .tasks or task fields) crashes with undocumented exit 5
+### F-019 [low] Malformed spec (missing .tasks or task fields) crashes with undocumented exit 5
 
-**File:** `plugin/scripts/g2g-evidence.sh:19` · **category:** bug · **effort:** small · **addressed:** open
+**File:** `plugin/scripts/g2g-evidence.sh` · **category:** bug · **effort:** small · **addressed:** open
 
 The script's documented/frozen exit codes are 0 (ok), 2 (invalid spec), 3 (no verificationCommands). But the task-counting jq expressions on lines 19-22 use unguarded iteration .tasks[]; when .tasks is absent/null, jq raises Cannot iterate over null and, under set -euo pipefail, the script dies with exit 5 and a cryptic jq stderr instead of a clean exit 2. Verified: a spec {"context":{"verificationCommands":["true"]}} yields script exit=5. The same class of crash occurs on lines 28/33 when a task has a null .title or .status. /g2g:build is shielded (Phase 1 step 4 validates a non-empty tasks array before running the script), but /g2g:status runs the script over every specs/*.json with no such pre-validation, so a hand-written or partial spec makes /g2g:status fail opaquely rather than reporting the spec as invalid.
 
 **Suggestion:** Guard the jq access: check .tasks | type == "array" up front and fail 2 if not (matching the invalid-spec contract), and/or use .tasks[]? with null-safe concatenation (e.g. (.title // ""), (.status // "unknown")). Add a test alongside the existing exit-code tests pinning exit 2 for a tasks-less spec.
 
-### F-020 [low] No-attribution-lines prohibition repeated verbatim 3x in build.md
+### F-021 [low] No-attribution-lines prohibition repeated verbatim 3x in build.md
 
-**File:** `plugin/commands/build.md:174` · **category:** code-quality · **effort:** small · **addressed:** open
+**File:** `plugin/commands/build.md` · **category:** code-quality · **effort:** small · **addressed:** open
 
 The identical clause no attribution lines (no 'Generated with Claude Code', no Co-Authored-By trailers) is spelled out three separate times inside build.md alone — Phase 4 step 5 (line 174), Phase 4 step 6 (line 180), and Phase 5 (line 189) — and again in go.md. This is a single cross-cutting PR/commit guardrail duplicated at every terminal path; if the wording ever needs to change (e.g. a new trailer to forbid) every copy must be found and edited, and the copies can drift. The three terminal paths in build.md all funnel through push/PR creation, so the rule could be stated once.
 
 **Suggestion:** State the attribution-line prohibition once in build.md (e.g. a short PR & commit hygiene note near the top of the file or in Phase 4's preamble) and have the terminal steps reference it, rather than re-spelling the parenthetical at each push site.
 
-### F-021 [low] build.md rule-recap list duplicated and drift-prone in dev.md and improve-cycle.md
+### F-022 [low] build.md rule-recap list duplicated and drift-prone in dev.md and improve-cycle.md
 
-**File:** `plugin/commands/dev.md:42` · **category:** code-quality · **effort:** small · **addressed:** open
+**File:** `plugin/commands/dev.md` · **category:** code-quality · **effort:** small · **addressed:** open
 
 Both dev.md Phase B (lines 42-44) and improve-cycle.md Phase I-4 (lines 80-83) enumerate the same list of build.md rules that apply unchanged — caps, .g2g-goal lifecycle, script-produced evidence, builder/verifier dispatches, single push at PR time, draft partial PR on terminal stops, never merge, no attribution lines. The two lists are near-verbatim but not identical (dev.md says never merging; improve-cycle.md says never merge), which is exactly the drift this duplication invites: if a build.md rule is added or renamed, these two hand-maintained recaps silently go stale. Both callers already instruct the reader to Read build.md and execute it exactly as written, so the enumerated recap adds a second source of truth for the same rule set.
 
 **Suggestion:** Replace the enumerated recaps in dev.md and improve-cycle.md with a single non-enumerated statement (e.g. every rule in build.md applies unchanged — do not relax any of them), so build.md remains the sole source of truth for what those rules are.
 
-### F-022 [low] Nightly routine hardcodes cap values that duplicate defaultBudgets defaults
+### F-023 [low] Nightly routine hardcodes cap values that duplicate defaultBudgets defaults
 
-**File:** `plugin/routines/improve-nightly.md:30` · **category:** code-quality · **effort:** small · **addressed:** open
+**File:** `plugin/routines/improve-nightly.md` · **category:** code-quality · **effort:** small · **addressed:** open
 
 The fallback spawn in improve-nightly.md step 3 hardcodes --max-turns 50 --max-budget-usd 25. These are the exact defaultBudgets.improveTurns/improveUsd defaults documented in README (line 137) and read by improve.md's launcher (else 50 / else 25). The routine explicitly prides itself on avoiding drift (the cycle's instructions come from the clone's own plugin dir — no inlined drift) yet inlines the cap magic numbers, so if the documented defaults change the routine's fallback silently keeps the old caps. Unlike /g2g:improve, this fallback path does not read defaultBudgets from .claude/g2g.json.
 
 **Suggestion:** Either derive the caps from .claude/g2g.json → defaultBudgets.improveTurns/improveUsd (falling back to 50/25) as improve.md does, or add a note that these literals must be kept in sync with the documented defaults, so the fallback cannot drift unnoticed.
 
-### F-023 [low] Shipped verify-starter.sh is neither shellcheck-linted nor tested
+### F-024 [low] Shipped verify-starter.sh is neither shellcheck-linted nor tested
 
 **File:** `plugin/templates/verify-starter.sh` · **category:** test-coverage · **effort:** small · **addressed:** open
 
@@ -220,15 +228,15 @@ verify-starter.sh is executable bash (set -euo pipefail) that /g2g:init copies v
 
 **Suggestion:** Add plugin/templates/verify-starter.sh to the shellcheck argument list in the Makefile lint target. Optionally add a small bats test asserting it exits 0 when src/ and README.md exist and non-zero when they are absent.
 
-### F-024 [low] Summary-count buckets untested for tasks that fall into no state
+### F-025 [low] Summary-count buckets untested for tasks that fall into no state
 
-**File:** `plugin/scripts/g2g-evidence.sh:26` · **category:** test-coverage · **effort:** small · **addressed:** open
+**File:** `plugin/scripts/g2g-evidence.sh` · **category:** test-coverage · **effort:** small · **addressed:** open
 
 The frozen summary line (line 26) is built from four disjoint counts: PASSED (passes==true), and IN_PROGRESS/PENDING/BLOCKED (passes!=true AND status==in_progress|pending|blocked). A task with passes:false and status complete (or any status outside that set) is counted in none of the buckets, so passed+in_progress+pending+blocked silently fails to equal TOTAL. tests/plugin_evidence.bats only uses tasks whose statuses map cleanly, so this drop in the load-bearing summary line the Stop-hook keys on is unguarded.
 
 **Suggestion:** Add a test with a task like {passes:false,status:"complete"} (and/or an unknown status) asserting the intended behavior of the summary line and the per-task line, pinning whatever the correct handling is.
 
-### F-025 [low] No test asserts the expected set of stack templates exists
+### F-026 [low] No test asserts the expected set of stack templates exists
 
 **File:** `tests/templates.bats` · **category:** test-coverage · **effort:** small · **addressed:** open
 
@@ -236,7 +244,7 @@ templates.bats iterates over plugin/templates/*.json, so every invariant test st
 
 **Suggestion:** Add a test asserting each expected template filename exists (g2g-greenfield.json, g2g-node.json, g2g-python.json, g2g-bash.json), or that the *.json count matches the known set.
 
-### F-026 [low] Template models routing block is unpinned though build.md depends on it
+### F-027 [low] Template models routing block is unpinned though build.md depends on it
 
 **File:** `tests/templates.bats` · **category:** test-coverage · **effort:** small · **addressed:** open
 
@@ -244,25 +252,25 @@ Every template carries a models block ({go, builder, verifier}) that /g2g:init c
 
 **Suggestion:** Add a test asserting each template's .models is an object with non-empty string values for go, builder, and verifier (mirroring the existing structural assertions for verificationCommands/sourceDirs).
 
-### F-029 [low] models.go config key ships in every template but is never read
+### F-030 [low] models.go config key ships in every template but is never read
 
-**File:** `plugin/templates/g2g-bash.json:13` · **category:** architecture · **effort:** small · **addressed:** open
+**File:** `plugin/templates/g2g-bash.json` · **category:** architecture · **effort:** small · **addressed:** open
 
 Every template and this repo's g2g.json include "models": { "go": "sonnet", ... }, but no command reads models.go — /g2g:go hardcodes model: sonnet in its frontmatter (go.md line 4) and README line 141 explicitly states models.go is not read. The key is inert config that advertises a tunability the architecture does not provide, so an operator editing it would see no effect. (artifactPaths is similar but README marks it deliberately reserved; models.go is not.)
 
 **Suggestion:** Drop the models.go key from the templates (and repo config), or wire go.md to read it instead of pinning the model in frontmatter, so shipped config keys map to real consumers.
 
-### F-030 [low] Verification-command resolution expressed inconsistently between go.md and spec.md
+### F-031 [low] Verification-command resolution expressed inconsistently between go.md and spec.md
 
-**File:** `plugin/commands/go.md:18` · **category:** architecture · **effort:** small · **addressed:** open
+**File:** `plugin/commands/go.md` · **category:** architecture · **effort:** small · **addressed:** open
 
 go.md step 3 and spec.md step 3 implement the same abstraction — resolve verification commands from .claude/g2g.json.verificationCommands, else the repo's documented test/lint commands — but with different rigor. spec.md step 3b requires confirm a candidate is really defined (the target/script exists) before using it and aborts if none resolve; go.md just says run the repo's documented test/lint commands with no existence guard and no defined behavior when none exist, so /g2g:go can attempt undefined commands or silently verify nothing. Same policy, two divergent expressions.
 
 **Suggestion:** Align go.md's step 3 with spec.md's resolution rules (confirm the command is really defined; state what happens when none resolve), so verification sourcing behaves consistently across the two commands that read g2g.json.verificationCommands.
 
-### F-031 [low] Gitignore artifact-tracking check re-implemented in four commands
+### F-032 [low] Gitignore artifact-tracking check re-implemented in four commands
 
-**File:** `plugin/commands/review.md:70` · **category:** architecture · **effort:** small · **addressed:** open
+**File:** `plugin/commands/review.md` · **category:** architecture · **effort:** small · **addressed:** open
 
 The is this artifact gitignored, and if so warn/abort with the migration pointer policy is coded separately in review.md (step 7), spec.md (step 6), build.md (Phase 1 step 3a), and init.md (step 4 artifact-tracking check), each with its own git check-ignore invocation, scope, and wording (init even documents a subtle sentinel-vs-example.json trap that the others don't). The remediation target is centralized (README Artifact tracking) but the detection logic is duplicated four ways, so a change to the tracking rule (e.g. a new tracked artifact path) must be replicated in each and can silently drift.
 
@@ -270,4 +278,4 @@ The is this artifact gitignored, and if so warn/abort with the migration pointer
 
 ---
 
-**Open vs addressed:** 28 open, 3 addressed (of 31 total).
+**Open vs addressed:** 29 open, 3 addressed (of 32 total).
