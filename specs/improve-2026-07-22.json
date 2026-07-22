@@ -15,7 +15,11 @@
       "make check"
     ]
   },
-  "verifier": null,
+  "verifier": {
+    "verdict": "PASS",
+    "date": "2026-07-22",
+    "summary": "All 3 tasks (F-001/F-002/F-003) verified against the branch diff; make check 28/28 green; markers, evidence contract, .g2g-goal discipline and safety invariants intact."
+  },
   "tasks": [
     {
       "id": "T-001",
