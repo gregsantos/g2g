@@ -75,15 +75,21 @@ command (confirmed by spike). Instead:
    guaranteed to be present at any spec size.)
 
 2. Immediately READ `.g2g-goal` back with the Read tool and print its
-   contents verbatim. (The plugin's Stop hook cannot reliably fetch this
-   file on its own on its first firing — surfacing the condition here, as
-   real transcript content, closes that gap.)
+   contents verbatim. This step is MANDATORY and load-bearing twice
+   over: it surfaces the condition as real transcript content (the Stop
+   hook judges only the transcript), and it is the act that BINDS this
+   session to the goal — the hook's scoping check allows any session
+   whose transcript lacks this write-and-read-back to stop freely, so a
+   goal you never read back is a goal that will not be enforced.
 
-The plugin ships a Stop hook (`plugin/hooks/hooks.json`) that reads
-`.g2g-goal` on every Stop event: it blocks stopping with a reason if the
-condition isn't met, and allows stopping if it is met or the file doesn't
-exist. This is the same prompt-type Stop hook mechanism `/goal` itself
-wraps, reimplemented directly since the plugin-command layer can't reach
+The plugin ships a Stop hook (`plugin/hooks/hooks.json`) that fires on
+every Stop event. It is session-scoped: sessions that never armed a
+goal (including concurrent sessions in the same repo while a build's
+`.g2g-goal` is live) are allowed to stop immediately. For the arming
+session it blocks stopping with a reason until the transcript shows the
+condition met — or shows `.g2g-goal` deleted at a terminal state. This
+is the same prompt-type Stop hook mechanism `/goal` itself wraps,
+reimplemented directly since the plugin-command layer can't reach
 `/goal`'s UI.
 
 ## Phase 3 — Turn contract (repeat every turn until the goal clears)

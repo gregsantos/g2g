@@ -53,11 +53,13 @@ claude -p "/g2g:go 'fix the failing lint rules'" --plugin-dir /path/to/g2g/plugi
 (`status`, `passes`, `attempts`) is written back into the spec JSON and
 committed every turn. When all tasks pass, an adversarial **verifier**
 subagent (defaults to FAIL when uncertain) checks the whole branch diff
-against the spec before a PR opens. Completion is enforced by a Stop
-hook reading an ephemeral `.g2g-goal` file: the session cannot end
-until the evidence script — a real command execution, not assistant
-text — shows every task passed and the verifier's PASS, or a turn/time
-cap routes the build to a draft partial PR. Nothing merges itself.
+against the spec before a PR opens. Completion is enforced by a
+session-scoped Stop hook tied to an ephemeral `.g2g-goal` file: the
+session that armed the goal cannot end until the evidence script — a
+real command execution, not assistant text — shows every task passed
+and the verifier's PASS, or a turn/time cap routes the build to a draft
+partial PR; other sessions in the repo are unaffected. Nothing merges
+itself.
 
 ## Specs
 

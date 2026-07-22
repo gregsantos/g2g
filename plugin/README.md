@@ -215,6 +215,6 @@ claude -p "/g2g:build specs/feature.json" \
   cp plugin/hooks/hooks.json .claude/settings.json
   ```
 
-Because the settings copy is tracked here, interactive sessions also evaluate the hook on every Stop; with no `.g2g-goal` present it should allow immediately, but it has been observed to spuriously block with "insufficient evidence" when the recent transcript carries no `.g2g-goal` evidence — running `ls .g2g-goal` to surface the file's absence satisfies it.
+The hook is **session-scoped**: it enforces only goals armed by the same session (the transcript must show that session writing `.g2g-goal` and reading it back). Sessions that never armed a goal — interactive sessions, or sessions running concurrently while another session's build has a live `.g2g-goal` — are allowed to stop immediately, so an armed goal can never conscript a bystander session into completing it.
 
-Interactive sessions need none of this — the plugin's hook fires normally there.
+Interactive sessions need none of this setup — the plugin's hook fires normally there.

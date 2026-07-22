@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "prompt",
-            "prompt": "Read the file .g2g-goal if it exists. If it exists and contains a condition, check if the transcript demonstrates that condition is met. Respond with {\"ok\": true} if the condition is met or the file doesn't exist. If the condition is not met, respond with {\"ok\": false, \"reason\": \"Condition not met: [specific detail of what remains]\"}.",
+            "prompt": "This hook enforces G2G build goals armed by THIS session only. Scoping check first: if this transcript does not show this session arming a goal — writing the .g2g-goal file and then reading its contents back — respond {\"ok\": true} immediately; either no goal was armed here, or an armed .g2g-goal belongs to a concurrent session and is not this session's to enforce. If this session did arm a goal: when the transcript later shows this session deleting .g2g-goal (a terminal state was reached), respond {\"ok\": true}; otherwise check whether the transcript demonstrates the most recently armed condition is met. Respond {\"ok\": true} if it is met, or {\"ok\": false, \"reason\": \"Condition not met: [specific detail of what remains]\"} if it is not.",
             "model": "claude-haiku-4-5-20251001"
           }
         ]

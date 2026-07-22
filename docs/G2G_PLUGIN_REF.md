@@ -218,7 +218,7 @@ PR. That data is why the default is now **25**. Sizing guidance:
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| Stop hook blocks an interactive session with "insufficient evidence" | Tracked settings copy evaluates the hook on every Stop; no `.g2g-goal` evidence in recent transcript | Run `ls .g2g-goal` (shows absence), stop again |
+| Stop hook blocks a session that never armed a goal | Should not happen — the hook is session-scoped (only the session whose transcript armed the goal is bound) | If it recurs, check `.claude/settings.json` carries the current hook prompt from `plugin/hooks/hooks.json` (an older copy lacks the scoping check) |
 | Tick worktree commits abort / backlog "vanishes" in worktrees | `specs/*` or `review-output/` gitignored | Remove those ignore rules, commit the files once (README "Artifact tracking") |
 | Headless run dies instantly, `Bash` rejected | Missing `--allowedTools` alongside `--permission-mode acceptEdits` | Use the proven invocation shape (README "Running headless") |
 | Hook never fires headlessly | `--setting-sources project` makes plugin hooks inert | Run `/g2g:init` (installs the hook into `.claude/settings.json`), or manually `cp plugin/hooks/hooks.json .claude/settings.json` — track it either way |
