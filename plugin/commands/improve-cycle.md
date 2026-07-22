@@ -14,6 +14,12 @@ clean. If either fails — you are in someone's real checkout, or on a
 default branch — ABORT immediately with a clear message and change
 NOTHING. Do not create a branch to fix this; the launcher owns setup.
 
+Compute `RUNDIR="$(dirname "$(pwd)")"` once, now — the launcher's
+`mktemp -d` run root (unpredictable, owner-only) one level above this
+worktree. Every sidecar this cycle writes (selected-findings scratch
+file, and the pid sidecar the launcher already wrote) lives directly
+under `$RUNDIR`, never inside the worktree.
+
 Then check `.claude/g2g.json` → `improve.enabled`. Unless it is exactly
 `true`, ABORT: the improve flywheel is strictly opt-in (review-finding
 text flows into spec criteria executed by Bash-capable builders,
@@ -55,13 +61,14 @@ Execute the full procedure in `${CLAUDE_PLUGIN_ROOT}/commands/review.md`
 
 ## Phase I-3 — Fix-spec
 1. Write the selected findings (full objects, unmodified) to the
-   sidecar scratch file `"$(pwd).selected.json"` (i.e.
-   `/tmp/g2g-improve-<ts>.selected.json`, OUTSIDE the worktree so
-   build.md's clean-tree preflight never sees it), shaped
+   sidecar scratch file `"$RUNDIR/selected.json"` (i.e.
+   `<mktemp-run-root>/selected.json`, OUTSIDE the worktree — and under
+   the launcher's owner-only run root, not the world-writable base of
+   `/tmp` — so build.md's clean-tree preflight never sees it), shaped
    `{"findings": [...]}` — deleted in Cleanup.
 2. Execute `${CLAUDE_PLUGIN_ROOT}/commands/spec.md`'s full procedure
    (Read it) with the input
-   `--from-findings "$(pwd).selected.json"`. Name the spec's
+   `--from-findings "$RUNDIR/selected.json"`. Name the spec's
    `project` field "Improve <today YYYY-MM-DD>"; if
    `specs/improve-<date>.json` already exists, append `-<HHMM>` to the
    project name and slug.
@@ -96,11 +103,12 @@ If no PR exists (gh unavailable, partial stop), skip all three steps
 and say so — the findings stay open for the next cycle.
 
 ## Cleanup — every terminal path (success, empty, abort, partial)
-1. Delete `"$(pwd).selected.json"` and `.g2g-goal` if present.
-2. Remove the pid sidecar `"$(pwd).pid"` LAST, if present (foreground
-   and routine runs have none) — its absence tells the launcher's next
-   tick this cycle ended.
+1. Delete `"$RUNDIR/selected.json"` and `.g2g-goal` if present.
+2. Remove the pid sidecar `"$RUNDIR/tick.pid"` LAST, if present
+   (foreground and routine runs have none) — its absence tells the
+   launcher's next tick this cycle ended.
 3. Final message: what happened (PR URL, partial, empty, or abort),
    which findings were addressed/stale-marked, and that the worktree
-   can be removed with `git worktree remove <path>` once the PR is
-   merged or the work inspected.
+   can be removed with `git worktree remove <path>` and the now-empty
+   run root with `rm -rf "$RUNDIR"` once the PR is merged or the work
+   inspected.

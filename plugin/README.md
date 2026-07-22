@@ -84,8 +84,9 @@ already fixed.
 
 `/g2g:improve` runs one bounded cycle — review → select top-N open
 findings (default 3, `defaultBudgets.improveFindings`) → fix-spec →
-mini-build → PR — always headless in a fresh `/tmp/g2g-improve-<ts>`
-worktree on a `g2g/improve-<ts>` branch, never in your checkout. Caps
+mini-build → PR — always headless in a fresh, unpredictable, owner-only
+`mktemp -d` run root (`/tmp/g2g-improve-<random>/worktree`, mode 0700)
+on a `g2g/improve-<random>` branch, never in your checkout. Caps
 come from `defaultBudgets.improveTurns`/`improveUsd` (50 / $25
 defaults). A tick skips itself if a previous tick is running or its PR
 is still open; a crashed tick is surfaced for human inspection, never

@@ -18,18 +18,25 @@ You are a scheduled G2G improvement tick running in a fresh clone.
    `/g2g:improve --wait`
 3. If it is NOT available but the repo contains `plugin/commands/
    improve-cycle.md` (this repo ships its plugin in-tree), run the
-   launcher's spawn directly and wait for it:
-   - `TS=$(date +%Y%m%d-%H%M%S)`
-   - `git worktree add "/tmp/g2g-improve-$TS" -b "g2g/improve-$TS" main`
-   - `cp plugin/hooks/hooks.json /tmp/g2g-improve-$TS/.claude/settings.json`
-     (create the `.claude` dir first; skip if the file materialized)
-   - from inside the worktree:
+   launcher's spawn directly and wait for it. Create the run root
+   unpredictably and owner-only (never a bare `date`-derived /tmp
+   path — that is symlink-plantable and world-readable) and put the
+   worktree inside it:
+   - `RUNDIR=$(mktemp -d "${TMPDIR:-/tmp}/g2g-improve-XXXXXXXX")`
+     (mode 0700 by construction)
+   - `WT="$RUNDIR/worktree"`
+   - `git worktree add "$WT" -b "g2g/improve-$(basename "$RUNDIR")" main`
+   - `mkdir -p "$WT/.claude" && cp plugin/hooks/hooks.json
+     "$WT/.claude/settings.json"` (skip the copy if the file
+     materialized)
+   - from inside the worktree (`cd "$WT"`):
      `claude -p "/g2g:improve-cycle" --plugin-dir "$PWD/plugin"
      --setting-sources project --permission-mode acceptEdits
      --allowedTools "Agent,Bash,Read,Write,Edit,Glob,Grep"
      --max-turns 50 --max-budget-usd 25`
    (the cycle's instructions come from the clone's own plugin dir — no
-   inlined drift)
+   inlined drift; this step runs in the foreground and blocks until
+   the cycle exits, so no pid/log sidecar is needed)
 4. If neither is possible, STOP and report "g2g plugin unavailable in
    routine environment" — do not improvise the cycle.
 5. Report: the PR URL (or the honest failure/empty-cycle outcome), the
