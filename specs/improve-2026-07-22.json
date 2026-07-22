@@ -49,7 +49,7 @@
         "make check passes."
       ],
       "dependsOn": [],
-      "status": "pending",
+      "status": "in_progress",
       "passes": false,
       "attempts": 0,
       "effort": "medium",
