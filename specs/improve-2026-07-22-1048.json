@@ -52,7 +52,7 @@
         "make check passes (existing verification commands still pass)."
       ],
       "dependsOn": [],
-      "status": "pending",
+      "status": "in_progress",
       "passes": false,
       "attempts": 0,
       "effort": "small",
