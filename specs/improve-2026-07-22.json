@@ -67,11 +67,11 @@
         "make check passes."
       ],
       "dependsOn": [],
-      "status": "in_progress",
-      "passes": false,
+      "status": "complete",
+      "passes": true,
       "attempts": 0,
       "effort": "small",
-      "notes": ""
+      "notes": "Commit 47b9390; Phase 4 REVERIFY_CAP=2 routes to partial PR, per-finding caps preserved, .g2g-goal deletion intact; version 0.2.3; make check 28/28 green."
     }
   ]
 }
