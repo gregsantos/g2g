@@ -30,11 +30,11 @@
         "make check passes."
       ],
       "dependsOn": [],
-      "status": "in_progress",
-      "passes": false,
+      "status": "complete",
+      "passes": true,
       "attempts": 0,
       "effort": "medium",
-      "notes": ""
+      "notes": "One commit 97777e6; additive data/instruction guard in build.md, g2g-builder.md, spec.md, writing-g2g-specs SKILL; plugin bumped 0.2.1; make check 28/28 green."
     },
     {
       "id": "T-002",
