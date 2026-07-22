@@ -40,9 +40,9 @@ claude -p "/g2g:go 'fix the failing lint rules'" --plugin-dir /path/to/g2g/plugi
 | `/g2g:init` | Onboard a repo: detect stack, confirm verification suite, write config + safety plumbing |
 | `/g2g:go "<task>" [--pr]` | One-off task: branch-first, implement, verify, commit |
 | `/g2g:spec "<prompt>" \| -f <file> \| --from-findings` | Generate a validated spec JSON in `specs/` for review |
-| `/g2g:build <spec.json>` | Goal-driven build: fresh builder per task, verifier-gated PR |
+| `/g2g:build <spec.json> [--continue-branch]` | Goal-driven build: fresh builder per task, verifier-gated PR |
 | `/g2g:dev "<prompt>" [--review]` | Pipeline: generate spec → build it |
-| `/g2g:review [--diff-base <ref>] [--focus <cats>]` | Read-only review into the tracked findings backlog |
+| `/g2g:review [--diff-base <ref>] [--focus <cats>] [--target <path>]` | Read-only review into the tracked findings backlog |
 | `/g2g:improve [--wait]` | One bounded improve tick: review → fix-spec → build → PR (strictly opt-in) |
 | `/g2g:status` | Read-only dashboard: goal, spec progress, open `g2g/*` PRs, worktrees |
 

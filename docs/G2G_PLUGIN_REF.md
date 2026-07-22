@@ -221,7 +221,7 @@ PR. That data is why the default is now **25**. Sizing guidance:
 | Stop hook blocks an interactive session with "insufficient evidence" | Tracked settings copy evaluates the hook on every Stop; no `.g2g-goal` evidence in recent transcript | Run `ls .g2g-goal` (shows absence), stop again |
 | Tick worktree commits abort / backlog "vanishes" in worktrees | `specs/*` or `review-output/` gitignored | Remove those ignore rules, commit the files once (README "Artifact tracking") |
 | Headless run dies instantly, `Bash` rejected | Missing `--allowedTools` alongside `--permission-mode acceptEdits` | Use the proven invocation shape (README "Running headless") |
-| Hook never fires headlessly | `--setting-sources project` makes plugin hooks inert | `cp plugin/hooks/hooks.json .claude/settings.json` in the host repo (track it) |
+| Hook never fires headlessly | `--setting-sources project` makes plugin hooks inert | Run `/g2g:init` (installs the hook into `.claude/settings.json`), or manually `cp plugin/hooks/hooks.json .claude/settings.json` — track it either way |
 | Same findings selected every cycle, no PRs | No `gh`/GitHub remote: PR creation fails, reconciliation skips, findings stay open | Give the environment `gh` auth + a GitHub remote, or triage the backlog by hand |
 | Launcher refuses to run | RUNNING/CRASHED tick or an open `g2g/improve-*` PR | That's the design (skip, don't stack): finish/kill/inspect per §4, merge or close the PR |
 | Tick ended, no PR, worktree dirty | Outer cap guillotined it mid-build | Salvage per §4; raise the outer caps per §7 |

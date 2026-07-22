@@ -30,7 +30,7 @@ New to the plugin in a fresh repo? Three steps:
 |---|---|
 | `/g2g:init` | Interactive onboarding for a new repo: detect the stack, confirm the verification suite, write `.claude/g2g.json` and safety plumbing (never commits) |
 | `/g2g:go "<task>" [--pr]` | One-off task: branch-first, implement, verify, commit; `--pr` opens a PR |
-| `/g2g:build <spec.json>` | Goal-driven build from a spec: fresh builder per task, verifier-gated PR |
+| `/g2g:build <spec.json> [--continue-branch]` | Goal-driven build from a spec: fresh builder per task, verifier-gated PR; `--continue-branch` resumes an existing `g2g/*` branch |
 | `/g2g:status` | Read-only dashboard: active goal, spec progress, open `g2g/*` PRs, worktrees |
 | `/g2g:spec "<prompt>" \| -f <file> \| --from-findings [path]` | Generate a validated spec JSON in `specs/` (no commit — review, then build) |
 | `/g2g:dev "<prompt>" [--review]` | Full pipeline: generate spec → build it; `--review` pauses for spec approval |
