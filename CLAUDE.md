@@ -73,7 +73,9 @@ g2g/
   time); caps on every autonomous run (turns, hours, dollars — no
   unlimited mode); the improve flywheel is strictly opt-in
   (`improve.enabled` must be exactly `true`; enabling it is always a
-  human edit — see finding F-020); no detached processes
+  human edit — see backlog finding F-001, "Review-finding text flows
+  unsanitized into builder-executed criteria": hardened in PR #1, gate
+  kept as defense in depth); no detached processes
   (nohup/disown/setsid) — every spawned tick keeps a pid sidecar and
   stays killable.
 - **`.g2g-goal` is ephemeral** — gitignored, written by `/g2g:build`,

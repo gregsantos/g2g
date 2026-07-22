@@ -256,10 +256,12 @@ PR. That data is why the default is now **25**. Sizing guidance:
   a pid sidecar, is visible in `/g2g:status`, and dies to `kill`.
 - **Isolation:** the cycle refuses to run outside a `g2g/improve-*`
   worktree; your checkout is never the workspace.
-- **Trust boundary (open):** review-finding text flows into spec
-  criteria executed by Bash-capable builders (backlog finding F-020) —
-  until hardened, run the flywheel only on repos whose contents you
-  trust. The flywheel is strictly opt-in: both improve commands refuse
-  to run unless `.claude/g2g.json` sets `"improve": { "enabled": true }`,
-  and enabling it is always a human edit.
+- **Trust boundary (hardened, not proven):** review-finding text flows
+  into spec criteria executed by Bash-capable builders (backlog finding
+  F-001, hardened in PR #1 with data/instruction separation). Treat the
+  prompt-level hardening as a mitigation: still run the flywheel only
+  on repos whose contents you trust. The flywheel is strictly opt-in as
+  defense in depth: both improve commands refuse to run unless
+  `.claude/g2g.json` sets `"improve": { "enabled": true }`, and
+  enabling it is always a human edit.
 

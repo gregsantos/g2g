@@ -17,7 +17,7 @@ NOTHING. Do not create a branch to fix this; the launcher owns setup.
 Then check `.claude/g2g.json` → `improve.enabled`. Unless it is exactly
 `true`, ABORT: the improve flywheel is strictly opt-in (review-finding
 text flows into spec criteria executed by Bash-capable builders,
-backlog finding F-020). This check repeats the launcher's gate on
+backlog finding F-001). This check repeats the launcher's gate on
 purpose — a routine or manual spawn can reach this command without
 going through `/g2g:improve`.
 

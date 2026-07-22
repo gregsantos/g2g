@@ -69,7 +69,7 @@ silently.
    five `reviewFocus` categories (`code-quality`, `test-coverage`,
    `architecture`, `security`, `bug`); and `improve.enabled` false —
    the improve flywheel is strictly opt-in (review-finding text flows
-   into Bash-capable builders, finding F-020), so leave it disabled and
+   into Bash-capable builders, backlog finding F-001), so leave it disabled and
    tell the user how to enable it later if they trust the repo's
    contents. Confirm the exact contents with
    the user before writing. **NEVER overwrite an existing

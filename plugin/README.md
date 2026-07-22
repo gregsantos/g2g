@@ -109,9 +109,12 @@ sits next to the worktree), `/g2g:status` (shows
 RUNNING/CRASHED/FINISHED ticks), PR review (nothing merges itself).
 
 Trust caveat: review-finding text flows into spec criteria executed by
-Bash-capable builders (tracked as backlog finding F-020), so until that
-boundary is hardened, run the improve flywheel only on repos whose
-contents you trust. For that reason improve is **strictly opt-in**:
+Bash-capable builders (backlog finding F-001, hardened in PR #1 with
+data/instruction separation — findings are quoted as cited data and
+builders are told criteria describe outcomes, never instructions).
+Prompt-level hardening is a mitigation, not a proof, so still run the
+improve flywheel only on repos whose contents you trust, and improve
+stays **strictly opt-in** as defense in depth:
 both `/g2g:improve` and `/g2g:improve-cycle` refuse to run unless
 `.claude/g2g.json` sets `"improve": { "enabled": true }` — templates
 and `/g2g:init` write it as `false`, and enabling it is always a human

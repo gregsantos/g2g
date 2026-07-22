@@ -16,7 +16,7 @@ fallback.
 0. Read `.claude/g2g.json` → `improve.enabled`. Unless it is exactly
    `true`, STOP without launching anything and explain: the improve
    flywheel feeds review-finding text into spec criteria executed by
-   Bash-capable builders (backlog finding F-020), so it must be
+   Bash-capable builders (backlog finding F-001), so it must be
    explicitly enabled — and only on repos whose contents you trust.
    To enable it, set `"improve": { "enabled": true }` in
    `.claude/g2g.json` and re-run. Never enable it yourself; that edit
