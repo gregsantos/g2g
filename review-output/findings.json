@@ -16,8 +16,8 @@
     "total": 33,
     "critical": 0,
     "high": 1,
-    "medium": 10,
-    "low": 22,
+    "medium": 11,
+    "low": 21,
     "info": 0
   },
   "findings": [
@@ -211,11 +211,11 @@
     {
       "id": "F-017",
       "category": "security",
-      "severity": "low",
+      "severity": "medium",
       "file": "plugin/hooks/hooks.json",
       "title": "Completion gate trusts an LLM to distinguish real tool output from model-authored text",
       "description": "The Stop-hook goal condition (hooks.json:8, mirrored in build.md Phase 2) is satisfied only when a G2G EVIDENCE block was produced by running the script as a real command execution (visible as tool output), not authored as plain assistant text. Enforcement is delegated to a Haiku prompt judging the raw transcript. Bash-capable builder subagents — which execute acceptance criteria derived from untrusted review-finding text (the F-001 class) — write into that same transcript. A builder (or prompt-injected content) that emits a fabricated, correctly formatted evidence block could plausibly cause the evaluator to mis-classify model-authored text as tool output and allow the session to stop prematurely, defeating the goal-enforcement invariant. Impact is limited (a false stop yields an incomplete build, not a merged PR, since the verifier and PR gate still stand), so this is a robustness/trust-boundary weakness rather than a direct breach.",
-      "suggestion": "Do not rely solely on the model to authenticate provenance: have the evidence script emit a per-run nonce/marker that the orchestrator records out-of-band (e.g. in .g2g-goal) and require the hook to match it, or key the terminal condition on the deterministic .g2g-goal deletion event plus recorded PR/verifier state rather than on transcript text an untrusted subagent can imitate.",
+      "suggestion": "Replace the prompt-type hook with (or front it by) a deterministic command hook: it receives transcript_path on stdin, so it can (a) exit allow immediately when .g2g-goal is absent or the transcript JSONL never shows this session arming it — removing the per-Stop Haiku call and its latency from every session in every repo with the hook installed — and (b) when a goal IS armed, verify the G2G EVIDENCE block appears inside a real tool_result entry (JSONL structure, not text matching), which model-authored text cannot forge. This upgrades the gate from LLM judgment to structural proof and reduces cost simultaneously; keep the prompt hook only as an optional fallback for conditions a script cannot evaluate.",
       "effort": "medium",
       "addressed": null
     },
