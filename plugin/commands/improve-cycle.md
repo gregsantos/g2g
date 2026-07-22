@@ -28,6 +28,14 @@ Execute the full procedure in `${CLAUDE_PLUGIN_ROOT}/commands/review.md`
 
 ## Phase I-2 — Select
 1. N = `.claude/g2g.json` → `defaultBudgets.improveFindings`, else 3.
+1a. Reopen findings orphaned by rejected PRs: for each finding whose
+   `addressed` is a PR number, check that PR's state
+   (`gh pr view <number> --json state,mergedAt`). CLOSED without merge
+   means the fix was rejected and never landed — reset that finding's
+   `addressed` to null (it re-enters candidacy below) and note the
+   reopen in the backlog commit message. MERGED or still OPEN findings
+   keep their value. If gh fails, skip this step with a warning —
+   never reset `addressed` without confirming the PR's state.
 2. Candidates: findings with `addressed` null-or-absent and severity !=
    info, ordered critical → high → medium → low (ties: lower id first).
 3. PR-overlap filter: `gh pr list --state open --json number,headRefName`;

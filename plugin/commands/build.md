@@ -114,8 +114,12 @@ reimplemented directly since the plugin-command layer can't reach
    (`chore(<task-id>): start`).
 6. Dispatch ONE `g2g:g2g-builder` subagent via the Agent tool,
    SYNCHRONOUSLY (never in the background — you must not end your turn
-   while a builder runs). Task card = task JSON + spec context block +
-   branch name + "conventions: CLAUDE.md".
+   while a builder runs). Model routing: pass the Agent tool's model
+   parameter from `.claude/g2g.json` → `models.builder`; when the file
+   or field is absent default to `sonnet`; when the value is `inherit`,
+   omit the parameter (the builder uses the session model). Task card =
+   task JSON + spec context block + branch name +
+   "conventions: CLAUDE.md".
 7. Wait for the subagent's final message, then find its result by SEEKING
    the `BUILDER REPORT` marker line — the agent may emit prose before the
    block; never assume the whole message is the block. Read `result:`,
@@ -140,7 +144,11 @@ reimplemented directly since the plugin-command layer can't reach
 
 ## Phase 4 — Completion (first turn where all tasks pass)
 1. Dispatch a `g2g:g2g-verifier` subagent SYNCHRONOUSLY, passing the
-   spec path and base ref = the default branch. Its scope is the whole
+   spec path and base ref = the default branch. Model routing: from
+   `.claude/g2g.json` → `models.verifier`, same rules as the builder
+   dispatch (Phase 3 step 6) except the default is `inherit` — the
+   verifier's adversarial judgment stays on the session model unless
+   explicitly routed. Its scope is the whole
    spec checked against the full branch diff at completion time — every
    task, not only the ones built this session.
 2. Wait for its final message and find its result by SEEKING the

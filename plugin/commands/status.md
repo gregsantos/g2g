@@ -1,5 +1,6 @@
 ---
 description: Show G2G state — active goal, spec progress, open g2g/* PRs, worktrees
+model: haiku
 ---
 # /g2g:status
 

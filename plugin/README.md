@@ -138,7 +138,7 @@ Optional `.claude/g2g.json` in the host repo (see [`.claude/g2g.json`](../.claud
 - `improve.enabled` — **live now**: hard opt-in gate for the improve flywheel (see Trust caveat above). Defaults to `false` in every template; `/g2g:improve` and `/g2g:improve-cycle` refuse to run unless it is exactly `true`.
 - `reviewFocus` — **live now**: the categories `/g2g:review` fans out across when `--focus` isn't given.
 - `sourceDirs` — **live now**: the default review targets when `--target` isn't given.
-- `models` — **reserved (deliberately — no consumer in v1)**: intended model routing overrides for `go`/`builder`/`verifier` (`"inherit"` would use the invoking session's model); `/g2g:go` currently hardcodes `model: sonnet` in its own frontmatter instead (go.md).
+- `models` — **live now** for `builder` and `verifier`: `/g2g:build` dispatches builder subagents with `models.builder` (default `sonnet` — tasks are pre-decomposed with explicit criteria, a Sonnet-shaped job) and the verifier with `models.verifier` (default `inherit` — adversarial judgment stays on the session model). `"inherit"` means use the invoking session's model. `models.go` is not read: `/g2g:go` hardcodes `model: sonnet` in its frontmatter (go.md); `/g2g:status` likewise pins `haiku`.
 - `artifactPaths` — **reserved (deliberately — no consumer in v1)**: intended override for where specs and review output live, for non-standard layouts; no command reads this yet.
 
 ## Spec format

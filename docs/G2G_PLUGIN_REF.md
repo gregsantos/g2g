@@ -58,6 +58,11 @@ worktrees; a *gitignored* one is worse (see §8).
 | `<PR number>` | a fix PR delivered it | improve cycle, Phase I-5 |
 | `"stale-<date>"` | revalidation found the symptom already gone | improve cycle, selection |
 
+A PR number only counts while its PR is open or merged: selection
+(Phase I-2 step 1a) checks each addressed PR's state and **reopens**
+(resets to `null`) any finding whose PR was closed without merging —
+a rejected fix must not orphan its findings.
+
 Rules worth knowing:
 
 - Reviews **preserve** existing `addressed` values — never clear one by
