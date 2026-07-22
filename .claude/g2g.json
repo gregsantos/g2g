@@ -11,6 +11,6 @@
   },
   "improve": { "enabled": true },
   "reviewFocus": ["code-quality", "test-coverage", "architecture", "security", "bug"],
-  "models": { "go": "sonnet", "builder": "inherit", "verifier": "inherit" },
+  "models": { "go": "sonnet", "builder": "sonnet", "verifier": "inherit" },
   "artifactPaths": { "specs": "specs", "reviewOutput": "review-output" }
 }

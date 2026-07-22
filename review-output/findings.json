@@ -13,10 +13,10 @@
     ]
   },
   "summary": {
-    "total": 32,
+    "total": 33,
     "critical": 0,
     "high": 1,
-    "medium": 9,
+    "medium": 10,
     "low": 22,
     "info": 0
   },
@@ -381,6 +381,17 @@
       "title": "Gitignore artifact-tracking check re-implemented in four commands",
       "description": "The is this artifact gitignored, and if so warn/abort with the migration pointer policy is coded separately in review.md (step 7), spec.md (step 6), build.md (Phase 1 step 3a), and init.md (step 4 artifact-tracking check), each with its own git check-ignore invocation, scope, and wording (init even documents a subtle sentinel-vs-example.json trap that the others don't). The remediation target is centralized (README Artifact tracking) but the detection logic is duplicated four ways, so a change to the tracking rule (e.g. a new tracked artifact path) must be replicated in each and can silently drift.",
       "suggestion": "Factor the check into a single shared reference (a short skill or a documented snippet the procedures cite) covering the sentinel-probe subtlety once, and have each command invoke that rather than restating the logic.",
+      "effort": "small",
+      "addressed": null
+    },
+    {
+      "id": "F-033",
+      "category": "architecture",
+      "severity": "medium",
+      "file": "plugin/commands/improve.md",
+      "title": "Improve tick inherits the operator default model for its entire cycle",
+      "description": "The improve spawn passes no --model flag, so the whole headless cycle — orchestrator, all review category subagents, spec generation, and any builder/verifier not explicitly routed — runs on the invoking machine's default CLI model. When that default is a premium model, the tick's dominant costs (the review fan-out above all) are paid at premium rates: the first live tick cost $10.75 with builders and review inheriting a Mythos-class default. models.builder routing only covers builder dispatches, not the cycle itself.",
+      "suggestion": "Add tick-level routing: improve.md reads .claude/g2g.json models.improveCycle (default sonnet) and passes it as --model on the spawned claude -p invocation; improve-nightly.md mirrors it. Keep adversarial judgment premium where desired via the existing models.verifier field (e.g. set it to opus explicitly). Document in the runbook's budget section that tick cost scales directly with this model choice.",
       "effort": "small",
       "addressed": null
     }
