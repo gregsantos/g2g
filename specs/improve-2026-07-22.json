@@ -11,7 +11,9 @@
       "Safety invariants are inviolable: branch-first, PR-gated, caps on every run, improve opt-in, no detached processes, .g2g-goal deleted at every terminal path.",
       "Every change must keep `make check` green."
     ],
-    "verificationCommands": ["make check"]
+    "verificationCommands": [
+      "make check"
+    ]
   },
   "verifier": null,
   "tasks": [
@@ -28,7 +30,7 @@
         "make check passes."
       ],
       "dependsOn": [],
-      "status": "pending",
+      "status": "in_progress",
       "passes": false,
       "attempts": 0,
       "effort": "medium",
