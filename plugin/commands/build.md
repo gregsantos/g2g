@@ -8,40 +8,54 @@ You are the G2G build ORCHESTRATOR for the spec at: $ARGUMENTS
 
 You coordinate; you NEVER edit source files yourself. Builders build,
 the verifier verifies, you manage state. The only files you may write are
-the spec JSON, `.g2g-goal`, and its liveness sidecar `.g2g-goal.lock`.
+the spec JSON, `.g2g-goal`, and its liveness lock `.g2g-goal.lock`.
 Both `.g2g-goal` and `.g2g-goal.lock` are ephemeral — neither must ever be
 committed, and you must delete both before the build reaches any terminal
 state (Phase 4 steps 5–6, Phase 5) so the Stop hook lets the session end.
+When you delete `.g2g-goal.lock`, remove it only while line 2 still holds
+this build's owner token — if a later build reclaimed it as stale, it is
+no longer yours to remove; delete `.g2g-goal` and leave the lock to its
+new owner. This pair is build.md's alone: no wrapper (improve-cycle) ever
+deletes it.
 
 ## Phase 1 — Preflight (all hard requirements; abort with a clear message on any failure)
-1. One build per checkout — before anything else, check whether a build is
-   already LIVE here: if a `.g2g-goal` file exists in the repo root, look for
-   its liveness sidecar `.g2g-goal.lock` next to it (a file containing a
-   single ISO 8601 timestamp, written at arm time by Phase 2 and refreshed
-   every turn by Phase 3 step 1 — never `.g2g-goal`'s own contents, which
-   stay exactly the goal condition text so the Stop hook's scoping and
-   condition checks are never touched by this guard). Let
-   STALE_THRESHOLD_MINUTES = 60.
-   - `.g2g-goal` exists but `.g2g-goal.lock` is missing or unreadable: this
-     is crash debris (a run that died before ever reaching its first
-     heartbeat, or a leftover from a version predating this guard). Delete
-     `.g2g-goal` (and `.g2g-goal.lock` if it exists) now and note the
-     removal in the transcript. Proceed to step 2.
-   - `.g2g-goal.lock` exists and its timestamp is within the last
-     STALE_THRESHOLD_MINUTES (60) minutes: a build is LIVE in this checkout
-     right now. ABORT immediately — report that another /g2g:build is
-     already active in this checkout (include the sidecar's recorded
-     timestamp so a human can judge whether it's a false positive from an
-     unusually long single turn), and change nothing: do not delete,
-     rewrite, or otherwise touch `.g2g-goal` or `.g2g-goal.lock`, and do not
-     proceed to step 2.
-   - `.g2g-goal.lock` exists but is older than STALE_THRESHOLD_MINUTES: the
-     prior build died mid-run and stopped heartbeating. Delete both
-     `.g2g-goal` and `.g2g-goal.lock` now and note the removal in the
-     transcript. Proceed to step 2.
-   Do not rely on the git-status check in step 2 to catch any of this
-   incidentally — both files are untracked, so a dirty tree isn't
-   guaranteed to surface them.
+1. One build per checkout — acquire the build lock ATOMICALLY as the very
+   first preflight action, before any other check, so two builds starting
+   together in the same checkout cannot both proceed (a plain
+   "check whether it exists, then create it" is a race and is forbidden
+   here). The lock is `.g2g-goal.lock` in the repo root: line 1 is an ISO
+   8601 heartbeat timestamp; line 2 is this build's owner token — a value
+   unique to this process (e.g. `$$`) that later proves the lock is still
+   yours before you refresh or delete it. It carries ONLY this — the goal
+   condition text lives in `.g2g-goal` (written in Phase 2) and never
+   changes after arming, so the Stop hook's scoping and condition checks
+   are never touched by this guard. Let STALE_THRESHOLD_MINUTES = 60.
+   Attempt acquisition with an atomic, fail-if-exists create — POSIX
+   `set -o noclobber` redirection (or an equally atomic `mkdir`-style
+   primitive):
+   `( set -o noclobber; printf '%s\n%s\n' "<now ISO 8601>" "<owner-token>" > .g2g-goal.lock ) 2>/dev/null`
+   - Create SUCCEEDS: you hold the lock. Remember the owner token for
+     Phase 3's heartbeat and for terminal deletion. Proceed to step 2.
+     (Any pre-existing `.g2g-goal` from an aborted prior run is harmless —
+     Phase 2 overwrites it.)
+   - Create FAILS (lock already exists): read `.g2g-goal.lock` line 1.
+     - Timestamp within STALE_THRESHOLD_MINUTES (60) minutes: a build is
+       LIVE in this checkout right now. ABORT immediately — report that
+       another /g2g:build is already active (include the recorded
+       timestamp so a human can judge a false positive from an unusually
+       long single turn), and change NOTHING: do not delete, rewrite, or
+       otherwise touch `.g2g-goal` or `.g2g-goal.lock`, and do not proceed.
+     - Timestamp older than STALE_THRESHOLD_MINUTES, OR the lock is
+       unreadable/empty (crash debris — a prior build died mid-run and
+       stopped heartbeating, or a leftover from a version predating this
+       guard): delete both `.g2g-goal.lock` and `.g2g-goal` (if present),
+       note the removal in the transcript, then RETRY the atomic create
+       ONCE. If the retry also fails, another build just won the lock —
+       ABORT and touch nothing, exactly as in the LIVE case. On success,
+       proceed to step 2.
+   Do not rely on the git-status check in step 2 to enforce this — both
+   files are untracked, so a dirty tree isn't guaranteed to surface them;
+   this atomic guard is what enforces one-build-per-checkout.
 2. `git status` clean — with exactly one exception: the target spec file
    itself may be untracked or modified (a spec freshly generated by
    /g2g:spec or the /g2g:dev pipeline, not yet committed). Any other
@@ -98,13 +112,14 @@ command (confirmed by spike). Instead:
    has more than 12 tasks — the summary line is the only completion signal
    guaranteed to be present at any spec size.)
 
-2. Also write the current ISO 8601 timestamp, alone, to a file named
-   `.g2g-goal.lock` in the repo root — this is the liveness sidecar Phase 1
-   step 1 checks in any future `/g2g:build` invocation in this checkout,
-   and that Phase 3 step 1 refreshes every turn as a heartbeat. This file
-   is separate from `.g2g-goal` precisely so `.g2g-goal`'s own contents
-   never change after arming — the Stop hook only ever reads the condition
-   text written in step 1.
+2. The liveness lock `.g2g-goal.lock` already exists — you acquired it
+   atomically in Phase 1 step 1, and it is what a future `/g2g:build` in
+   this checkout checks to tell this build is live. Refresh its heartbeat
+   now: overwrite it with a current ISO 8601 timestamp on line 1 and your
+   owner token on line 2. Phase 3 step 1 refreshes it every turn. It stays
+   separate from `.g2g-goal` precisely so `.g2g-goal`'s own contents never
+   change after arming — the Stop hook only ever reads the condition text
+   written in step 1.
 3. Immediately READ `.g2g-goal` back with the Read tool and print its
    contents verbatim. This step is MANDATORY and load-bearing twice
    over: it surfaces the condition as real transcript content (the Stop
@@ -129,9 +144,10 @@ reimplemented directly since the plugin-command layer can't reach
    count. This line is the only way the Stop-hook
    evaluator — which judges only the transcript — can see the turn/time
    caps. Never omit it, and never change its format. Then overwrite
-   `.g2g-goal.lock` with the current ISO 8601 timestamp — this heartbeat is
-   what lets a future preflight (Phase 1 step 1) tell this build is still
-   live rather than crash debris; refresh it every turn without exception.
+   `.g2g-goal.lock` with a current ISO 8601 timestamp (line 1) and your
+   owner token (line 2) — this heartbeat is what lets a future preflight
+   (Phase 1 step 1) tell this build is still live rather than crash debris;
+   refresh it every turn without exception.
 2. Cap check — do this before anything else this turn, immediately after
    printing the turn line: if `k >= TURN_CAP`, or more than HOURS_CAP hours have
    elapsed since `BUILD_START`, go to Phase 5 now. Treat this exactly like
