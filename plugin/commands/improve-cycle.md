@@ -103,7 +103,14 @@ If no PR exists (gh unavailable, partial stop), skip all three steps
 and say so — the findings stay open for the next cycle.
 
 ## Cleanup — every terminal path (success, empty, abort, partial)
-1. Delete `"$RUNDIR/selected.json"` and `.g2g-goal` if present.
+1. Delete `"$RUNDIR/selected.json"` if present. Do NOT delete `.g2g-goal`
+   or `.g2g-goal.lock` here — build.md exclusively owns that pair and
+   removes BOTH at its own terminal state (Phase 4/5). Deleting `.g2g-goal`
+   from this wrapper would, in the one case that matters — a nested
+   build.md that ABORTED because it found a *live* lock it does not own —
+   silently disarm that other build and orphan its lock. Any goal/lock a
+   build.md abort genuinely leaves behind is gitignored and dies with the
+   worktree when the launcher runs `rm -rf "$RUNDIR"`.
 2. Remove the pid sidecar `"$RUNDIR/tick.pid"` LAST, if present
    (foreground and routine runs have none) — its absence tells the
    launcher's next tick this cycle ended.
