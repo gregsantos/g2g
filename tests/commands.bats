@@ -61,6 +61,37 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     grep -q 'improve.enabled' "$PLUGIN_DIR/commands/improve-cycle.md"
 }
 
+@test "contract: improve launcher and status agree on the tick pid sidecar" {
+    # improve.md writes the pid sidecar; status.md reads it. If the path
+    # token drifts, status silently reports running ticks as FINISHED.
+    grep -q 'tick.pid' "$PLUGIN_DIR/commands/improve.md"
+    grep -q 'tick.pid' "$PLUGIN_DIR/commands/status.md"
+}
+
+@test "safety: improve and status handle legacy + run-root sidecar layouts" {
+    # A legacy flat worktree makes RUNDIR=/tmp; without layout handling,
+    # cleanup would rm -rf the shared temp base. Both files must branch on
+    # layout, and the recursive delete must be gated on a validated run root.
+    for f in improve status; do
+        grep -qi 'legacy' "$PLUGIN_DIR/commands/$f.md" \
+            || { echo "$f.md lost legacy-layout handling"; return 1; }
+    done
+    grep -qi 'run root' "$PLUGIN_DIR/commands/improve.md"
+}
+
+@test "safety: build acquires the checkout lock atomically before arming" {
+    # A double-arm race is prevented by an atomic fail-if-exists create,
+    # not a check-then-write. The lock stays separate from .g2g-goal.
+    grep -qiE 'noclobber|atomic' "$PLUGIN_DIR/commands/build.md"
+    grep -q '.g2g-goal.lock' "$PLUGIN_DIR/commands/build.md"
+}
+
+@test "safety: improve-cycle wrapper does not delete build.md's goal/lock" {
+    # The wrapper must not disarm a nested build by deleting .g2g-goal it
+    # does not own; build.md owns the .g2g-goal/.g2g-goal.lock lifecycle.
+    grep -q 'Do NOT delete `.g2g-goal`' "$PLUGIN_DIR/commands/improve-cycle.md"
+}
+
 @test "models: routing pins agree with the config contract" {
     grep -q 'models.builder' "$PLUGIN_DIR/commands/build.md"
     grep -q 'models.verifier' "$PLUGIN_DIR/commands/build.md"
