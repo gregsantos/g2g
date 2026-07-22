@@ -26,12 +26,16 @@ commits):
 /g2g:review --focus bug,security      # subset of categories
 /g2g:review --target src/lib          # override targets
 /g2g:review --diff-base main          # only files changed since main
+/g2g:review --full                     # force a full sweep (skip incremental)
 ```
 
 Scope resolution: `--focus` → else `.claude/g2g.json` `reviewFocus` →
 else all five categories (security, bug, code-quality, test-coverage,
 architecture). Targets: `--target` → else `sourceDirs` → else inferred
-from the repo layout (the report states the inference).
+from the repo layout (the report states the inference). Diff scope:
+`--full` (force full sweep) → else `--diff-base <ref>` → else the
+incremental default (`scope.lastReviewedSha` from a prior run, when
+present and resolvable) → else full sweep.
 
 What happens: one read-only subagent per category runs in parallel; the
 orchestrator merges results into `review-output/findings.json`
@@ -218,6 +222,16 @@ PR. That data is why the default is now **25**. Sizing guidance:
   *nothing*, unlike the inner caps which route to a partial draft PR.
 - `improveFindings` (default 3): fewer findings per tick = cheaper,
   more predictable cycles; the flywheel's cadence does the rest.
+- **Incremental review (biggest lever):** the five parallel category
+  subagents are what make review the dominant tick cost. After its
+  first run, `/g2g:review` records `scope.lastReviewedSha` in
+  `findings.json` and defaults later runs to `--diff-base
+  <lastReviewedSha>` — the subagents analyze only files changed since
+  the last review (open findings are still fully revalidated), so
+  steady-state ticks cost a fraction of a full sweep. Force a full
+  five-category sweep over all `sourceDirs` with `--full` (or a
+  periodic full-sweep tick) to catch drift outside the diff — the
+  tradeoff is completeness vs. cost.
 
 ## 8. Troubleshooting
 

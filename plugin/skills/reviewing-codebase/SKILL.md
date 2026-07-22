@@ -39,7 +39,8 @@ Each finding is an object in the `findings` array:
   "scope": {
     "target": "src/*",
     "diffBase": "",
-    "focus": ["code-quality", "test-coverage", "architecture", "security"]
+    "focus": ["code-quality", "test-coverage", "architecture", "security"],
+    "lastReviewedSha": "a1b2c3d"
   },
   "summary": {
     "total": 0,
@@ -52,6 +53,14 @@ Each finding is an object in the `findings` array:
   "findings": []
 }
 ```
+
+The `scope.lastReviewedSha` field is **additive and optional**: it
+records the HEAD sha at the end of a review so the next run can default
+to an incremental (`--diff-base <lastReviewedSha>`) scope instead of a
+full sweep. Older `findings.json` files omit it (treated as absent =
+full sweep next run); consumers must not depend on its presence. It
+affects only diff scoping — never the `summary.total == findings
+length` invariant.
 
 ## Severity Rubric
 
