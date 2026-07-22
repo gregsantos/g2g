@@ -52,11 +52,11 @@
         "make check passes (existing verification commands still pass)."
       ],
       "dependsOn": [],
-      "status": "in_progress",
-      "passes": false,
+      "status": "complete",
+      "passes": true,
       "attempts": 0,
       "effort": "small",
-      "notes": ""
+      "notes": "Added gitignored .g2g-goal.lock sidecar (ISO timestamp); Phase 2 arms, Phase 3 heartbeats, Phase 1 checks freshness (60min threshold) -> abort if live else delete both as debris; all terminal paths delete both; .g2g-goal format unchanged so hooks.json untouched"
     },
     {
       "id": "T-003",
