@@ -1,0 +1,8 @@
+{
+  "name": "g2g",
+  "description": "Marketplace for the g2g plugin — goal-driven autonomous builds for Claude Code",
+  "owner": { "name": "Greg Santos" },
+  "plugins": [
+    { "name": "g2g", "source": "./plugin", "description": "Goal-driven autonomous builds: spec → build → verify → PR" }
+  ]
+}

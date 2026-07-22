@@ -1,0 +1,246 @@
+# G2G Plugin Operator Reference — Review & Improve Flywheel
+
+Task-oriented runbook for the native plugin's review/improve features.
+The [plugin README](../plugin/README.md) is the overview (install,
+commands table, config, guardrails); this document is the *how do I run, watch, recover, and tune it* companion.
+
+The flywheel in one line:
+
+```
+/g2g:review → findings backlog → /g2g:improve tick → fix PR →
+   human reviews & merges → backlog reconciled → next tick picks the next findings
+```
+
+Nothing in this loop ever merges anything. Humans merge; the flywheel
+finds, fixes, and files PRs.
+
+---
+
+## 1. Run a review
+
+Interactive, in your checkout (writes only the two artifacts, never
+commits):
+
+```
+/g2g:review                            # config-driven scope
+/g2g:review --focus bug,security      # subset of categories
+/g2g:review --target src/lib          # override targets
+/g2g:review --diff-base main          # only files changed since main
+```
+
+Scope resolution: `--focus` → else `.claude/g2g.json` `reviewFocus` →
+else all five categories (security, bug, code-quality, test-coverage,
+architecture). Targets: `--target` → else `sourceDirs` → else inferred
+from the repo layout (the report states the inference).
+
+What happens: one read-only subagent per category runs in parallel; the
+orchestrator merges results into `review-output/findings.json`
+(deduplicating by root cause, continuing ids from the highest existing)
+and regenerates `review-output/REVIEW_REPORT.md`. A subagent that
+returns malformed output is re-dispatched once, then dropped with a
+note in the report.
+
+**After a review:** skim the report, then commit the backlog yourself
+(`git add review-output && git commit`) — or leave it uncommitted and
+let the next improve cycle's own review regenerate and commit it inside
+the fix PR. An *uncommitted* backlog does not survive into improve
+worktrees; a *gitignored* one is worse (see §8).
+
+## 2. The findings backlog
+
+`review-output/findings.json` is the source of truth (schema:
+`plugin/skills/reviewing-codebase/SKILL.md`). The lifecycle field is
+`addressed`:
+
+| Value | Meaning | Written by |
+|---|---|---|
+| `null` / absent | open — selectable by improve cycles | review |
+| `<PR number>` | a fix PR delivered it | improve cycle, Phase I-5 |
+| `"stale-<date>"` | revalidation found the symptom already gone | improve cycle, selection |
+
+Rules worth knowing:
+
+- Reviews **preserve** existing `addressed` values — never clear one by
+  re-running a review. Don't hand-clear them either; open a new finding
+  if a fix regressed.
+- Selection (inside a tick) takes the top `improveFindings` (default 3)
+  open, non-`info` findings ordered critical → high → medium → low,
+  ties by lower id.
+- Findings whose `file` appears in any open `g2g/*` PR's diff are
+  skipped (someone is already touching it). Requires `gh`; without it
+  the filter is skipped with a warning.
+- Each candidate is revalidated against the working tree before
+  selection; vanished symptoms get `stale-<date>` so they're never
+  re-chewed.
+- Only findings cited by tasks that were **completed** get a PR number
+  on a partial PR — the rest stay open for the next cycle.
+
+## 3. Run an improve tick
+
+Interactive (the launcher does everything; the work itself always runs
+headless in a fresh worktree, never in your checkout):
+
+```
+/g2g:improve            # fire-and-forget: prints pid/log/kill info and returns
+/g2g:improve --wait     # blocks until the tick finishes, reports the outcome
+```
+
+Headless (routines, scripts):
+
+```bash
+claude -p "/g2g:improve --wait" \
+  --plugin-dir /path/to/g2g/plugin \
+  --permission-mode acceptEdits \
+  --allowedTools "Bash,Read,Glob,Grep" \
+  --setting-sources project \
+  --max-turns 25 --max-budget-usd 15
+```
+
+(The launcher itself needs only read tools; the inner cycle it spawns
+carries its own full toolset and its own caps from
+`defaultBudgets.improveTurns`/`improveUsd`.)
+
+What the launcher does, in order:
+
+1. **Busy checks** — skips rather than stacks: a RUNNING tick, a
+   CRASHED tick, or an open `g2g/improve-*` PR each stop the launch
+   (see §4). A FINISHED clean worktree is auto-pruned and the launch
+   proceeds.
+2. Creates `/tmp/g2g-improve-<ts>` on branch `g2g/improve-<ts>`,
+   copies the Stop-hook settings in if the repo doesn't track them.
+3. Spawns `claude -p "/g2g:improve-cycle"` inside it, capped, with
+   **sidecars next to (never inside) the worktree**:
+   `<worktree>.pid` and `<worktree>.log`.
+4. Without `--wait`: prints path, branch, pid, log path, caps, and how
+   to watch/kill. With `--wait`: polls the pid, then reports the
+   outcome and prunes the finished worktree.
+
+Watch a running tick:
+
+```bash
+tail -f /tmp/g2g-improve-<ts>.log     # raw stream
+/g2g:status                            # tick state + open g2g PRs
+```
+
+Kill a running tick:
+
+```bash
+kill $(cat /tmp/g2g-improve-<ts>.pid)
+```
+
+A killed tick becomes a CRASHED tick on the next launcher run — its
+work is preserved for inspection, never auto-deleted. The spawned tick
+is a plain `&` child and **survives the session that launched it**
+(spike-verified) — the pid sidecar is the kill switch, not session
+exit.
+
+## 4. Tick states & recovery
+
+`/g2g:status` step 5 reports every `g2g-improve-` worktree as one
+of:
+
+- **RUNNING** — pid sidecar present, process alive. Watch or kill.
+- **CRASHED** — pid sidecar present, process dead (killed, machine
+  slept, hard failure). The launcher will refuse to start new ticks
+  until you deal with it. Runbook:
+  1. Read the log: `less /tmp/g2g-improve-<ts>.log`
+  2. Inspect the work: `git -C /tmp/g2g-improve-<ts> log --oneline`
+     and `status`.
+  3. Salvage if worthwhile (push the branch and open a PR manually, or
+     cherry-pick commits), then remove:
+     `git worktree remove --force /tmp/g2g-improve-<ts>` and delete
+     the `.pid`/`.log` sidecars.
+- **FINISHED** — no pid sidecar (the cycle removes it as its last act).
+  If the tree is clean, the next launcher run (or `--wait` teardown)
+  removes the worktree automatically.
+
+## 5. Tick outcomes
+
+Every cycle ends in exactly one of:
+
+- **Full PR** — all selected findings fixed, verifier PASS, one push,
+  PR opened, backlog reconciliation commit pushed into the same PR (the
+  single sanctioned post-PR push). Review and merge it like any PR.
+- **Partial draft PR** (`"… (partial)"`) — an inner cap or the budget
+  ran out mid-build; completed tasks are in the PR, their findings
+  marked `addressed`; unfinished tasks stay `pending`/`blocked` in the
+  committed spec and their findings stay open. To resume: either let a
+  future tick re-select the open findings (simplest), or check out the
+  PR branch and run `/g2g:build specs/improve-<date>.json` to
+  continue the committed spec by hand.
+- **Empty cycle** — no actionable findings (all addressed, stale, info,
+  or PR-overlapped). Success, not an error.
+- **Abort** — guard failure or spec-generation failure, reported
+  honestly with cleanup done.
+
+If the *outer* `--max-turns`/`--max-budget-usd` kills the process
+mid-build instead, there is **no PR at all** (the backstop is a
+guillotine — see §7's sizing rules) and you'll find a CRASHED or
+dirty-FINISHED worktree via §4.
+
+## 6. Triggers
+
+**Locally, recurring:** `/loop /g2g:improve` from an interactive
+session. Pick a loop cadence longer than a full cycle (~15+ min on a
+real repo); if ticks overlap anyway, the busy checks make the extra
+invocation skip — nothing stacks. Each tick is fire-and-forget; the
+loop session is just the scheduler.
+
+**Cloud/scheduled:** register the Instructions block of
+`plugin/routines/improve-nightly.md` with your scheduler (e.g.
+`/schedule "nightly at 02:00" <instructions>`). It preflights the
+Stop-hook settings, prefers `/g2g:improve --wait`, falls back to the
+documented direct spawn if the plugin isn't installed in the fresh
+clone, and STOPs honestly if neither is possible.
+
+**One-off:** just run `/g2g:improve --wait` whenever you want a
+single bounded improvement pass.
+
+## 7. Budget & cap sizing (from live data)
+
+Measured on this repo's first real tick, under an earlier `improveUsd:
+10` default: the five parallel review subagents alone cost **~$7.8**,
+leaving ~$2.2 for spec + build — the cycle landed a graceful partial
+PR. That data is why the default is now **25**. Sizing guidance:
+
+- `improveUsd` (default 25): adequate for real repos with the default
+  five categories; lower it only if you also narrow
+  `reviewFocus`/`sourceDirs` so review costs less.
+- `improveTurns` (default 50): a toy 2-task cycle used 47 turns; the
+  real tick used 22 (budget-bound). Keep this comfortably above
+  review + selection + spec turns plus `buildTurnsFactor` × expected
+  tasks — it is a backstop, and when it fires mid-build you get
+  *nothing*, unlike the inner caps which route to a partial draft PR.
+- `improveFindings` (default 3): fewer findings per tick = cheaper,
+  more predictable cycles; the flywheel's cadence does the rest.
+
+## 8. Troubleshooting
+
+| Symptom | Cause | Fix |
+|---|---|---|
+| Stop hook blocks an interactive session with "insufficient evidence" | Tracked settings copy evaluates the hook on every Stop; no `.g2g-goal` evidence in recent transcript | Run `ls .g2g-goal` (shows absence), stop again |
+| Tick worktree commits abort / backlog "vanishes" in worktrees | `specs/*` or `review-output/` gitignored | Remove those ignore rules, commit the files once (README "Artifact tracking") |
+| Headless run dies instantly, `Bash` rejected | Missing `--allowedTools` alongside `--permission-mode acceptEdits` | Use the proven invocation shape (README "Running headless") |
+| Hook never fires headlessly | `--setting-sources project` makes plugin hooks inert | `cp plugin/hooks/hooks.json .claude/settings.json` in the host repo (track it) |
+| Same findings selected every cycle, no PRs | No `gh`/GitHub remote: PR creation fails, reconciliation skips, findings stay open | Give the environment `gh` auth + a GitHub remote, or triage the backlog by hand |
+| Launcher refuses to run | RUNNING/CRASHED tick or an open `g2g/improve-*` PR | That's the design (skip, don't stack): finish/kill/inspect per §4, merge or close the PR |
+| Tick ended, no PR, worktree dirty | Outer cap guillotined it mid-build | Salvage per §4; raise the outer caps per §7 |
+
+## 9. Safety model (what protects you)
+
+- **PR-gated:** only `g2g/*` branches are ever pushed; one push at PR
+  time plus the single documented reconciliation follow-up; nothing
+  merges itself; writing commands refuse the default branch.
+- **Caps on every spawn:** `--max-turns` and `--max-budget-usd`, always;
+  inner build caps route gracefully to partial PRs.
+- **No orphans:** no `nohup`/`disown`/`setsid` anywhere; every tick has
+  a pid sidecar, is visible in `/g2g:status`, and dies to `kill`.
+- **Isolation:** the cycle refuses to run outside a `g2g/improve-*`
+  worktree; your checkout is never the workspace.
+- **Trust boundary (open):** review-finding text flows into spec
+  criteria executed by Bash-capable builders (backlog finding F-020) —
+  until hardened, run the flywheel only on repos whose contents you
+  trust. The flywheel is strictly opt-in: both improve commands refuse
+  to run unless `.claude/g2g.json` sets `"improve": { "enabled": true }`,
+  and enabling it is always a human edit.
+

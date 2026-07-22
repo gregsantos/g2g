@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "prompt",
+            "prompt": "Read the file .g2g-goal if it exists. If it exists and contains a condition, check if the transcript demonstrates that condition is met. Respond with {\"ok\": true} if the condition is met or the file doesn't exist. If the condition is not met, respond with {\"ok\": false, \"reason\": \"Condition not met: [specific detail of what remains]\"}.",
+            "model": "claude-haiku-4-5-20251001"
+          }
+        ]
+      }
+    ]
+  }
+}

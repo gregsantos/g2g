@@ -1,0 +1,110 @@
+{
+  "project": "User Preferences API",
+  "branchName": "feature/user-preferences",
+  "version": "1.0.0",
+  "description": "Add user preferences API with persistence and validation",
+  "context": {
+    "currentState": "Users have no way to save preferences",
+    "targetState": "Users can save, retrieve, and update preferences via REST API",
+    "constraints": [
+      "Use existing database schema patterns",
+      "Preferences must validate against JSON schema",
+      "API must be backward compatible"
+    ],
+    "verificationCommands": [
+      "pnpm test",
+      "pnpm typecheck"
+    ]
+  },
+  "tasks": [
+    {
+      "id": "T-001",
+      "title": "Add preferences database schema",
+      "description": "Create database migration for user_preferences table with JSON column for flexible storage",
+      "acceptanceCriteria": [
+        "Migration file created in db/migrations/",
+        "Table has user_id, preferences (JSON), created_at, updated_at columns",
+        "Foreign key constraint to users table",
+        "Index on user_id for fast lookups"
+      ],
+      "dependsOn": [],
+      "status": "pending",
+      "passes": false,
+      "effort": "small",
+      "notes": "",
+      "attempts": 0
+    },
+    {
+      "id": "T-002",
+      "title": "Implement preferences validation",
+      "description": "Create JSON schema validator for preferences structure with type safety",
+      "acceptanceCriteria": [
+        "Zod schema for preferences structure",
+        "Validates theme (light/dark/system)",
+        "Validates notification settings (boolean flags)",
+        "Validates locale (ISO language codes)",
+        "pnpm typecheck passes"
+      ],
+      "dependsOn": [],
+      "status": "pending",
+      "passes": false,
+      "effort": "small",
+      "notes": ""
+    },
+    {
+      "id": "T-003",
+      "title": "Create preferences service layer",
+      "description": "Implement service functions for CRUD operations on user preferences",
+      "acceptanceCriteria": [
+        "getPreferences(userId) returns preferences or defaults",
+        "updatePreferences(userId, prefs) validates and saves",
+        "Merges partial updates with existing preferences",
+        "Unit tests for service functions",
+        "pnpm test passes"
+      ],
+      "dependsOn": ["T-001", "T-002"],
+      "status": "pending",
+      "passes": false,
+      "effort": "medium",
+      "notes": ""
+    },
+    {
+      "id": "T-004",
+      "title": "Add API routes",
+      "description": "Create REST endpoints for preferences with authentication middleware",
+      "acceptanceCriteria": [
+        "GET /api/preferences returns current user preferences",
+        "PATCH /api/preferences updates preferences (partial update)",
+        "401 if not authenticated",
+        "400 if validation fails with error details",
+        "Integration tests for API routes",
+        "pnpm test passes"
+      ],
+      "dependsOn": ["T-003"],
+      "status": "pending",
+      "passes": false,
+      "effort": "medium",
+      "notes": ""
+    },
+    {
+      "id": "T-005",
+      "title": "Update API documentation",
+      "description": "Document new endpoints in API reference",
+      "acceptanceCriteria": [
+        "OpenAPI spec updated with preferences endpoints",
+        "Request/response examples included",
+        "Error codes documented"
+      ],
+      "dependsOn": ["T-004"],
+      "status": "pending",
+      "passes": false,
+      "effort": "small",
+      "notes": ""
+    }
+  ],
+  "verifier": null,
+  "glossary": {
+    "preferences": "User-specific settings stored as JSON (theme, notifications, locale)",
+    "partial update": "PATCH semantics - only provided fields are updated, others preserved"
+  }
+}
