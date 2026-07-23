@@ -109,10 +109,3 @@ Specs use a `tasks[]` array (`id`, `title`, `description`,
 `/g2g:build`) and a top-level `verifier` field the build writes on
 PASS. Canonical example: [specs/example.json](specs/example.json);
 full schema: the `writing-g2g-specs` skill in `plugin/skills/`.
-
-# Git
-
-- Write clear, imperative commit messages: "Add user authentication"
-  not "Added auth".
-- Keep commits atomic: one logical change per commit.
-- Never commit secrets, API keys, or credentials.

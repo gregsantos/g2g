@@ -9,6 +9,61 @@ completion marker.
 - **Plugin guide** (commands, config, guardrails): [plugin/README.md](plugin/README.md)
 - **Operator runbook** (run, watch, recover, tune): [docs/G2G_PLUGIN_REF.md](docs/G2G_PLUGIN_REF.md)
 
+## Why g2g
+
+Claude Code already ships primitives for autonomous work. `/goal` keeps a
+session working until a condition is met; `/loop` re-runs a prompt on a
+schedule; subagents give you fresh contexts; routines run scheduled work in
+the cloud. For a task you're watching, or a simple recurring job, reach for
+those first — g2g would be overkill.
+
+g2g exists for the harder case: **start a multi-task build you won't babysit,
+and be able to trust the PR at the end.** That needs four things the native
+primitives don't provide together — untainted context per unit of work, a
+completion signal that can't be faked, an independent check that tries to
+break the result, and a hard ceiling that degrades to a reviewable partial
+instead of spinning forever.
+
+### How it compares
+
+| | Native `/goal` / `/loop` | g2g |
+|---|---|---|
+| **Context** | One session context that grows every turn — earlier tasks' dead-ends and noise pile up (context rot), and long builds can exhaust the window | One **fresh builder subagent per task**, seeded only by its task card; the orchestrator and verifier never inherit build chatter |
+| **Completion signal** | `/goal`'s condition is judged by a small model reading the **conversation** — it sees what the model *said*, not what the code *does* | A **real run of your `verificationCommands`** (exit codes + a frozen summary line) must appear as tool output in the transcript; the Stop gate keys on that artifact, not on narration |
+| **Verification** | None built in — the same context that did the work decides it's done | A separate **adversarial verifier** that defaults to FAIL, reads the whole branch diff, re-runs your commands, and cannot edit the code it judges |
+| **Over budget / failure** | `/goal` has no turn or cost cap — an unreachable condition loops until you notice and `/goal clear` | **Turn / hours / dollar caps**; hitting one converts the run into a **draft partial PR** (`g2g:partial`) with an honest outstanding-work list |
+| **Safety** | Auto-mode flags risky actions, but nothing mandates a PR workflow | **Branch-first, PR-gated, never self-merges**; one push at PR time; no detached background processes |
+| **Concurrency** | Single session, no coordination | A **checkout lock** (mutex + ownership token + stale reclaim) stops two builds corrupting one working copy |
+
+### The dimensions that matter
+
+- **Context rot.** A `/goal` run reasons about task 8 through the residue of
+  tasks 1–7. A g2g builder reasons about task 8 from a clean window holding
+  only its task card and the repository on disk, and makes exactly one commit.
+  The verifier judges the *diff*, not the build's chat history. (Builders run
+  one at a time in dependency order — the isolation is per-context, not
+  parallelism.)
+- **Token cost.** Native single-context work re-processes an ever-growing
+  history every turn, so per-turn cost climbs and can hit the context ceiling.
+  g2g's per-task contexts don't accumulate, cheaper models can be routed to
+  cheaper roles, and the caps put a hard ceiling on spend. It isn't free —
+  orchestration, a verifier pass, and subagent spawns cost tokens — so the
+  trade is a small fixed overhead for **bounded, non-accumulating** cost. The
+  win grows with build length.
+- **Graceful degradation.** The failure mode of an unattended `/goal` is a
+  silent loop. The failure mode of a g2g build is a draft PR you can open and
+  read, listing exactly what got done and what is still blocked.
+- **Completion you can trust.** g2g's evidence is a deterministic *artifact* —
+  your commands, actually executed, with real exit codes. The Stop gate that
+  reads it is still a small-model judge, but it is judging real tool output in
+  the transcript (not the model's self-narration), and the verifier
+  independently re-runs the commands — so "done" cannot be conjured by the
+  model saying so.
+
+**When not to use it:** interactive one-offs, or simple scheduled chores —
+`/goal`, `/loop`, or a routine are simpler and lighter. g2g earns its structure
+when the run is unattended, multi-step, and the cost of a false "done" is high.
+
 ## Install
 
 Inside Claude Code:
@@ -42,7 +97,7 @@ claude -p "/g2g:go 'fix the failing lint rules'" --plugin-dir /path/to/g2g/plugi
 | `/g2g:spec "<prompt>" \| -f <file> \| --from-findings` | Generate a validated spec JSON in `specs/` for review |
 | `/g2g:build <spec.json> [--continue-branch]` | Goal-driven build: fresh builder per task, verifier-gated PR |
 | `/g2g:dev "<prompt>" [--review]` | Pipeline: generate spec → build it |
-| `/g2g:review [--diff-base <ref>] [--focus <cats>] [--target <path>]` | Read-only review into the tracked findings backlog |
+| `/g2g:review [--diff-base <ref>] [--full] [--focus <cats>] [--target <path>]` | Read-only review into the tracked findings backlog |
 | `/g2g:improve [--wait]` | One bounded improve tick: review → fix-spec → build → PR (strictly opt-in) |
 | `/g2g:status` | Read-only dashboard: goal, spec progress, open `g2g/*` PRs, worktrees |
 
@@ -90,7 +145,8 @@ Notes:
   whole-process failures.
 - Under `--setting-sources project` plugin hooks are inert, so the host
   repo needs the Stop hook in its own `.claude/settings.json` —
-  `/g2g:init` installs it; commit the result.
+  `/g2g:init` installs it; commit the result. Without it, an unattended
+  run has no completion gate.
 - `specs/` and `review-output/` must be git-tracked: worktrees and
   fresh clones only materialize tracked files.
 - For scheduled improvement ticks, see
@@ -110,8 +166,10 @@ g2g/
 │   ├── skills/                       # writing-g2g-specs, reviewing-codebase
 │   ├── hooks/hooks.json              # Stop hook (goal enforcement)
 │   ├── scripts/g2g-evidence.sh       # Deterministic evidence generator
+│   ├── scripts/g2g-lock.sh           # Checkout-lock protocol (sole implementation)
 │   ├── templates/                    # /g2g:init config starters
-│   └── routines/                     # Scheduled-run templates
+│   ├── routines/                     # Scheduled-run templates
+│   └── evals/                        # plugin-eval cases (harness in early access)
 ├── specs/                            # Spec JSONs (tracked)
 ├── review-output/                    # Findings backlog + report (tracked)
 ├── docs/G2G_PLUGIN_REF.md            # Operator runbook
@@ -121,7 +179,7 @@ g2g/
 ## Development
 
 ```bash
-make check   # shellcheck + bats (brew install bats-core shellcheck)
+make check   # shellcheck + manifest validation + bats (brew install bats-core shellcheck)
 ```
 
 ## License

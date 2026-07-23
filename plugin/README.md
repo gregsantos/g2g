@@ -34,7 +34,7 @@ New to the plugin in a fresh repo? Three steps:
 | `/g2g:status` | Read-only dashboard: active goal, spec progress, open `g2g/*` PRs, worktrees |
 | `/g2g:spec "<prompt>" \| -f <file> \| --from-findings [path]` | Generate a validated spec JSON in `specs/` (no commit — review, then build) |
 | `/g2g:dev "<prompt>" [--review]` | Full pipeline: generate spec → build it; `--review` pauses for spec approval |
-| `/g2g:review [--diff-base <ref>] [--focus <cats>] [--target <path>]` | Read-only codebase review — parallel category subagents merged into the tracked findings backlog |
+| `/g2g:review [--diff-base <ref>] [--full] [--focus <cats>] [--target <path>]` | Read-only codebase review — parallel category subagents merged into the tracked findings backlog |
 | `/g2g:improve [--wait]` | One bounded improve tick: headless review → fix-spec → build → PR in a fresh worktree; `--wait` blocks until done |
 | `/g2g:improve-cycle` | Internal — the unit of work `/g2g:improve` spawns; refuses to run outside a `g2g/improve-*` worktree |
 
@@ -135,14 +135,14 @@ budget-exhausted cycle lands a graceful partial draft PR.
 
 ## Config
 
-Optional `.claude/g2g.json` in the host repo (see [`.claude/g2g.json`](../.claude/g2g.json) here for an example). Field status below — `verificationCommands`, `defaultBudgets`, `reviewFocus`, and `sourceDirs` are live; `models` and `artifactPaths` are deliberately reserved:
+Optional `.claude/g2g.json` in the host repo (see [`.claude/g2g.json`](../.claude/g2g.json) here for an example). Field status below — `verificationCommands`, `defaultBudgets`, `reviewFocus`, `sourceDirs`, and `models` are live; only `artifactPaths` is deliberately reserved:
 
 - `verificationCommands` — **live now**: `/g2g:go` reads this to verify a one-off task, if the file exists and defines it (falls back to the repo's documented test/lint commands otherwise). `/g2g:spec` (and therefore `/g2g:dev`, which chains it) also reads this field as the priority source for a generated spec's `context.verificationCommands`, before falling back to the repo's documented test commands. **Not** read by `/g2g:build` — that command sources its verification commands from the spec's `context.verificationCommands` instead (already populated by `/g2g:spec` from this field, if present), see Spec format below.
 - `defaultBudgets` — **live now**: `buildTurnsFactor`/`buildHours` set `/g2g:build`'s TURN_CAP factor and wall-clock cap (defaults 2 / 2h); `improveTurns`/`improveUsd` cap the improve spawn (defaults 50 / $25); `improveFindings` sets findings-per-cycle (default 3). `improveHours` is documented-only: no wall-clock CLI flag exists, the turn cap approximates it.
 - `improve.enabled` — **live now**: hard opt-in gate for the improve flywheel (see Trust caveat above). Defaults to `false` in every template; `/g2g:improve` and `/g2g:improve-cycle` refuse to run unless it is exactly `true`.
 - `reviewFocus` — **live now**: the categories `/g2g:review` fans out across when `--focus` isn't given.
 - `sourceDirs` — **live now**: the default review targets when `--target` isn't given.
-- `models` — **live now** for `builder` and `verifier`: `/g2g:build` dispatches builder subagents with `models.builder` (default `sonnet` — tasks are pre-decomposed with explicit criteria, a Sonnet-shaped job) and the verifier with `models.verifier` (default `inherit` — adversarial judgment stays on the session model). `"inherit"` means use the invoking session's model. `models.go` is not read: `/g2g:go` hardcodes `model: sonnet` in its frontmatter (go.md); `/g2g:status` likewise pins `haiku`.
+- `models` — **live now** for `builder` and `verifier`: `/g2g:build` dispatches builder subagents with `models.builder` (falls back to `sonnet` when the field is absent — tasks are pre-decomposed with explicit criteria, a Sonnet-shaped job — though every shipped template sets `builder: "inherit"`, so an `/g2g:init`-onboarded repo runs the builder on the session model unless you change it) and the verifier with `models.verifier` (default `inherit` — adversarial judgment stays on the session model). `"inherit"` means use the invoking session's model. `models.go` is not read: `/g2g:go` hardcodes `model: sonnet` in its frontmatter (go.md); `/g2g:status` likewise pins `haiku`.
 - `artifactPaths` — **reserved (deliberately — no consumer in v1)**: intended override for where specs and review output live, for non-standard layouts; no command reads this yet.
 
 ## Spec format
