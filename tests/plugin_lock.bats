@@ -216,6 +216,7 @@ backdate() {
     mkdir .g2g-goal.mutex
     echo "999-12345" > .g2g-goal.mutex/owner   # dead holder's stamp
     touch .g2g-goal.mutex/lock.tmp.999         # its in-flight write
+    touch .g2g-goal.mutex/lock.tmp             # pre-stamp-era temp naming
     backdate .g2g-goal.mutex
     run "$LOCK_SH" acquire tok-a
     [[ "$status" -eq 0 ]] || return 1

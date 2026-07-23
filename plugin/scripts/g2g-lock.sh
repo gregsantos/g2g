@@ -118,7 +118,7 @@ release_mutex() {
         # instance may have been recovered and re-created by another
         # process — removing THAT one would admit a third writer.
         if mutex_is_ours; then
-            rm -f "$MUTEX/owner" "$MUTEX"/lock.tmp.* 2>/dev/null || true
+            rm -f "$MUTEX/owner" "$MUTEX/lock.tmp" "$MUTEX"/lock.tmp.* 2>/dev/null || true
             rmdir "$MUTEX" 2>/dev/null || true
         fi
     fi
@@ -131,7 +131,8 @@ claim_mutex() {
     # not own and leaves it — the next caller's stale recovery clears
     # it. Fail closed, never half-owned.
     MUTEX_HELD=1
-    printf '%s\n' "$MUTEX_STAMP" > "$MUTEX/owner"
+    printf '%s\n' "$MUTEX_STAMP" > "$MUTEX/owner" \
+        || finish 8 "operational-error detail=stamp-write-failed"
 }
 
 acquire_mutex() {
@@ -166,7 +167,7 @@ acquire_mutex() {
             # fails and we fall through to the deadline —
             # unclassifiable state fails closed, and a foreign mutex
             # never makes us proceed unlocked.
-            rm -f "$MUTEX/owner" "$MUTEX"/lock.tmp.* 2>/dev/null || true
+            rm -f "$MUTEX/owner" "$MUTEX/lock.tmp" "$MUTEX"/lock.tmp.* 2>/dev/null || true
             rmdir "$MUTEX" 2>/dev/null || true
             if [[ ! -e "$MUTEX" ]]; then
                 continue
@@ -195,7 +196,8 @@ write_lock() {
     # paused long enough to be recovered, mutating now would race the
     # new holder.
     local tmp="$MUTEX/lock.tmp.$$"
-    printf '%s\n%s\n' "$(iso_now)" "$TOKEN" > "$tmp"
+    printf '%s\n%s\n' "$(iso_now)" "$TOKEN" > "$tmp" \
+        || finish 8 "operational-error detail=temp-write-failed"
     if ! mutex_is_ours; then
         rm -f "$tmp" 2>/dev/null || true
         finish 8 "operational-error detail=mutex-ownership-lost-mid-write"
