@@ -22,17 +22,20 @@ git init -q --bare "$WORK/origin.git"
 git -C "$SB" remote add origin "$WORK/origin.git"
 git -C "$SB" push -q -u origin main
 
-echo "smoke: building specs/sandbox.json headlessly (caps: 25 turns / \$8, several minutes)..."
+echo "smoke: building specs/sandbox.json headlessly (caps: 40 turns / \$10, several minutes)..."
 # PR creation is expected to fail here (origin is a local bare repo, not
 # GitHub), so the claude exit code is not the signal — the artifacts are.
+# 40 turns matches the README's headless recommendation: the lock
+# protocol's per-turn choreography made 25 hit the outer guillotine
+# after the build succeeded but before terminal cleanup.
 (
     cd "$SB" && claude -p "/g2g:build specs/sandbox.json" \
         --plugin-dir "$PLUGIN_DIR" \
         --permission-mode acceptEdits \
         --allowedTools "Agent,Bash,Read,Write,Edit,Glob,Grep" \
         --setting-sources project \
-        --max-turns 25 \
-        --max-budget-usd 8 \
+        --max-turns 40 \
+        --max-budget-usd 10 \
         > "$WORK/run.log" 2>&1
 ) || true
 
