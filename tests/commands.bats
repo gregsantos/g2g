@@ -113,6 +113,21 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     grep -q 'OWNERSHIP LOST' "$PLUGIN_DIR/commands/build.md"
 }
 
+@test "safety: lock read-modify-writes are serialized by a mutation mutex" {
+    # A bare read-then-write is a TOCTOU race: verify token, reclaimer
+    # swaps the lock, write steals it back. Refresh, reclaim, and
+    # ownership-checked deletion must all hold the mkdir mutex.
+    grep -q 'LOCK MUTATION MUTEX' "$PLUGIN_DIR/commands/build.md"
+    grep -q '.g2g-goal.mutex' "$PLUGIN_DIR/commands/build.md"
+}
+
+@test "safety: ownership loss is a terminal clause of the armed goal" {
+    # The ownership-lost path deletes nothing, so without its own clause
+    # in the goal condition the Stop hook would block the session until
+    # the turn/time caps — which may be unreachable.
+    grep -c 'G2G OWNERSHIP LOST' "$PLUGIN_DIR/commands/build.md" | grep -qE '^[2-9]'
+}
+
 @test "safety: run-root delete guard tolerates documented sidecars" {
     # A normal run root contains tick.log (and while running tick.pid /
     # selected.json), and has no worktree child after git worktree remove.
