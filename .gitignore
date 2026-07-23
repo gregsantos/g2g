@@ -5,10 +5,11 @@
 # G2G transient lock-mutation mutex (held for milliseconds; debris only after a crash)
 .g2g-goal.mutex/
 
-# Claude settings (but not the plugin config and safety hook)
+# Claude settings (but not the plugin config, safety hook, and project commands)
 .claude/*
 !.claude/g2g.json
 !.claude/settings.json
+!.claude/commands/
 
 # Dependencies
 node_modules/
