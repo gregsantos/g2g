@@ -29,7 +29,14 @@ deletes it.
    yours before you refresh or delete it. It carries ONLY this — the goal
    condition text lives in `.g2g-goal` (written in Phase 2) and never
    changes after arming, so the Stop hook's scoping and condition checks
-   are never touched by this guard. Let STALE_THRESHOLD_MINUTES = 60.
+   are never touched by this guard. Let STALE_THRESHOLD_MINUTES = 60 — the
+   lock is a per-turn heartbeat (Phase 3 step 1 refreshes it every turn),
+   so this need only exceed the longest plausible SINGLE turn (one builder
+   dispatch + spec commit + evidence run), never the total build duration.
+   Do not raise it toward HOURS_CAP — that only delays crash recovery for
+   no gain — and do not make it a config key: it is a property of turn
+   mechanics, not of any project. Tune the constant here, with evidence,
+   only if it ever misfires.
    Attempt acquisition with an atomic, fail-if-exists create — POSIX
    `set -o noclobber` redirection (or an equally atomic `mkdir`-style
    primitive):
