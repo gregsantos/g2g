@@ -115,10 +115,15 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
 
 @test "safety: lock read-modify-writes are serialized by a mutation mutex" {
     # A bare read-then-write is a TOCTOU race: verify token, reclaimer
-    # swaps the lock, write steals it back. Refresh, reclaim, and
-    # ownership-checked deletion must all hold the mkdir mutex.
+    # swaps the lock, write steals it back. Refresh, reclaim, deletion,
+    # AND initial creation must all hold the mkdir mutex — a mutex-free
+    # creator can slip into the reclaim's absent-file gap.
     grep -q 'LOCK MUTATION MUTEX' "$PLUGIN_DIR/commands/build.md"
     grep -q '.g2g-goal.mutex' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'UNDER THE MUTEX' "$PLUGIN_DIR/commands/build.md"
+    # Crash recovery must be reachable: age-driven (mtime), not a retry
+    # count whose total wait can never reach the debris threshold.
+    grep -q 'mtime' "$PLUGIN_DIR/commands/build.md"
 }
 
 @test "safety: ownership loss is a terminal clause of the armed goal" {

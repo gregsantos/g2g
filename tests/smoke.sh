@@ -50,6 +50,8 @@ jq -e '.verifier.verdict == "PASS"' "$SPEC" > /dev/null \
     || fail ".g2g-goal was not deleted at the terminal state"
 [[ ! -f "$SB/.g2g-goal.lock" ]] \
     || fail ".g2g-goal.lock was not deleted at the terminal state"
+[[ ! -d "$SB/.g2g-goal.mutex" ]] \
+    || fail ".g2g-goal.mutex was left held at the terminal state"
 git -C "$SB" rev-parse --verify "$BRANCH" > /dev/null 2>&1 \
     || fail "work branch $BRANCH was not created"
 git -C "$WORK/origin.git" rev-parse --verify "$BRANCH" > /dev/null 2>&1 \

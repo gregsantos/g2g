@@ -55,14 +55,29 @@ foreign-owned pair.
    read + verify + write/delete, then `rmdir .g2g-goal.mutex`
    IMMEDIATELY — the critical section is one read and one write, never
    a dispatch or a command run. If `mkdir` fails, another mutation is
-   in flight: wait 2 seconds and retry, up to 5 times. A mutex directory
-   that persists across retries totaling >60 seconds is crash debris
-   (its holder died mid-mutation): `rmdir` it and retry once more. The
-   mutex is transient and untracked — like the goal/lock pair it is
-   exempt from the clean-tree checks and appears in `.gitignore`.
-   Attempt acquisition with an atomic, fail-if-exists create — POSIX
-   `set -o noclobber` redirection (this initial create needs no mutex;
-   it is already atomic):
+   in flight; recovery must actually be reachable, so it is
+   age-driven, not attempt-counted: on every retry FIRST check the
+   mutex directory's age (mtime) — older than 60 seconds means its
+   holder died mid-mutation (a healthy critical section lasts
+   milliseconds): `rmdir` it and retry the `mkdir` immediately.
+   Otherwise wait 2 seconds and try again, re-checking the age each
+   time; because the age keeps growing, a dead holder's mutex always
+   crosses the 60-second debris line within this loop. If after a
+   90-second overall deadline the mutex is still present and still
+   younger than 60 seconds (impossible under this protocol unless
+   something outside it holds the name), ABORT and report the stuck
+   mutex — never proceed unlocked. The mutex is transient and
+   untracked — like the goal/lock pair it is exempt from the
+   clean-tree checks and appears in `.gitignore`.
+   Attempt acquisition UNDER THE MUTEX — initial creation participates
+   in the same mutex as every other mutation. This is not redundant
+   with `noclobber`'s own atomicity: the reclaim's critical section
+   deletes the stale lock and then writes its replacement, and a
+   mutex-free creator could slip its `noclobber` create into that
+   absent-file gap only to be silently overwritten a moment later —
+   two builds would then both believe they own the checkout. So:
+   acquire the mutex, attempt the atomic fail-if-exists create, and
+   release the mutex whatever the outcome:
    `( set -o noclobber; printf '%s\n%s\n' "<now ISO 8601>" "<owner-token>" > .g2g-goal.lock ) 2>/dev/null`
    - Create SUCCEEDS: you hold the lock. Remember the owner token for
      Phase 3's heartbeat and for terminal deletion. Proceed to step 2.
