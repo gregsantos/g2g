@@ -84,8 +84,9 @@ already fixed.
 
 `/g2g:improve` runs one bounded cycle — review → select top-N open
 findings (default 3, `defaultBudgets.improveFindings`) → fix-spec →
-mini-build → PR — always headless in a fresh `/tmp/g2g-improve-<ts>`
-worktree on a `g2g/improve-<ts>` branch, never in your checkout. Caps
+mini-build → PR — always headless in a fresh, unpredictable, owner-only
+`mktemp -d` run root (`/tmp/g2g-improve-<random>/worktree`, mode 0700)
+on a `g2g/improve-<random>` branch, never in your checkout. Caps
 come from `defaultBudgets.improveTurns`/`improveUsd` (50 / $25
 defaults). A tick skips itself if a previous tick is running or its PR
 is still open; a crashed tick is surfaced for human inspection, never
@@ -191,9 +192,20 @@ This repo tracks `specs/`, `review-output/`, and
   clauses; headless spawns add a dollar cap. There is no unlimited mode.
 - **POSIX shell required** — the evidence script needs `bash`; pure
   Windows without git-bash/WSL is unsupported in v1.
-- **`.g2g-goal`** is an ephemeral, gitignored runtime file that
-  `/g2g:build` writes and deletes itself — hosts should gitignore it
-  and never commit it.
+- **`.g2g-goal` and `.g2g-goal.lock`** are ephemeral, gitignored runtime
+  files that `/g2g:build` writes and deletes itself — hosts should
+  gitignore both and never commit them. The lock (plus its transient
+  `.g2g-goal.mutex/` directory, gitignored the same way) is managed
+  exclusively by `plugin/scripts/g2g-lock.sh`, the executable,
+  behaviorally-tested implementation of the one-build-per-checkout
+  protocol: atomic acquisition, heartbeat refresh, stale-debris
+  reclaim, and ownership-checked release, all serialized so two
+  concurrent builds can never both hold the checkout. Host migration
+  note: repos onboarded before 0.2.5 have no ignore rules for
+  `.g2g-goal.lock` / `.g2g-goal.mutex/`; add them alongside
+  `.g2g-goal`. Builds still run without the rules — preflight treats
+  these paths as expected untracked files, not dirt — but ignoring
+  them keeps them out of `git status` noise.
 
 ## Running headless / unattended
 

@@ -4,7 +4,7 @@ test:
 	bats tests/
 
 lint:
-	shellcheck -x -s bash plugin/scripts/g2g-evidence.sh tests/make_sandbox.sh tests/smoke.sh
+	shellcheck -x -s bash plugin/scripts/g2g-evidence.sh plugin/scripts/g2g-lock.sh tests/make_sandbox.sh tests/smoke.sh
 
 validate:
 	claude plugin validate plugin

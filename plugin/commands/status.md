@@ -19,8 +19,15 @@ Report G2G state, read-only (change nothing):
 4. Branches/worktrees: `git branch --list 'g2g/*'` and
    `git worktree list` entries containing "g2g".
 5. Improve ticks: for each `git worktree list` entry whose path
-   contains `g2g-improve-`: report path, branch, and state —
-   RUNNING (`<path>.pid` sidecar present, process alive), CRASHED
+   contains `g2g-improve-`, locate its pid sidecar by layout — the same
+   `<RUNDIR>` derivation as improve.md's Busy checks, since the two
+   layouts coexist across a 0.2.5 upgrade. Current (0.2.5+): the worktree
+   is `<RUNDIR>/worktree`, so `<RUNDIR>` is its PARENT directory (the
+   `mktemp -d` run root) and the sidecars are `<RUNDIR>/tick.pid` and
+   `<RUNDIR>/tick.log` — check `<RUNDIR>/tick.pid`, never `<path>.pid`.
+   Legacy (pre-0.2.5): the path's own basename is `g2g-improve-*`, so the
+   pid sits beside it at `<path>.pid`. Report path, branch, and state —
+   RUNNING (pid sidecar present, process alive via `kill -0`), CRASHED
    (pid sidecar present, process dead — needs human inspection), or
    FINISHED (no pid sidecar; removable if clean).
 Summarize in a short table. No recommendations unless something is stuck

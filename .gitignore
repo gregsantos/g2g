@@ -1,5 +1,9 @@
 # G2G ephemeral goal file (armed by /g2g:build, deleted at terminal states)
 .g2g-goal
+# G2G goal liveness sidecar (heartbeat timestamp; deleted alongside .g2g-goal)
+.g2g-goal.lock
+# G2G transient lock-mutation mutex (held for milliseconds; debris only after a crash)
+.g2g-goal.mutex/
 
 # Claude settings (but not the plugin config and safety hook)
 .claude/*

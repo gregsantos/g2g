@@ -14,6 +14,12 @@ clean. If either fails — you are in someone's real checkout, or on a
 default branch — ABORT immediately with a clear message and change
 NOTHING. Do not create a branch to fix this; the launcher owns setup.
 
+Compute `RUNDIR="$(dirname "$(pwd)")"` once, now — the launcher's
+`mktemp -d` run root (unpredictable, owner-only) one level above this
+worktree. Every sidecar this cycle writes (selected-findings scratch
+file, and the pid sidecar the launcher already wrote) lives directly
+under `$RUNDIR`, never inside the worktree.
+
 Then check `.claude/g2g.json` → `improve.enabled`. Unless it is exactly
 `true`, ABORT: the improve flywheel is strictly opt-in (review-finding
 text flows into spec criteria executed by Bash-capable builders,
@@ -55,13 +61,14 @@ Execute the full procedure in `${CLAUDE_PLUGIN_ROOT}/commands/review.md`
 
 ## Phase I-3 — Fix-spec
 1. Write the selected findings (full objects, unmodified) to the
-   sidecar scratch file `"$(pwd).selected.json"` (i.e.
-   `/tmp/g2g-improve-<ts>.selected.json`, OUTSIDE the worktree so
-   build.md's clean-tree preflight never sees it), shaped
+   sidecar scratch file `"$RUNDIR/selected.json"` (i.e.
+   `<mktemp-run-root>/selected.json`, OUTSIDE the worktree — and under
+   the launcher's owner-only run root, not the world-writable base of
+   `/tmp` — so build.md's clean-tree preflight never sees it), shaped
    `{"findings": [...]}` — deleted in Cleanup.
 2. Execute `${CLAUDE_PLUGIN_ROOT}/commands/spec.md`'s full procedure
    (Read it) with the input
-   `--from-findings "$(pwd).selected.json"`. Name the spec's
+   `--from-findings "$RUNDIR/selected.json"`. Name the spec's
    `project` field "Improve <today YYYY-MM-DD>"; if
    `specs/improve-<date>.json` already exists, append `-<HHMM>` to the
    project name and slug.
@@ -96,11 +103,38 @@ If no PR exists (gh unavailable, partial stop), skip all three steps
 and say so — the findings stay open for the next cycle.
 
 ## Cleanup — every terminal path (success, empty, abort, partial)
-1. Delete `"$(pwd).selected.json"` and `.g2g-goal` if present.
-2. Remove the pid sidecar `"$(pwd).pid"` LAST, if present (foreground
-   and routine runs have none) — its absence tells the launcher's next
-   tick this cycle ended.
+1. Delete `"$RUNDIR/selected.json"` if present. For `.g2g-goal` /
+   `.g2g-goal.lock`, never judge ownership or delete by hand — the lock
+   helper `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-lock.sh` is the sole
+   implementation of build.md's ownership rules; route every case
+   through it:
+   - Both files absent (the usual case — build.md's terminal paths
+     already released the pair): nothing to do.
+   - The build THIS cycle ran armed a goal but crashed or aborted
+     before its terminal release: run
+     `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-lock.sh release-terminal
+     <that build's owner token>` — an abort after arming must not
+     leave this session's Stop hook armed with no terminal path.
+     Exit 5 means the pair is no longer that build's: delete neither
+     file and report the anomaly.
+   - Leftovers this cycle never armed (debris from an older run):
+     reclaim-then-release with a fresh token —
+     `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-lock.sh acquire <fresh-token>`,
+     and on exit 0 immediately
+     `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-lock.sh release-terminal
+     <fresh-token>`. The helper reclaims
+     only stale or malformed debris; exit 4 on the acquire means a
+     LIVE foreign build owns this worktree (which the launcher's
+     isolation should make impossible) — delete neither file and
+     report the anomaly. Do NOT delete `.g2g-goal` alone while leaving
+     a foreign live lock: that would disarm another build's goal.
+   - Any exit 6/7/8 from the helper: fail closed — delete nothing,
+     report the helper's output.
+2. Remove the pid sidecar `"$RUNDIR/tick.pid"` LAST, if present
+   (foreground and routine runs have none) — its absence tells the
+   launcher's next tick this cycle ended.
 3. Final message: what happened (PR URL, partial, empty, or abort),
    which findings were addressed/stale-marked, and that the worktree
-   can be removed with `git worktree remove <path>` once the PR is
-   merged or the work inspected.
+   can be removed with `git worktree remove <path>` and the now-empty
+   run root with `rm -rf "$RUNDIR"` once the PR is merged or the work
+   inspected.

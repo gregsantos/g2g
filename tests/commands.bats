@@ -61,6 +61,130 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     grep -q 'improve.enabled' "$PLUGIN_DIR/commands/improve-cycle.md"
 }
 
+@test "contract: improve launcher and status agree on the tick pid sidecar" {
+    # improve.md writes the pid sidecar; status.md reads it. If the path
+    # token drifts, status silently reports running ticks as FINISHED.
+    grep -q 'tick.pid' "$PLUGIN_DIR/commands/improve.md"
+    grep -q 'tick.pid' "$PLUGIN_DIR/commands/status.md"
+}
+
+@test "safety: improve and status handle legacy + run-root sidecar layouts" {
+    # A legacy flat worktree makes RUNDIR=/tmp; without layout handling,
+    # cleanup would rm -rf the shared temp base. Both files must branch on
+    # layout, and the recursive delete must be gated on a validated run root.
+    for f in improve status; do
+        grep -qi 'legacy' "$PLUGIN_DIR/commands/$f.md" \
+            || { echo "$f.md lost legacy-layout handling"; return 1; }
+    done
+    grep -qi 'run root' "$PLUGIN_DIR/commands/improve.md"
+}
+
+@test "safety: build acquires the checkout lock via the lock helper" {
+    # One-build-per-checkout is enforced by the executable helper
+    # (tests/plugin_lock.bats proves its semantics); build.md's job is
+    # only to call it first and branch on the exit codes.
+    grep -q 'g2g-lock.sh acquire' "$PLUGIN_DIR/commands/build.md"
+    grep -q '.g2g-goal.lock' "$PLUGIN_DIR/commands/build.md"
+    [[ -x "$PLUGIN_DIR/scripts/g2g-lock.sh" ]] || { echo "g2g-lock.sh is not executable"; return 1; }
+}
+
+@test "safety: build releases its lock on preflight aborts after acquisition" {
+    # Without this, one failed preflight blocks all retries as LIVE for
+    # the full stale threshold.
+    grep -q 'LOCK RELEASE ON PREFLIGHT ABORT' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'release-preflight' "$PLUGIN_DIR/commands/build.md"
+}
+
+@test "safety: every terminal path releases the pair through the helper" {
+    # Phase 4 step 5 (conflicts), step 6 (clean PR), and Phase 5
+    # (partial) must each remove the goal/lock pair via release-terminal,
+    # never by hand-deleting the files.
+    count=$(grep -c 'release-terminal' "$PLUGIN_DIR/commands/build.md")
+    [[ "$count" -ge 3 ]] || { echo "only $count release-terminal calls (need 3+)"; return 1; }
+    # `! cmd` never trips bats' errexit, so negative guards must be
+    # explicit if-blocks to actually enforce anything.
+    if grep -qE '^ *[Dd]elete `.g2g-goal`' "$PLUGIN_DIR/commands/build.md"; then
+        echo "build.md reintroduced hand-deletion of the goal file"
+        return 1
+    fi
+}
+
+@test "safety: clean-tree preflight exempts the goal/lock pair" {
+    # Host repos without the .gitignore rule show the just-created lock
+    # as untracked; treating that as dirt would abort every build there.
+    grep -A8 'git status.*clean' "$PLUGIN_DIR/commands/build.md" | grep -q '.g2g-goal.lock'
+}
+
+@test "safety: turn-level tree check exempts the goal/lock pair" {
+    # After arming, both files exist every turn on non-ignoring hosts;
+    # without the exclusion a healthy build is misclassified as a builder
+    # crash each turn (and default git stash cannot even clear untracked).
+    grep -B2 -A6 'Tree check' "$PLUGIN_DIR/commands/build.md" | grep -q '.g2g-goal.lock'
+}
+
+@test "safety: heartbeat refresh is ownership-checked with a terminal path" {
+    # An unconditional heartbeat overwrite would steal a reclaimed lock
+    # back and leave two builds running. Refresh must go through the
+    # helper's token check and route ownership loss to a non-mutating
+    # terminal path.
+    grep -q 'OWNERSHIP-CHECKED REFRESH' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'g2g-lock.sh refresh' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'OWNERSHIP LOST' "$PLUGIN_DIR/commands/build.md"
+}
+
+@test "safety: synchronization semantics live only in the lock helper" {
+    # The mutex serialization, TOCTOU-safe reclaim, and atomic creation
+    # are implemented (and behaviorally tested) in g2g-lock.sh. The
+    # command prose must call the helper, never reconstruct that logic —
+    # a prose reimplementation is exactly the drift this design removes.
+    grep -q '.g2g-goal.mutex' "$PLUGIN_DIR/scripts/g2g-lock.sh"
+    grep -q 'g2g-lock.sh' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'g2g-lock.sh' "$PLUGIN_DIR/commands/improve-cycle.md"
+    # `! cmd` never trips bats' errexit — the anti-drift guards must be
+    # explicit if-blocks to actually enforce anything.
+    for token in noclobber mkdir rmdir; do
+        if grep -qi "$token" "$PLUGIN_DIR/commands/build.md"; then
+            echo "build.md reintroduced inline lock logic: $token"
+            return 1
+        fi
+    done
+}
+
+@test "contract: lock helper exit codes agree between script and build.md" {
+    # build.md branches on these outcomes; if the script's contract
+    # moves, the procedure must move with it.
+    for outcome in live-owner ownership-lost mutex-stuck malformed-state operational-error; do
+        grep -q "$outcome" "$PLUGIN_DIR/scripts/g2g-lock.sh" \
+            || { echo "script lost outcome: $outcome"; return 1; }
+        grep -q "$outcome" "$PLUGIN_DIR/commands/build.md" \
+            || { echo "build.md lost outcome: $outcome"; return 1; }
+    done
+}
+
+@test "safety: ownership loss is a terminal clause of the armed goal" {
+    # The ownership-lost path deletes nothing, so without its own clause
+    # in the goal condition the Stop hook would block the session until
+    # the turn/time caps — which may be unreachable.
+    grep -c 'G2G OWNERSHIP LOST' "$PLUGIN_DIR/commands/build.md" | grep -qE '^[2-9]'
+}
+
+@test "safety: run-root delete guard tolerates documented sidecars" {
+    # A normal run root contains tick.log (and while running tick.pid /
+    # selected.json), and has no worktree child after git worktree remove.
+    # A single-child-only guard would forbid its own documented cleanup.
+    grep -q 'SUBSET' "$PLUGIN_DIR/commands/improve.md"
+    grep -q 'selected.json' "$PLUGIN_DIR/commands/improve.md"
+}
+
+@test "safety: improve-cycle wrapper does not delete build.md's goal/lock" {
+    # The wrapper routes cleanup through the lock helper's ownership
+    # rules: it may release its own build's pair, but never deletes
+    # .g2g-goal out from under a foreign live lock.
+    grep -q 'Do NOT delete `.g2g-goal`' "$PLUGIN_DIR/commands/improve-cycle.md"
+    grep -q 'owner token' "$PLUGIN_DIR/commands/improve-cycle.md"
+    grep -q 'release-terminal' "$PLUGIN_DIR/commands/improve-cycle.md"
+}
+
 @test "models: routing pins agree with the config contract" {
     grep -q 'models.builder' "$PLUGIN_DIR/commands/build.md"
     grep -q 'models.verifier' "$PLUGIN_DIR/commands/build.md"

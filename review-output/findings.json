@@ -10,14 +10,15 @@
       "architecture",
       "security",
       "bug"
-    ]
+    ],
+    "lastReviewedSha": "428830abe1f7d69aeb082a747055c6e75545f576"
   },
   "summary": {
-    "total": 33,
+    "total": 47,
     "critical": 0,
     "high": 1,
-    "medium": 11,
-    "low": 21,
+    "medium": 20,
+    "low": 26,
     "info": 0
   },
   "findings": [
@@ -70,7 +71,7 @@
       "description": "Phase 1 step 1 removes a pre-existing .g2g-goal unconditionally. If a second /g2g:build starts in the same checkout while a first is live, it silently disarms the first build's goal. The session-scoped hook means the first session stays bound to a condition whose file is gone, and two orchestrators then race on the same branch and spec.",
       "suggestion": "Enforce one build per checkout: when arming, write a sidecar (or a pid/timestamp line inside .g2g-goal); preflight aborts with a clear message when the recorded pid is alive or the goal is fresher than a threshold, and only treats it as crash debris otherwise.",
       "effort": "small",
-      "addressed": null
+      "addressed": 2
     },
     {
       "id": "F-005",
@@ -81,7 +82,7 @@
       "description": "All verification is local. The improve flywheel opens PRs whose trustworthiness depends on checks running somewhere a human can see them; without CI, a merged flywheel PR is only as verified as the tick that produced it claimed.",
       "suggestion": "Add a GitHub Actions workflow running make lint + bats tests/ on every PR (shellcheck and bats install cleanly on ubuntu runners; keep make validate local-only since it needs the claude CLI, or gate it behind an optional job). This also makes the flywheel's own PRs independently checked.",
       "effort": "small",
-      "addressed": null
+      "addressed": 2
     },
     {
       "id": "F-006",
@@ -195,7 +196,7 @@
         "CWE-377",
         "CWE-59"
       ],
-      "addressed": null
+      "addressed": 2
     },
     {
       "id": "F-016",
@@ -393,6 +394,218 @@
       "description": "The improve spawn passes no --model flag, so the whole headless cycle — orchestrator, all review category subagents, spec generation, and any builder/verifier not explicitly routed — runs on the invoking machine's default CLI model. When that default is a premium model, the tick's dominant costs (the review fan-out above all) are paid at premium rates: the first live tick cost $10.75 with builders and review inheriting a Mythos-class default. models.builder routing only covers builder dispatches, not the cycle itself.",
       "suggestion": "Add tick-level routing: improve.md reads .claude/g2g.json models.improveCycle (default sonnet) and passes it as --model on the spawned claude -p invocation; improve-nightly.md mirrors it. Keep adversarial judgment premium where desired via the existing models.verifier field (e.g. set it to opus explicitly). Document in the runbook's budget section that tick cost scales directly with this model choice.",
       "effort": "small",
+      "addressed": null
+    },
+    {
+      "id": "F-034",
+      "category": "security",
+      "severity": "medium",
+      "file": "plugin/commands/improve.md",
+      "line": 51,
+      "title": "Private repo checkout and transcript written to world-readable /tmp",
+      "description": "The improve launcher creates the entire working checkout at a predictable, world-traversable path (git worktree add /tmp/g2g-improve-<ts>, improve.md:51) and writes the full headless run transcript to > \"$WT.log\" (improve.md:68); improve-cycle.md additionally writes selected finding objects to /tmp/g2g-improve-<ts>.selected.json. Under a normal umask these are mode 0644/0755, so on a multi-user host any local user can read the complete source tree (including any secrets checked into the repo), the stream-json transcript (command outputs, file contents, tokens), and the finding data. This is a confidentiality exposure distinct from the symlink-overwrite (integrity) issue on the same paths recorded as F-015.",
+      "suggestion": "Place the worktree, log, pid, and selected.json under a per-user private base directory (e.g. ${XDG_RUNTIME_DIR:-$HOME/.cache}/g2g or a mktemp -d root created with mode 0700), or explicitly set umask 077 before creating them, so the checkout and transcript are not world-readable.",
+      "effort": "small",
+      "addressed": null
+    },
+    {
+      "id": "F-035",
+      "category": "security",
+      "severity": "medium",
+      "file": "plugin/commands/build.md",
+      "line": 27,
+      "title": "Spec project field flows into git ref/branch/PR with no charset sanitization",
+      "description": "The orchestrator derives the work branch g2g/<slug-from-spec-project> from the spec's project field using only an informal rule (\"lowercase, hyphenated form\", build.md line 27-28) and interpolates <project> verbatim into commit messages (line 37) and gh pr create titles; spec.md derives the spec filename slug the same way. No explicit character whitelist is specified, so a project value containing .., /, or shell/git metacharacters could yield an unexpected ref (e.g. ref-name traversal like g2g/../main) or, if the executing agent builds the git/gh command as a shell string, argument/command injection. The improve path auto-names the project safely (\"Improve <date>\"), but /g2g:spec -f <file> and bare/-p inputs let untrusted requirement text influence it.",
+      "suggestion": "Define an explicit slug charset in build.md and spec.md (map to [a-z0-9-], collapse and trim repeated/leading/trailing hyphens, reject empty results) and require project/slug values be passed to git and gh as literal arguments, never interpolated into a shell string.",
+      "effort": "small",
+      "addressed": null
+    },
+    {
+      "id": "F-036",
+      "category": "bug",
+      "severity": "medium",
+      "file": "plugin/commands/improve.md",
+      "line": 54,
+      "title": "Improve launcher checks only existence, not content, of worktree settings.json",
+      "description": "Launch step 3 (Stop-hook carry) copies hooks.json into $WT/.claude/settings.json ONLY when that file does not exist. The headless improve-cycle is spawned with --setting-sources project, so only the worktree's own settings.json hooks fire (plugin hooks are inert — the stated reason for the copy). If the repo already tracks a .claude/settings.json that does NOT contain the g2g Stop hook (e.g. init.md's merge step was declined or init was never run), the worktree inherits it, the copy is skipped, and the g2g Stop hook is absent. The build inside the cycle then runs with NO .g2g-goal enforcement: the Stop hook that blocks premature session termination never fires, silently defeating the core completion-guarantee mechanism. The routine template (improve-nightly.md) correctly checks that settings.json contains a Stop hook; improve.md only checks existence.",
+      "suggestion": "Match improve-nightly.md: instead of an existence-only check, verify the worktree's .claude/settings.json actually contains the plugin's Stop hook entry (compare against the Stop entry in hooks.json) and merge/copy it in if missing, rather than assuming any existing settings.json is sufficient.",
+      "effort": "small",
+      "references": [
+        "plugin/routines/improve-nightly.md",
+        "plugin/commands/init.md"
+      ],
+      "addressed": null
+    },
+    {
+      "id": "F-037",
+      "category": "bug",
+      "severity": "medium",
+      "file": "plugin/commands/build.md",
+      "line": 38,
+      "title": "No dependsOn validation (missing/cyclic deps) in the executable build path",
+      "description": "Phase 1 preflight validates only that the spec parses and has a non-empty tasks array. Task selection in Phase 3 requires every id in dependsOn to have passes==true, but nothing validates that dependsOn ids exist or that the dependency graph is acyclic. A spec whose task references a non-existent dependency id, or two tasks that depend on each other, produces a graph where no task is ever selectable. The build then falls straight through Phase 3's \"none exists\" branch to Phase 5 and opens a partial PR having built ZERO tasks, with no diagnostic explaining the deadlock. The acyclic/existing-id rule is stated only as authoring guidance in spec.md content rules and the skill; neither g2g-evidence.sh nor build.md enforces it at runtime.",
+      "suggestion": "Add a dependency-graph check (all dependsOn ids resolve to real task ids; graph is acyclic) to g2g-evidence.sh's preflight or build.md Phase 1, aborting with a clear message that names the offending task/id rather than silently routing to a zero-task partial PR.",
+      "effort": "medium",
+      "references": [
+        "plugin/commands/spec.md",
+        "plugin/scripts/g2g-evidence.sh"
+      ],
+      "addressed": null
+    },
+    {
+      "id": "F-038",
+      "category": "bug",
+      "severity": "medium",
+      "file": "plugin/commands/build.md",
+      "line": 182,
+      "title": "Phase 4 goal clears at verifier-PASS evidence, before PR creation and .g2g-goal deletion",
+      "description": "The armed goal condition (Phase 2) is satisfied by all tasks passed, every verify line exiting 0, and verifier: PASS. Phase 4 writes verifier PASS and prints exactly that --full evidence — so the goal condition is met at that step, before the rebase/push/PR and before .g2g-goal is deleted. If the orchestrator ends its turn between emitting the evidence and creating the PR (multi-turn work, external turn boundary), the Stop hook sees the condition met and permits the session to stop with NO PR created and .g2g-goal still on disk. The successful terminal-state cleanup and PR creation are outside the goal condition, so nothing forces them to complete once the goal has cleared. Distinct from F-018, which concerns the deletion ordering after a fallible push; this concerns the goal condition being satisfiable before a PR exists at all.",
+      "suggestion": "Defer emitting the goal-clearing --full evidence until after the PR is created (move the evidence print to after PR creation), or extend the goal condition so it is only met once the transcript also shows the PR opened / .g2g-goal deleted, so the goal cannot clear before a PR exists.",
+      "effort": "medium",
+      "references": [
+        "plugin/hooks/hooks.json"
+      ],
+      "addressed": null
+    },
+    {
+      "id": "F-039",
+      "category": "code-quality",
+      "severity": "medium",
+      "file": "plugin/README.md",
+      "line": 111,
+      "title": "Opt-in trust rationale (F-001) duplicated verbatim across four files",
+      "description": "The justification that the improve flywheel is opt-in because review-finding text flows into spec criteria executed by Bash-capable builders (backlog finding F-001) is restated in near-identical prose in four places: README.md, commands/improve.md, commands/improve-cycle.md, and commands/init.md. This is drift-prone — a change to the rationale or the finding id must be edited in four spots, and improve.md/improve-cycle.md/init.md are executable procedures where the recap adds bulk.",
+      "suggestion": "Keep the full rationale in one canonical location (README's Trust caveat) and have the command files reference it in one line (e.g. \"opt-in gate — see README Trust caveat, finding F-001\") rather than re-stating the whole sentence.",
+      "effort": "small",
+      "references": [
+        "plugin/commands/improve.md",
+        "plugin/commands/improve-cycle.md",
+        "plugin/commands/init.md"
+      ],
+      "addressed": null
+    },
+    {
+      "id": "F-040",
+      "category": "code-quality",
+      "severity": "medium",
+      "file": "plugin/commands/improve.md",
+      "line": 65,
+      "title": "Headless invocation flag-set duplicated across README, improve.md, and nightly routine",
+      "description": "The headless spawn flag set — notably --allowedTools \"Agent,Bash,Read,Write,Edit,Glob,Grep\" plus --setting-sources project --permission-mode acceptEdits and the cap flags — is written out verbatim in improve.md, routines/improve-nightly.md, and twice in README.md. The allowedTools string alone appears in three files. If the required tool list changes (e.g. a new tool becomes necessary for builds), every copy must be updated in lockstep or a headless run will silently start rejecting tool calls.",
+      "suggestion": "Designate README's \"Running headless / unattended\" block as the single canonical invocation shape and have improve.md and the nightly routine reference it, or extract the allowedTools list into one documented constant that the others point to rather than re-typing.",
+      "effort": "medium",
+      "references": [
+        "plugin/README.md",
+        "plugin/routines/improve-nightly.md"
+      ],
+      "addressed": null
+    },
+    {
+      "id": "F-041",
+      "category": "code-quality",
+      "severity": "low",
+      "file": "plugin/commands/status.md",
+      "line": 21,
+      "title": "Worktree RUNNING/CRASHED/FINISHED state logic duplicated in status.md and improve.md",
+      "description": "The pid-sidecar state machine — pid present + process alive = RUNNING, pid present + process dead = CRASHED, no pid sidecar = FINISHED — is described independently in status.md (step 5) and improve.md (Busy checks). Both spell out the same kill -0/sidecar-existence rules and the same three-way classification. The two descriptions can drift apart, leaving /g2g:status and /g2g:improve disagreeing about whether a tick is live.",
+      "suggestion": "State the tick state-detection rules once (e.g. in the README improve-flywheel section or a shared note) and have both command files reference that single definition instead of restating the sidecar logic.",
+      "effort": "small",
+      "references": [
+        "plugin/commands/improve.md"
+      ],
+      "addressed": null
+    },
+    {
+      "id": "F-042",
+      "category": "code-quality",
+      "severity": "low",
+      "file": "plugin/commands/spec.md",
+      "line": 60,
+      "title": "Ad-hoc lettered sub-steps and informal step back-references are fragile",
+      "description": "CLAUDE.md requires command procedures to keep steps numbered, imperative, and unambiguous, but several procedures insert lettered sub-steps mid-sequence (build.md Phase 1 \"3a\" between steps 3 and 4; improve-cycle.md Phase I-2 \"1a\" between 1 and 2). Compounding this, spec.md step 7 tells the reader to report which source (3a or 3b) supplied the commands, but step 3's options are labeled a./b./c., so \"3a\"/\"3b\" are informal back-references that do not match the actual labels — a reader must reverse-engineer the mapping. These ad-hoc labels make the procedures harder to follow and their cross-references brittle when steps are edited.",
+      "suggestion": "Use consistent step labeling: either fully renumber when inserting a step, or adopt an explicit sub-step convention (e.g. 3.a) and reference it exactly. In spec.md step 7, reference step 3's options by their real labels (3.a / 3.b).",
+      "effort": "small",
+      "references": [
+        "plugin/commands/build.md",
+        "plugin/commands/improve-cycle.md"
+      ],
+      "addressed": null
+    },
+    {
+      "id": "F-043",
+      "category": "test-coverage",
+      "severity": "medium",
+      "file": "tests/plugin_evidence.bats",
+      "line": 48,
+      "title": "12-task omission boundary is unpinned (off-by-one escapes tests)",
+      "description": "g2g-evidence.sh gates per-task-line omission on TOTAL -le 12. The tests only exercise TOTAL=4 (all lines shown) and TOTAL=13 (lines omitted); the exact cutoff is never pinned. Changing <= 12 to < 12, or to any constant in [5..12], leaves both existing tests green while silently shifting the threshold. build.md depends on this 12-task boundary — it keys the Stop-hook completion condition on the summary line precisely because per-task lines vanish above the threshold — so an off-by-one here is a real contract regression that the suite cannot catch.",
+      "suggestion": "Add two boundary tests: a 12-task spec asserting per-task lines are still printed (and no omission line), and a 13-task spec asserting they are omitted. This pins the exact cutoff build.md relies on.",
+      "effort": "small",
+      "references": [
+        "plugin/scripts/g2g-evidence.sh",
+        "plugin/commands/build.md"
+      ],
+      "addressed": null
+    },
+    {
+      "id": "F-044",
+      "category": "test-coverage",
+      "severity": "low",
+      "file": "tests/plugin_evidence.bats",
+      "title": "No test asserts .g2g-goal is gitignored (documented safety invariant)",
+      "description": "CLAUDE.md lists as a safety invariant that .g2g-goal is ephemeral, gitignored, and must never be committed, and the test suite already pins the sibling invariant that .claude/settings.json stays in sync with hooks.json. But no test asserts .gitignore actually ignores .g2g-goal. The .gitignore uses broad .claude/* rules with allow-list exceptions; a future edit that reorders or over-broadens an allow-rule (the same class of hazard init.md's ignore-probe guards against at runtime) could stop ignoring .g2g-goal without any test failing.",
+      "suggestion": "Add a bats test asserting git check-ignore .g2g-goal succeeds (or that .gitignore contains the entry), pinning the never-commit safety invariant.",
+      "effort": "small",
+      "references": [
+        ".gitignore"
+      ],
+      "addressed": null
+    },
+    {
+      "id": "F-045",
+      "category": "architecture",
+      "severity": "medium",
+      "file": "plugin/commands/build.md",
+      "line": 64,
+      "title": "Evidence-script output format is an unversioned contract reconstructed in the goal condition",
+      "description": "The armed goal condition in build.md Phase 2 and the Stop hook it feeds depend on the exact literal strings that g2g-evidence.sh prints: the summary line shape, the per-command verify lines exiting 0, and verifier: PASS. These strings are authored independently in scripts/g2g-evidence.sh (echo statements) and re-described in prose in build.md. Although golden tests pin the script's raw output, the goal condition reconstructs the pass semantics from several free-text lines rather than keying on one stable token, so a wording change that still satisfied the tests' golden strings but shifted what build.md's prose matches (or vice versa) could make the goal condition unsatisfiable, blocking a build's Stop hook with no error pointing at the cause.",
+      "suggestion": "Treat the evidence-script output as a versioned contract with a single grep-able completion token: add a machine-stable line to g2g-evidence.sh (e.g. a G2G COMPLETE line emitted only when all-passed + verifier PASS) and key the goal condition on that one token instead of reconstructing the semantics from several free-text lines.",
+      "effort": "medium",
+      "references": [
+        "plugin/scripts/g2g-evidence.sh",
+        "plugin/hooks/hooks.json"
+      ],
+      "addressed": null
+    },
+    {
+      "id": "F-046",
+      "category": "architecture",
+      "severity": "low",
+      "file": "plugin/commands/build.md",
+      "line": 129,
+      "title": "Builder/verifier report schema duplicated between agent defs and orchestrator parser",
+      "description": "The BUILDER REPORT block (fields result/commit/verified/notes) is defined in agents/g2g-builder.md and independently re-specified by the parser in build.md Phase 3; likewise the VERIFIER REPORT block (verdict/checked/findings/commands) is defined in agents/g2g-verifier.md and re-read in build.md Phase 4. The marker strings and field names are an implicit contract maintained in two files with no shared definition, so renaming a field or marker on one side drifts silently and surfaces only as build.md's generic malformed-report failure handling.",
+      "suggestion": "Document the two report block schemas in one place (e.g. a short section in a shared skill or the README) and have both the agent definitions and build.md reference that single spec, so the marker line and field names have one source of truth.",
+      "effort": "small",
+      "references": [
+        "plugin/agents/g2g-builder.md",
+        "plugin/agents/g2g-verifier.md"
+      ],
+      "addressed": null
+    },
+    {
+      "id": "F-047",
+      "category": "architecture",
+      "severity": "low",
+      "file": "plugin/routines/improve-nightly.md",
+      "line": 22,
+      "title": "Default-branch resolution is unspecified across commands and hardcoded to main in the routine",
+      "description": "go.md, build.md, review.md and improve.md all reference the default branch (for the preflight branch check and the verifier base ref) but none states how it is resolved, leaving each invocation to guess. improve.md uses a <default-branch> placeholder in its worktree-add, while routines/improve-nightly.md hardcodes main in both git worktree add ... main and the fallback spawn. On a repo whose default branch is master/develop/trunk the nightly routine branches off a nonexistent or wrong base, and the generic commands have no consistent rule to fall back on.",
+      "suggestion": "Define one canonical default-branch resolution (e.g. git symbolic-ref --short refs/remotes/origin/HEAD with a documented fallback) and reference it from the commands that need it; replace the literal main in improve-nightly.md with that resolution.",
+      "effort": "small",
+      "references": [
+        "plugin/commands/improve.md"
+      ],
       "addressed": null
     }
   ]

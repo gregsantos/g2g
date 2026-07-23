@@ -115,26 +115,30 @@ What the launcher does, in order:
    CRASHED tick, or an open `g2g/improve-*` PR each stop the launch
    (see §4). A FINISHED clean worktree is auto-pruned and the launch
    proceeds.
-2. Creates `/tmp/g2g-improve-<ts>` on branch `g2g/improve-<ts>`,
+2. Creates the run root unpredictably and owner-only with
+   `mktemp -d` (`/tmp/g2g-improve-<random>`, mode 0700 — never a bare
+   `date`-derived path, which is symlink-plantable and
+   world-readable), then the worktree inside it
+   (`<run-root>/worktree`) on branch `g2g/improve-<random>`, and
    copies the Stop-hook settings in if the repo doesn't track them.
 3. Spawns `claude -p "/g2g:improve-cycle"` inside it, capped, with
-   **sidecars next to (never inside) the worktree**:
-   `<worktree>.pid` and `<worktree>.log`.
+   **sidecars in the run root, next to (never inside) the worktree**:
+   `<run-root>/tick.pid` and `<run-root>/tick.log`.
 4. Without `--wait`: prints path, branch, pid, log path, caps, and how
    to watch/kill. With `--wait`: polls the pid, then reports the
-   outcome and prunes the finished worktree.
+   outcome and prunes the finished worktree and run root.
 
 Watch a running tick:
 
 ```bash
-tail -f /tmp/g2g-improve-<ts>.log     # raw stream
-/g2g:status                            # tick state + open g2g PRs
+tail -f /tmp/g2g-improve-<random>/tick.log   # raw stream
+/g2g:status                                   # tick state + open g2g PRs
 ```
 
 Kill a running tick:
 
 ```bash
-kill $(cat /tmp/g2g-improve-<ts>.pid)
+kill $(cat /tmp/g2g-improve-<random>/tick.pid)
 ```
 
 A killed tick becomes a CRASHED tick on the next launcher run — its
@@ -152,16 +156,17 @@ of:
 - **CRASHED** — pid sidecar present, process dead (killed, machine
   slept, hard failure). The launcher will refuse to start new ticks
   until you deal with it. Runbook:
-  1. Read the log: `less /tmp/g2g-improve-<ts>.log`
-  2. Inspect the work: `git -C /tmp/g2g-improve-<ts> log --oneline`
-     and `status`.
+  1. Read the log: `less /tmp/g2g-improve-<random>/tick.log`
+  2. Inspect the work: `git -C /tmp/g2g-improve-<random>/worktree
+     log --oneline` and `status`.
   3. Salvage if worthwhile (push the branch and open a PR manually, or
      cherry-pick commits), then remove:
-     `git worktree remove --force /tmp/g2g-improve-<ts>` and delete
-     the `.pid`/`.log` sidecars.
+     `git worktree remove --force /tmp/g2g-improve-<random>/worktree`
+     and delete the run root (`rm -rf /tmp/g2g-improve-<random>`,
+     which takes the `tick.pid`/`tick.log` sidecars with it).
 - **FINISHED** — no pid sidecar (the cycle removes it as its last act).
   If the tree is clean, the next launcher run (or `--wait` teardown)
-  removes the worktree automatically.
+  removes the worktree and run root automatically.
 
 ## 5. Tick outcomes
 
@@ -244,6 +249,8 @@ PR. That data is why the default is now **25**. Sizing guidance:
 | Same findings selected every cycle, no PRs | No `gh`/GitHub remote: PR creation fails, reconciliation skips, findings stay open | Give the environment `gh` auth + a GitHub remote, or triage the backlog by hand |
 | Launcher refuses to run | RUNNING/CRASHED tick or an open `g2g/improve-*` PR | That's the design (skip, don't stack): finish/kill/inspect per §4, merge or close the PR |
 | Tick ended, no PR, worktree dirty | Outer cap guillotined it mid-build | Salvage per §4; raise the outer caps per §7 |
+| Build aborts: "live-owner" | Another `/g2g:build` holds `.g2g-goal.lock` in this checkout (heartbeat refreshed within the last hour) | Wait for it (or kill it); a dead build's lock goes stale and is reclaimed automatically by the next run |
+| Build aborts: "mutex-stuck" / "malformed-state" | `.g2g-goal.mutex` is wedged past its recovery deadline, or the lock path is not a regular file — something outside `plugin/scripts/g2g-lock.sh` touched the lock names | Inspect the repo root by hand; remove the debris only once you've confirmed no build is running, then rerun |
 
 ## 9. Safety model (what protects you)
 
