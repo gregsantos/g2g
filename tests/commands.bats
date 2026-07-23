@@ -98,6 +98,21 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     grep -A8 'git status.*clean' "$PLUGIN_DIR/commands/build.md" | grep -q '.g2g-goal.lock'
 }
 
+@test "safety: turn-level tree check exempts the goal/lock pair" {
+    # After arming, both files exist every turn on non-ignoring hosts;
+    # without the exclusion a healthy build is misclassified as a builder
+    # crash each turn (and default git stash cannot even clear untracked).
+    grep -B2 -A6 'Tree check' "$PLUGIN_DIR/commands/build.md" | grep -q '.g2g-goal.lock'
+}
+
+@test "safety: heartbeat refresh is ownership-checked with a terminal path" {
+    # An unconditional heartbeat overwrite would steal a reclaimed lock
+    # back and leave two builds running. Refresh must check the token and
+    # route ownership loss to a non-mutating terminal path.
+    grep -q 'OWNERSHIP-CHECKED REFRESH' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'OWNERSHIP LOST' "$PLUGIN_DIR/commands/build.md"
+}
+
 @test "safety: run-root delete guard tolerates documented sidecars" {
     # A normal run root contains tick.log (and while running tick.pid /
     # selected.json), and has no worktree child after git worktree remove.

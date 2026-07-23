@@ -45,6 +45,8 @@ jq -e '.verifier.verdict == "PASS"' "$SPEC" > /dev/null \
     || fail "verifier verdict is not PASS in specs/sandbox.json"
 [[ ! -f "$SB/.g2g-goal" ]] \
     || fail ".g2g-goal was not deleted at the terminal state"
+[[ ! -f "$SB/.g2g-goal.lock" ]] \
+    || fail ".g2g-goal.lock was not deleted at the terminal state"
 git -C "$SB" rev-parse --verify "$BRANCH" > /dev/null 2>&1 \
     || fail "work branch $BRANCH was not created"
 git -C "$WORK/origin.git" rev-parse --verify "$BRANCH" > /dev/null 2>&1 \

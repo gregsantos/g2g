@@ -141,10 +141,18 @@ command (confirmed by spike). Instead:
 2. The liveness lock `.g2g-goal.lock` already exists — you acquired it
    atomically in Phase 1 step 1, and it is what a future `/g2g:build` in
    this checkout checks to tell this build is live. Refresh its heartbeat
-   now: overwrite it with a current ISO 8601 timestamp on line 1 and your
-   owner token on line 2. Phase 3 step 1 refreshes it every turn. It stays
-   separate from `.g2g-goal` precisely so `.g2g-goal`'s own contents never
-   change after arming — the Stop hook only ever reads the condition text
+   now, using the OWNERSHIP-CHECKED REFRESH rule that governs every
+   heartbeat from here on: first read `.g2g-goal.lock` line 2; only if it
+   still holds YOUR owner token may you overwrite the file (current ISO
+   8601 timestamp on line 1, your token on line 2). If line 2 holds a
+   different token, or the file is missing, ownership was LOST — a stale
+   reclaim happened while you were stalled — and you must never write it
+   back (that would silently steal the lock from the build that
+   legitimately reclaimed it, leaving two builds running): go to
+   OWNERSHIP LOST (below Phase 3). Phase 3 step 1 repeats this
+   ownership-checked refresh every turn. The lock stays separate from
+   `.g2g-goal` precisely so `.g2g-goal`'s own contents never change
+   after arming — the Stop hook only ever reads the condition text
    written in step 1.
 3. Immediately READ `.g2g-goal` back with the Read tool and print its
    contents verbatim. This step is MANDATORY and load-bearing twice
@@ -169,19 +177,28 @@ reimplemented directly since the plugin-command layer can't reach
    <current ISO 8601 timestamp>)` where `k` is this turn's 1-based
    count. This line is the only way the Stop-hook
    evaluator — which judges only the transcript — can see the turn/time
-   caps. Never omit it, and never change its format. Then overwrite
-   `.g2g-goal.lock` with a current ISO 8601 timestamp (line 1) and your
-   owner token (line 2) — this heartbeat is what lets a future preflight
-   (Phase 1 step 1) tell this build is still live rather than crash debris;
-   refresh it every turn without exception.
+   caps. Never omit it, and never change its format. Then refresh the
+   heartbeat via Phase 2 step 2's OWNERSHIP-CHECKED REFRESH rule: read
+   `.g2g-goal.lock` line 2 first — your token → overwrite with a current
+   ISO 8601 timestamp (line 1) and your token (line 2); a different
+   token or a missing file → go to OWNERSHIP LOST (below Phase 3)
+   without writing anything. This heartbeat is what lets a future
+   preflight (Phase 1 step 1) tell this build is still live rather than
+   crash debris; run the check every turn without exception.
 2. Cap check — do this before anything else this turn, immediately after
    printing the turn line: if `k >= TURN_CAP`, or more than HOURS_CAP hours have
    elapsed since `BUILD_START`, go to Phase 5 now. Treat this exactly like
    task-exhaustion — a terminal condition — even when an eligible task
    remains. Do not dispatch another builder once the cap has hit.
-3. Tree check: if `git status` is dirty (a builder crashed), stash with
-   message `g2g-crash-<task-id>` and include the stash reference in the
-   next builder's task card as recovery context.
+3. Tree check: apply the SAME exact-path exclusions as Phase 1 step 2 —
+   `.g2g-goal` and `.g2g-goal.lock` appearing as untracked is expected
+   on hosts that have not gitignored the pair, never dirt (without this
+   exclusion a healthy build here would be misclassified as a builder
+   crash every turn, and `git stash` would not even clear it — default
+   stash ignores untracked files). If `git status` is dirty beyond those
+   exclusions (a builder crashed), stash with message
+   `g2g-crash-<task-id>` and include the stash reference in the next
+   builder's task card as recovery context.
 4. Select the next task: status != blocked, passes != true, and every id
    in dependsOn has passes == true. If none exists and not all tasks pass:
    go to Phase 5 (terminal stop) — the same destination as step 2's
@@ -222,6 +239,21 @@ reimplemented directly since the plugin-command layer can't reach
    requires it to come from the script, and the evaluator has been
    confirmed able to tell tool-emitted output from typed text when the
    condition says so (spike doc, Task 2).
+
+## OWNERSHIP LOST — non-mutating terminal path
+Reached only from a heartbeat refresh (Phase 2 step 2, Phase 3 step 1)
+that found `.g2g-goal.lock` missing or holding a foreign token: this
+build stalled past STALE_THRESHOLD_MINUTES and another build reclaimed
+the checkout. From this moment NOTHING here is safely yours — the lock
+and `.g2g-goal` belong to the reclaiming build, and the branch and spec
+may now be contested. Therefore: write and delete NOTHING (no lock
+write-back, no goal deletion, no further spec commits, no stash), push
+nothing, open no PR. Report plainly: the foreign token (or the file's
+absence), what it means, which tasks had completed before the stall
+(their commits remain on the branch for a human to salvage), and that
+this run is over as a failed terminal state. Your session can still
+end via the goal condition's turn/time-cap clauses, which live in your
+transcript, not on disk.
 
 ## Phase 4 — Completion (first turn where all tasks pass)
 Set REVERIFY_CAP = 2 (the maximum number of FAIL rounds before the build
