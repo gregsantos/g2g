@@ -317,8 +317,12 @@ cmd_release() {
         finish 0 "released-terminal"
     fi
     # Preflight abort: this run never armed a goal, so a pre-existing
-    # .g2g-goal is not ours to delete — remove only the lock.
-    rm -f "$LOCK"
+    # .g2g-goal is not ours to delete — remove only the lock. Guarded to
+    # match release-terminal: reaching here proves the dir is writable
+    # (acquire_mutex fails closed otherwise), so a failing rm is only an
+    # immutable-flag/TOCTOU edge — but it must classify as
+    # operational-error, never an unclassified set -e exit.
+    rm -f "$LOCK" || finish 8 "operational-error detail=release-cleanup-failed"
     finish 0 "released-preflight"
 }
 
