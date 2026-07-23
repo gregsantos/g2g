@@ -25,9 +25,9 @@ fallback.
 ## Busy checks — skip rather than stack
 1. For each `git worktree list` entry whose path contains
    `g2g-improve-`, FIRST classify its layout — the two coexist during
-   any upgrade across 0.2.4, so never assume one. The worktree path's
+   any upgrade across 0.2.5, so never assume one. The worktree path's
    OWN basename decides:
-   - **Current layout (0.2.4+):** basename is exactly `worktree` AND its
+   - **Current layout (0.2.5+):** basename is exactly `worktree` AND its
      parent's basename matches `g2g-improve-*`. Then `<RUNDIR>` = that
      parent — the `mktemp -d` run root from Launch step 2 — and the
      SIDECARS live inside it, next to (never inside) the worktree, where
@@ -35,7 +35,7 @@ fallback.
      `<RUNDIR>/tick.pid`, log at `<RUNDIR>/tick.log`. Its cleanup removes
      the run root whole (`rm -rf "<RUNDIR>"`) — it holds only the
      worktree and those sidecars.
-   - **Legacy layout (pre-0.2.4):** the path's OWN basename matches
+   - **Legacy layout (pre-0.2.5):** the path's OWN basename matches
      `g2g-improve-*` (the worktree IS the timestamped dir, with no
      `worktree` child). Its sidecars sit BESIDE it: pid at `<path>.pid`,
      log at `<path>.log`. There is NO run root to recurse into — its

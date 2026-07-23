@@ -104,17 +104,32 @@ and say so — the findings stay open for the next cycle.
 
 ## Cleanup — every terminal path (success, empty, abort, partial)
 1. Delete `"$RUNDIR/selected.json"` if present. For `.g2g-goal` /
-   `.g2g-goal.lock`, apply build.md's ownership rule rather than a
-   blanket keep-or-delete: if the pair is absent, nothing to do; if
-   `.g2g-goal.lock` is missing, stale (older than build.md's
-   STALE_THRESHOLD_MINUTES), or its line-2 owner token belongs to the
-   build THIS cycle itself ran, delete both — an abort after arming must
-   not leave this session's Stop hook armed with no terminal path. Only
-   when the lock is live AND foreign-owned (possible only if something
-   else is genuinely building in this worktree, which the launcher's
-   isolation should make impossible) do you delete neither — report the
-   anomaly instead. Do NOT delete `.g2g-goal` alone while leaving a
-   foreign live lock: that would disarm another build's goal.
+   `.g2g-goal.lock`, never judge ownership or delete by hand — the lock
+   helper `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-lock.sh` is the sole
+   implementation of build.md's ownership rules; route every case
+   through it:
+   - Both files absent (the usual case — build.md's terminal paths
+     already released the pair): nothing to do.
+   - The build THIS cycle ran armed a goal but crashed or aborted
+     before its terminal release: run
+     `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-lock.sh release-terminal
+     <that build's owner token>` — an abort after arming must not
+     leave this session's Stop hook armed with no terminal path.
+     Exit 5 means the pair is no longer that build's: delete neither
+     file and report the anomaly.
+   - Leftovers this cycle never armed (debris from an older run):
+     reclaim-then-release with a fresh token —
+     `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-lock.sh acquire <fresh-token>`,
+     and on exit 0 immediately
+     `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-lock.sh release-terminal
+     <fresh-token>`. The helper reclaims
+     only stale or malformed debris; exit 4 on the acquire means a
+     LIVE foreign build owns this worktree (which the launcher's
+     isolation should make impossible) — delete neither file and
+     report the anomaly. Do NOT delete `.g2g-goal` alone while leaving
+     a foreign live lock: that would disarm another build's goal.
+   - Any exit 6/7/8 from the helper: fail closed — delete nothing,
+     report the helper's output.
 2. Remove the pid sidecar `"$RUNDIR/tick.pid"` LAST, if present
    (foreground and routine runs have none) — its absence tells the
    launcher's next tick this cycle ended.

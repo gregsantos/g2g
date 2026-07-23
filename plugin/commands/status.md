@@ -21,11 +21,11 @@ Report G2G state, read-only (change nothing):
 5. Improve ticks: for each `git worktree list` entry whose path
    contains `g2g-improve-`, locate its pid sidecar by layout — the same
    `<RUNDIR>` derivation as improve.md's Busy checks, since the two
-   layouts coexist across a 0.2.4 upgrade. Current (0.2.4+): the worktree
+   layouts coexist across a 0.2.5 upgrade. Current (0.2.5+): the worktree
    is `<RUNDIR>/worktree`, so `<RUNDIR>` is its PARENT directory (the
    `mktemp -d` run root) and the sidecars are `<RUNDIR>/tick.pid` and
    `<RUNDIR>/tick.log` — check `<RUNDIR>/tick.pid`, never `<path>.pid`.
-   Legacy (pre-0.2.4): the path's own basename is `g2g-improve-*`, so the
+   Legacy (pre-0.2.5): the path's own basename is `g2g-improve-*`, so the
    pid sits beside it at `<path>.pid`. Report path, branch, and state —
    RUNNING (pid sidecar present, process alive via `kill -0`), CRASHED
    (pid sidecar present, process dead — needs human inspection), or

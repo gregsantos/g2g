@@ -45,6 +45,7 @@ g2g/
 │   ├── skills/                       # writing-g2g-specs, reviewing-codebase
 │   ├── hooks/hooks.json              # Stop hook — goal enforcement
 │   ├── scripts/g2g-evidence.sh       # Deterministic evidence generator
+│   ├── scripts/g2g-lock.sh           # Checkout-lock protocol (sole implementation)
 │   ├── templates/                    # /g2g:init config starters (g2g-*.json)
 │   ├── routines/                     # Scheduled-run templates
 │   └── evals/                        # plugin-eval cases (harness in early access)
@@ -71,6 +72,12 @@ g2g/
   (0 ok / 2 invalid spec / 3 no verificationCommands); the Stop-hook
   goal condition in build.md keys on the summary line. Change output
   format only with the tests and build.md updated together.
+- **The lock script is the protocol.** `plugin/scripts/g2g-lock.sh` is
+  the sole implementation of checkout-lock synchronization;
+  `tests/plugin_lock.bats` pins its exit codes and outcome lines, and
+  build.md/improve-cycle.md branch on them. Never reintroduce lock
+  logic as command prose; change the contract only with the tests and
+  both commands updated together.
 - **Templates are pinned by tests.** `tests/templates.bats` asserts the
   exact `defaultBudgets` values, the five `reviewFocus` categories, and
   `improve.enabled: false` in every `plugin/templates/*.json`.
@@ -84,9 +91,11 @@ g2g/
   detached processes
   (nohup/disown/setsid) — every spawned tick keeps a pid sidecar and
   stays killable.
-- **`.g2g-goal` is ephemeral** — gitignored, written by `/g2g:build`,
-  deleted at every terminal state. Never commit it; never leave a
-  terminal path that skips deleting it.
+- **`.g2g-goal`, `.g2g-goal.lock`, and `.g2g-goal.mutex/` are
+  ephemeral** — gitignored runtime files; the goal is written by
+  `/g2g:build`, the lock/mutex only ever by `g2g-lock.sh`. All are
+  gone at every terminal state (`release-terminal`). Never commit
+  them; never leave a terminal path that skips the release.
 - **Version bumps:** update `plugin/.claude-plugin/plugin.json` when
   command behavior, config schema, or templates change.
 - Shell: bash, shellcheck-clean (`.shellcheckrc` at repo root). Tests:

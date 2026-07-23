@@ -194,11 +194,18 @@ This repo tracks `specs/`, `review-output/`, and
   Windows without git-bash/WSL is unsupported in v1.
 - **`.g2g-goal` and `.g2g-goal.lock`** are ephemeral, gitignored runtime
   files that `/g2g:build` writes and deletes itself — hosts should
-  gitignore both and never commit them. Host migration note: repos
-  onboarded before 0.2.4 have no ignore rule for `.g2g-goal.lock`; add
-  it alongside `.g2g-goal`. Builds still run without the rule —
-  preflight treats the pair as expected untracked files, not dirt — but
-  ignoring them keeps them out of `git status` noise.
+  gitignore both and never commit them. The lock (plus its transient
+  `.g2g-goal.mutex/` directory, gitignored the same way) is managed
+  exclusively by `plugin/scripts/g2g-lock.sh`, the executable,
+  behaviorally-tested implementation of the one-build-per-checkout
+  protocol: atomic acquisition, heartbeat refresh, stale-debris
+  reclaim, and ownership-checked release, all serialized so two
+  concurrent builds can never both hold the checkout. Host migration
+  note: repos onboarded before 0.2.5 have no ignore rules for
+  `.g2g-goal.lock` / `.g2g-goal.mutex/`; add them alongside
+  `.g2g-goal`. Builds still run without the rules — preflight treats
+  these paths as expected untracked files, not dirt — but ignoring
+  them keeps them out of `git status` noise.
 
 ## Running headless / unattended
 

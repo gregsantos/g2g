@@ -249,6 +249,8 @@ PR. That data is why the default is now **25**. Sizing guidance:
 | Same findings selected every cycle, no PRs | No `gh`/GitHub remote: PR creation fails, reconciliation skips, findings stay open | Give the environment `gh` auth + a GitHub remote, or triage the backlog by hand |
 | Launcher refuses to run | RUNNING/CRASHED tick or an open `g2g/improve-*` PR | That's the design (skip, don't stack): finish/kill/inspect per §4, merge or close the PR |
 | Tick ended, no PR, worktree dirty | Outer cap guillotined it mid-build | Salvage per §4; raise the outer caps per §7 |
+| Build aborts: "live-owner" | Another `/g2g:build` holds `.g2g-goal.lock` in this checkout (heartbeat refreshed within the last hour) | Wait for it (or kill it); a dead build's lock goes stale and is reclaimed automatically by the next run |
+| Build aborts: "mutex-stuck" / "malformed-state" | `.g2g-goal.mutex` is wedged past its recovery deadline, or the lock path is not a regular file — something outside `plugin/scripts/g2g-lock.sh` touched the lock names | Inspect the repo root by hand; remove the debris only once you've confirmed no build is running, then rerun |
 
 ## 9. Safety model (what protects you)
 

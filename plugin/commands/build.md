@@ -7,115 +7,77 @@ argument-hint: <path/to/spec.json> [--continue-branch]
 You are the G2G build ORCHESTRATOR for the spec at: $ARGUMENTS
 
 You coordinate; you NEVER edit source files yourself. Builders build,
-the verifier verifies, you manage state. The only files you may write are
-the spec JSON, `.g2g-goal`, and its liveness lock `.g2g-goal.lock`.
-Both `.g2g-goal` and `.g2g-goal.lock` are ephemeral — neither must ever be
-committed, and you must delete both before the build reaches any terminal
-state (Phase 4 steps 5–6, Phase 5) so the Stop hook lets the session end.
-The pair is deleted together and only by its owner: deletion is a
-read-modify-write, so it happens under the LOCK MUTATION MUTEX (Phase 1
-step 1) — acquire the mutex, check that `.g2g-goal.lock` line 2 still
-holds this build's owner token, delete (or don't), release the mutex.
-If it does not — a later build reclaimed the lock as stale and has since
-overwritten `.g2g-goal` with its own goal — then NEITHER file is yours
-anymore: delete nothing and say so in your final message (your own
-session can still end via the cap clauses in the goal condition you
+the verifier verifies, you manage state. The only files you may write
+directly are the spec JSON and `.g2g-goal`. The checkout lock
+`.g2g-goal.lock` and its transient mutation mutex `.g2g-goal.mutex` are
+managed EXCLUSIVELY through the lock helper
+`${CLAUDE_PLUGIN_ROOT}/scripts/g2g-lock.sh` — the sole implementation of
+the synchronization protocol (atomic creation, stale reclaim with no
+absent-file window, ownership-checked refresh and release, mutex
+serialization and crash recovery). Never create, modify, or delete those
+files by hand, and never reimplement any of that logic inline: run the
+helper and branch on its documented exit codes — 0 ok, 2 caller error
+(treat as a bug: abort), 4 live-owner, 5 ownership-lost, 6 mutex-stuck,
+7 malformed-state, 8 operational-error. On 6/7/8 the helper changed
+nothing and the lock state needs a human: NEVER proceed as if you held
+the lock. `.g2g-goal` and `.g2g-goal.lock` are ephemeral — neither must
+ever be committed, and every terminal state (Phase 4 steps 5–6, Phase 5)
+removes the pair via `g2g-lock.sh release-terminal <owner-token>` so the
+Stop hook lets the session end. The helper deletes the pair only while
+line 2 of the lock still holds this build's owner token; exit 5 there
+means a later build reclaimed the lock as stale and NEITHER file is
+yours anymore — delete nothing and say so in your final message (your
+own session can still end via the cap clauses in the goal condition you
 armed, which live in your transcript, not on disk). This pair is
 build.md's alone: no wrapper (improve-cycle) ever deletes a live,
 foreign-owned pair.
 
 ## Phase 1 — Preflight (all hard requirements; abort with a clear message on any failure)
-1. One build per checkout — acquire the build lock ATOMICALLY as the very
-   first preflight action, before any other check, so two builds starting
-   together in the same checkout cannot both proceed (a plain
-   "check whether it exists, then create it" is a race and is forbidden
-   here). The lock is `.g2g-goal.lock` in the repo root: line 1 is an ISO
-   8601 heartbeat timestamp; line 2 is this build's owner token — a value
-   unique to this process (e.g. `$$`) that later proves the lock is still
-   yours before you refresh or delete it. It carries ONLY this — the goal
-   condition text lives in `.g2g-goal` (written in Phase 2) and never
-   changes after arming, so the Stop hook's scoping and condition checks
-   are never touched by this guard. Let STALE_THRESHOLD_MINUTES = 60 — the
-   lock is a per-turn heartbeat (Phase 3 step 1 refreshes it every turn),
-   so this need only exceed the longest plausible SINGLE turn (one builder
-   dispatch + spec commit + evidence run), never the total build duration.
-   Do not raise it toward HOURS_CAP — that only delays crash recovery for
-   no gain — and do not make it a config key: it is a property of turn
-   mechanics, not of any project. Tune the constant here, with evidence,
-   only if it ever misfires.
-   LOCK MUTATION MUTEX — read this rule first; everything below uses it.
-   A bare read-then-write of the lock is a TOCTOU race (you verify your
-   token, a reclaimer swaps the lock in that instant, your write steals
-   it back — two builds then run at once). Therefore EVERY
-   read-modify-write of `.g2g-goal.lock` after its initial creation —
-   stale reclaim, every heartbeat refresh, every ownership-checked
-   deletion (preflight-abort release and terminal deletion) — must hold
-   the mutation mutex: acquire with the atomic
-   `mkdir .g2g-goal.mutex` (succeeds for exactly one contender), do the
-   read + verify + write/delete, then `rmdir .g2g-goal.mutex`
-   IMMEDIATELY — the critical section is one read and one write, never
-   a dispatch or a command run. If `mkdir` fails, another mutation is
-   in flight; recovery must actually be reachable, so it is
-   age-driven, not attempt-counted: on every retry FIRST check the
-   mutex directory's age (mtime) — older than 60 seconds means its
-   holder died mid-mutation (a healthy critical section lasts
-   milliseconds): `rmdir` it and retry the `mkdir` immediately.
-   Otherwise wait 2 seconds and try again, re-checking the age each
-   time; because the age keeps growing, a dead holder's mutex always
-   crosses the 60-second debris line within this loop. If after a
-   90-second overall deadline the mutex is still present and still
-   younger than 60 seconds (impossible under this protocol unless
-   something outside it holds the name), ABORT and report the stuck
-   mutex — never proceed unlocked. The mutex is transient and
-   untracked — like the goal/lock pair it is exempt from the
-   clean-tree checks and appears in `.gitignore`.
-   Attempt acquisition UNDER THE MUTEX — initial creation participates
-   in the same mutex as every other mutation. This is not redundant
-   with `noclobber`'s own atomicity: the reclaim's critical section
-   deletes the stale lock and then writes its replacement, and a
-   mutex-free creator could slip its `noclobber` create into that
-   absent-file gap only to be silently overwritten a moment later —
-   two builds would then both believe they own the checkout. So:
-   acquire the mutex, attempt the atomic fail-if-exists create, and
-   release the mutex whatever the outcome:
-   `( set -o noclobber; printf '%s\n%s\n' "<now ISO 8601>" "<owner-token>" > .g2g-goal.lock ) 2>/dev/null`
-   - Create SUCCEEDS: you hold the lock. Remember the owner token for
-     Phase 3's heartbeat and for terminal deletion. Proceed to step 2.
-     (Any pre-existing `.g2g-goal` from an aborted prior run is harmless —
-     Phase 2 overwrites it after re-verifying ownership.)
-   - Create FAILS (lock already exists): read `.g2g-goal.lock` line 1.
-     - Timestamp within STALE_THRESHOLD_MINUTES (60) minutes: a build is
-       LIVE in this checkout right now. ABORT immediately — report that
-       another /g2g:build is already active (include the recorded
-       timestamp so a human can judge a false positive from an unusually
-       long single turn), and change NOTHING: do not delete, rewrite, or
-       otherwise touch `.g2g-goal` or `.g2g-goal.lock`, and do not proceed.
-     - Timestamp older than STALE_THRESHOLD_MINUTES, OR the lock is
-       unreadable/empty (crash debris — a prior build died mid-run and
-       stopped heartbeating, or a leftover from a version predating this
-       guard): perform the RECLAIM under the mutation mutex — acquire
-       the mutex, re-read the lock (it may have changed while you
-       waited), and only if it is STILL stale delete both
-       `.g2g-goal.lock` and `.g2g-goal` (if present) and write your own
-       lock (timestamp + your token) in the same critical section, then
-       release the mutex and note the reclaim in the transcript. If the
-       re-read shows a fresh lock, another build won: release the mutex,
-       ABORT, and touch nothing, exactly as in the LIVE case. On
-       success, proceed to step 2.
-   Do not rely on the git-status check in step 2 to enforce this — both
-   files are untracked, so a dirty tree isn't guaranteed to surface them;
-   this atomic guard is what enforces one-build-per-checkout.
+1. One build per checkout — as the very first preflight action, before
+   any other check, choose an OWNER TOKEN (opaque, single-line, unique
+   to this run — e.g. `g2g-$$-<epoch seconds>`) and run, from the repo
+   root:
+   `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-lock.sh acquire <owner-token>`
+   The helper enforces one-build-per-checkout: it creates
+   `.g2g-goal.lock` (line 1 an ISO 8601 heartbeat, line 2 the owner
+   token) atomically under its own mutation mutex, reclaims only locks
+   whose heartbeat has gone stale (its built-in threshold; the lock is
+   a per-turn heartbeat, so staleness means a build died, not that a
+   build is long), and leaves no window in which two builds can both
+   believe they own the checkout. Branch ONLY on its result:
+   - Exit 0 (`g2g-lock: acquired` or `g2g-lock: reclaimed ...`) — you
+     hold the lock. Remember the owner token: every later helper call
+     (heartbeat refresh, preflight release, terminal release) needs it.
+     On `reclaimed`, note in the transcript that stale debris from a
+     dead build was reclaimed (the helper deleted that build's
+     goal/lock pair before writing yours). After a plain `acquired`,
+     any pre-existing `.g2g-goal` from an older aborted run is
+     harmless — Phase 2 overwrites it after an ownership-checked
+     refresh. Proceed to step 2.
+   - Exit 4 (`live-owner`) — another /g2g:build is LIVE in this
+     checkout right now. ABORT immediately and change NOTHING; report
+     the heartbeat and age the helper printed so a human can judge a
+     false positive from an unusually long single turn.
+   - Exit 6, 7, or 8 (`mutex-stuck`, `malformed-state`,
+     `operational-error`) — the lock state cannot be safely judged.
+     ABORT, print the helper's output verbatim, and change NOTHING —
+     never proceed as if you held the lock.
+   Do not rely on the git-status check in step 2 to enforce this — the
+   lock files are untracked, so a dirty tree isn't guaranteed to
+   surface them; the helper's acquire is what enforces
+   one-build-per-checkout.
    LOCK RELEASE ON PREFLIGHT ABORT: from this point until Phase 2 arms
    the goal, every preflight abort (dirty tree in step 2, branch
    collision in step 3, gitignored spec in step 3a, invalid spec in
-   step 4, evidence-script failure in step 5) MUST release the lock you
-   just acquired before reporting the abort — under the LOCK MUTATION
-   MUTEX, verify line 2 still holds your owner token, then delete
-   `.g2g-goal.lock` and release the mutex (leave any pre-existing
-   `.g2g-goal` alone; you never armed one). Without this, a
+   step 4, evidence-script failure in step 5) MUST first run
+   `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-lock.sh release-preflight <owner-token>`
+   — it removes the lock only if still yours and never touches a
+   pre-existing `.g2g-goal` (you never armed one). Without this, a
    failed preflight blocks all retries as "LIVE" for the full stale
-   threshold. Never delete the lock on the abort paths where
-   ACQUISITION ITSELF failed — there it is someone else's.
+   threshold. Exit 5 there means the lock stopped being yours while
+   you were aborting anyway — report it and abort without touching
+   anything. Never run any release on the abort paths where
+   ACQUISITION ITSELF failed — there the lock is someone else's.
 2. `git status` clean — with these exact-path exceptions: the target
    spec file may be untracked or modified (a spec freshly generated by
    /g2g:spec or the /g2g:dev pipeline, not yet committed), and
@@ -160,20 +122,25 @@ literal `/goal ...` text from the assistant is parsed as inert prose, not a
 command (confirmed by spike). Instead:
 
 1. OWNERSHIP-CHECKED REFRESH — this gate runs BEFORE any goal write,
-   here and at the start of every Phase 3 turn, and always under the
-   LOCK MUTATION MUTEX (Phase 1 step 1): acquire the mutex, read
-   `.g2g-goal.lock` line 2, and only if it still holds YOUR owner token
-   overwrite the file (current ISO 8601 timestamp on line 1, your token
-   on line 2), then release the mutex. If line 2 holds a different
-   token, or the file is missing, ownership was LOST — a stale reclaim
-   happened while you were stalled — release the mutex without writing
-   ANYTHING (writing the lock back would steal it from the build that
-   legitimately reclaimed it; writing `.g2g-goal` would clobber that
-   build's goal): go to OWNERSHIP LOST (below Phase 3). Verifying
-   ownership first is why step 2's goal write is safe. The lock stays
-   separate from `.g2g-goal` precisely so `.g2g-goal`'s own contents
-   never change after arming — the Stop hook only ever reads the
-   condition text written in step 2.
+   here and at the start of every Phase 3 turn:
+   `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-lock.sh refresh <owner-token>`
+   The helper updates the heartbeat only while line 2 still holds YOUR
+   owner token; on any other state it writes nothing (writing the lock
+   back would steal it from a build that legitimately reclaimed it;
+   writing `.g2g-goal` would clobber that build's goal). Branch on its
+   exit code:
+   - Exit 0 (`refreshed`): still the owner — proceed.
+   - Exit 5 (`ownership-lost`): a stale reclaim happened while you
+     were stalled. Go to OWNERSHIP LOST (below Phase 3).
+   - Exit 6, 7, or 8: the lock state is wedged or malformed and the
+     helper changed nothing. Nothing here can be safely judged yours,
+     so take the same non-mutating exit: go to OWNERSHIP LOST, but
+     report the helper's actual outcome line verbatim — never claim
+     the lock was reclaimed when it was stuck.
+   Verifying ownership first is why step 2's goal write is safe. The
+   lock stays separate from `.g2g-goal` precisely so `.g2g-goal`'s own
+   contents never change after arming — the Stop hook only ever reads
+   the condition text written in step 2.
 2. Write the following condition — with `<spec-path>`, `<N>` (the spec's
    total task count), `<TURN_CAP>`, `<HOURS_CAP>`, and `<owner-token>`
    filled in with their real values — to a file named `.g2g-goal` in
@@ -188,8 +155,11 @@ command (confirmed by spike). Instead:
    PASS — or the transcript shows a G2G TURN line where k >= <TURN_CAP>,
    or shows a G2G TURN line whose 'now' timestamp is more than
    <HOURS_CAP> hours past its 'build started' timestamp, or shows the
-   exact line 'G2G OWNERSHIP LOST <owner-token>' (this build's checkout
-   lock was reclaimed by another build; the run ended on the
+   exact line 'G2G OWNERSHIP LOST <owner-token>' printed BY ITSELF as a
+   standalone terminal marker after this condition was armed — the
+   quoted occurrence of that text inside this condition (including this
+   read-back) does NOT count (this build's checkout lock was reclaimed
+   by another build or became unjudgeable; the run ended on the
    non-mutating terminal path)."
 
    (Keying on the always-present counts line rather than per-task lines
@@ -224,14 +194,13 @@ reimplemented directly since the plugin-command layer can't reach
    count. This line is the only way the Stop-hook
    evaluator — which judges only the transcript — can see the turn/time
    caps. Never omit it, and never change its format. Then refresh the
-   heartbeat via Phase 2 step 1's OWNERSHIP-CHECKED REFRESH rule (under
-   the LOCK MUTATION MUTEX): read `.g2g-goal.lock` line 2 first — your
-   token → overwrite with a current ISO 8601 timestamp (line 1) and
-   your token (line 2), release the mutex; a different token or a
-   missing file → release the mutex and go to OWNERSHIP LOST (below
-   Phase 3) without writing anything. This heartbeat is what lets a future
-   preflight (Phase 1 step 1) tell this build is still live rather than
-   crash debris; run the check every turn without exception.
+   heartbeat exactly as Phase 2 step 1's OWNERSHIP-CHECKED REFRESH:
+   run `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-lock.sh refresh <owner-token>`
+   — exit 0 → continue this turn; any other exit → go to OWNERSHIP
+   LOST (below Phase 3) without writing anything, per that step's
+   branch table. This heartbeat is what lets a future preflight
+   (Phase 1 step 1) tell this build is still live rather than crash
+   debris; run the check every turn without exception.
 2. Cap check — do this before anything else this turn, immediately after
    printing the turn line: if `k >= TURN_CAP`, or more than HOURS_CAP hours have
    elapsed since `BUILD_START`, go to Phase 5 now. Treat this exactly like
@@ -290,23 +259,26 @@ reimplemented directly since the plugin-command layer can't reach
 
 ## OWNERSHIP LOST — non-mutating terminal path
 Reached only from a heartbeat refresh (Phase 2 step 1, Phase 3 step 1)
-that found `.g2g-goal.lock` missing or holding a foreign token: this
-build stalled past STALE_THRESHOLD_MINUTES and another build reclaimed
-the checkout. From this moment NOTHING here is safely yours — the lock
-and `.g2g-goal` belong to the reclaiming build, and the branch and spec
-may now be contested. Therefore: write and delete NOTHING on disk (no
-lock write-back, no goal deletion, no further spec commits, no stash),
-push nothing, open no PR. Do exactly two things:
+that exited nonzero. Exit 5 means this build stalled past the helper's
+stale threshold and another build reclaimed the checkout — the lock and
+`.g2g-goal` now belong to the reclaiming build, and the branch and spec
+may be contested. Exits 6/7/8 mean the lock state is wedged or
+malformed and cannot be judged yours. Either way, from this moment
+NOTHING here is safely yours. Therefore: write and delete NOTHING on
+disk (no helper release calls, no goal deletion, no further spec
+commits, no stash), push nothing, open no PR. Do exactly two things:
 1. Print the exact line `G2G OWNERSHIP LOST <owner-token>` — your own
-   token, matching the one embedded in the goal condition you armed.
+   token, matching the one embedded in the goal condition you armed —
+   BY ITSELF as a standalone line, not quoted inside other prose.
    This is the armed condition's third terminal clause: it is what lets
    the Stop hook allow this session to end, since this path deletes
    nothing and the turn/time caps may be far away. Emit it ONLY from
    this path, never speculatively.
-2. Report plainly: the foreign token found (or the file's absence),
-   what it means, and which tasks had completed before the stall —
-   their commits remain on the branch for a human to salvage. This run
-   is over as a failed terminal state.
+2. Report plainly: the helper's exact outcome line (foreign token,
+   missing file, or stuck/malformed state), what it means, and which
+   tasks had completed before the stall — their commits remain on the
+   branch for a human to salvage. This run is over as a failed
+   terminal state.
 
 ## Phase 4 — Completion (first turn where all tasks pass)
 Set REVERIFY_CAP = 2 (the maximum number of FAIL rounds before the build
@@ -343,21 +315,30 @@ finish line and burn the whole remaining budget before surfacing partial work.
 4. verdict PASS: write {"verifier": {"verdict": "PASS", "date": <today>,
    "summary": <one line>}} into the spec; commit; run the evidence script
    with --full; print it.
-5. Rebase onto the default branch. Conflicts: STOP — delete `.g2g-goal`
-   and `.g2g-goal.lock` (the goal's condition can never be satisfied from
-   here, and deleting both is what lets the Stop hook allow the session
-   to end), `git rebase --abort`, then push and open a draft PR titled
+5. Rebase onto the default branch. Conflicts: STOP — run
+   `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-lock.sh release-terminal <owner-token>`
+   (the goal's condition can never be satisfied from here, and removing
+   the goal/lock pair is what lets the Stop hook allow the session to
+   end; exit 5: the pair is no longer yours — delete nothing and say
+   so; any other nonzero exit: report the helper's output verbatim and
+   leave the files for a human), `git rebase --abort`, then push and
+   open a draft PR titled
    "g2g: <project> (conflicts)" describing them. Never auto-resolve. The
    PR title and body must contain no attribution lines (no 'Generated
-   with Claude Code', no Co-Authored-By trailers). Mention the deletion
-   in your final message.
+   with Claude Code', no Co-Authored-By trailers). Mention the release
+   outcome in your final message.
 6. Clean rebase: push ONCE (`git push -u origin <branch>`), then
    `gh pr create` — title "g2g: <project>", body = evidence block +
    task table + verifier summary. The PR title and body must contain no
    attribution lines (no 'Generated with Claude Code', no Co-Authored-By
-   trailers). NEVER merge. Delete `.g2g-goal` and `.g2g-goal.lock` now
-   that the build has reached a successful terminal state, and mention
-   their deletion in your final message. Report the PR URL.
+   trailers). NEVER merge. Now that the build has reached a successful
+   terminal state, run
+   `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-lock.sh release-terminal <owner-token>`
+   to remove the goal/lock pair (exit 5: the pair is no longer yours —
+   delete nothing and say so; any other nonzero exit: report the
+   helper's output verbatim and leave the files for a human), and
+   mention the release outcome
+   in your final message. Report the PR URL.
 
 ## Phase 5 — Terminal stop (cap hit, re-verify round cap hit, or all remaining tasks blocked)
 Push the branch once and open a DRAFT PR labeled `g2g:partial` — title
@@ -367,7 +348,12 @@ the re-verification round cap was reached, also list the verifier's
 outstanding findings it passed in, so the disagreement is surfaced for a
 human rather than retried indefinitely. The PR title and body must contain no
 attribution lines (no 'Generated with Claude Code', no Co-Authored-By
-trailers). Delete `.g2g-goal` and `.g2g-goal.lock` before finishing (so
-the Stop hook allows the session to stop) and mention their deletion in
-your final message. Partial work is always surfaced, never abandoned.
-Report honestly: this is a partial result, not a completion.
+trailers). Before finishing, run
+`${CLAUDE_PLUGIN_ROOT}/scripts/g2g-lock.sh release-terminal <owner-token>`
+to remove the goal/lock pair (so the Stop hook allows the session to
+stop; exit 5: the pair is no longer yours — delete nothing and say
+so; any other nonzero exit: report the helper's output verbatim and
+leave the files for a human) and mention the release outcome in your
+final message. Partial work
+is always surfaced, never abandoned. Report honestly: this is a partial
+result, not a completion.
