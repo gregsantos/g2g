@@ -192,9 +192,13 @@ This repo tracks `specs/`, `review-output/`, and
   clauses; headless spawns add a dollar cap. There is no unlimited mode.
 - **POSIX shell required** — the evidence script needs `bash`; pure
   Windows without git-bash/WSL is unsupported in v1.
-- **`.g2g-goal`** is an ephemeral, gitignored runtime file that
-  `/g2g:build` writes and deletes itself — hosts should gitignore it
-  and never commit it.
+- **`.g2g-goal` and `.g2g-goal.lock`** are ephemeral, gitignored runtime
+  files that `/g2g:build` writes and deletes itself — hosts should
+  gitignore both and never commit them. Host migration note: repos
+  onboarded before 0.2.4 have no ignore rule for `.g2g-goal.lock`; add
+  it alongside `.g2g-goal`. Builds still run without the rule —
+  preflight treats the pair as expected untracked files, not dirt — but
+  ignoring them keeps them out of `git status` noise.
 
 ## Running headless / unattended
 

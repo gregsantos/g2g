@@ -103,14 +103,18 @@ If no PR exists (gh unavailable, partial stop), skip all three steps
 and say so — the findings stay open for the next cycle.
 
 ## Cleanup — every terminal path (success, empty, abort, partial)
-1. Delete `"$RUNDIR/selected.json"` if present. Do NOT delete `.g2g-goal`
-   or `.g2g-goal.lock` here — build.md exclusively owns that pair and
-   removes BOTH at its own terminal state (Phase 4/5). Deleting `.g2g-goal`
-   from this wrapper would, in the one case that matters — a nested
-   build.md that ABORTED because it found a *live* lock it does not own —
-   silently disarm that other build and orphan its lock. Any goal/lock a
-   build.md abort genuinely leaves behind is gitignored and dies with the
-   worktree when the launcher runs `rm -rf "$RUNDIR"`.
+1. Delete `"$RUNDIR/selected.json"` if present. For `.g2g-goal` /
+   `.g2g-goal.lock`, apply build.md's ownership rule rather than a
+   blanket keep-or-delete: if the pair is absent, nothing to do; if
+   `.g2g-goal.lock` is missing, stale (older than build.md's
+   STALE_THRESHOLD_MINUTES), or its line-2 owner token belongs to the
+   build THIS cycle itself ran, delete both — an abort after arming must
+   not leave this session's Stop hook armed with no terminal path. Only
+   when the lock is live AND foreign-owned (possible only if something
+   else is genuinely building in this worktree, which the launcher's
+   isolation should make impossible) do you delete neither — report the
+   anomaly instead. Do NOT delete `.g2g-goal` alone while leaving a
+   foreign live lock: that would disarm another build's goal.
 2. Remove the pid sidecar `"$RUNDIR/tick.pid"` LAST, if present
    (foreground and routine runs have none) — its absence tells the
    launcher's next tick this cycle ended.

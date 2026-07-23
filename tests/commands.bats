@@ -86,10 +86,31 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     grep -q '.g2g-goal.lock' "$PLUGIN_DIR/commands/build.md"
 }
 
+@test "safety: build releases its lock on preflight aborts after acquisition" {
+    # Without this, one failed preflight blocks all retries as LIVE for
+    # the full stale threshold.
+    grep -q 'LOCK RELEASE ON PREFLIGHT ABORT' "$PLUGIN_DIR/commands/build.md"
+}
+
+@test "safety: clean-tree preflight exempts the goal/lock pair" {
+    # Host repos without the .gitignore rule show the just-created lock
+    # as untracked; treating that as dirt would abort every build there.
+    grep -A8 'git status.*clean' "$PLUGIN_DIR/commands/build.md" | grep -q '.g2g-goal.lock'
+}
+
+@test "safety: run-root delete guard tolerates documented sidecars" {
+    # A normal run root contains tick.log (and while running tick.pid /
+    # selected.json), and has no worktree child after git worktree remove.
+    # A single-child-only guard would forbid its own documented cleanup.
+    grep -q 'SUBSET' "$PLUGIN_DIR/commands/improve.md"
+    grep -q 'selected.json' "$PLUGIN_DIR/commands/improve.md"
+}
+
 @test "safety: improve-cycle wrapper does not delete build.md's goal/lock" {
-    # The wrapper must not disarm a nested build by deleting .g2g-goal it
-    # does not own; build.md owns the .g2g-goal/.g2g-goal.lock lifecycle.
+    # The wrapper applies ownership rules: it may clean up its own build's
+    # pair, but never deletes .g2g-goal out from under a foreign live lock.
     grep -q 'Do NOT delete `.g2g-goal`' "$PLUGIN_DIR/commands/improve-cycle.md"
+    grep -q 'owner token' "$PLUGIN_DIR/commands/improve-cycle.md"
 }
 
 @test "models: routing pins agree with the config contract" {

@@ -44,10 +44,16 @@ fallback.
      temp base (`/tmp` or `$TMPDIR`); treating that as a run root and
      `rm -rf`-ing it would destroy unrelated user data.
    HARD GUARD: only ever `rm -rf` a directory that is a validated
-   `g2g-improve-*` run root whose single child is exactly `worktree`. A
-   matching entry that fits NEITHER layout above (unexpected shape) is
-   reported and STOPS the launch — never delete anything you could not
-   classify.
+   `g2g-improve-*` run root of the expected shape — its basename matches
+   `g2g-improve-*`, it is not `/tmp` or `$TMPDIR` itself, and its
+   children are a SUBSET of the documented contents: `worktree`,
+   `tick.pid`, `tick.log`, `selected.json` (the worktree child may
+   already be absent when `git worktree remove` ran first — that is the
+   normal cleanup order, not an anomaly). Any child outside that set
+   means the directory is not certainly ours: report it and STOP the
+   launch — never delete anything you could not classify. A matching
+   entry that fits NEITHER layout above (unexpected shape) is likewise
+   reported and STOPS the launch.
    Then, using that layout's pid-sidecar path:
    - pid sidecar exists and its PID is alive (`kill -0`): a tick is
      RUNNING — report path/branch/pid and STOP.
