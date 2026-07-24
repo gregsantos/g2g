@@ -1,16 +1,35 @@
 {
-  "verificationCommands": ["make check"],
-  "sourceDirs": ["plugin/"],
+  "verificationCommands": [
+    "make check"
+  ],
+  "sourceDirs": [
+    "plugin/"
+  ],
   "defaultBudgets": {
     "buildTurnsFactor": 2,
     "buildHours": 2,
-    "improveTurns": 50,
+    "improveTurns": 70,
     "improveHours": 1,
     "improveUsd": 25,
     "improveFindings": 3
   },
-  "improve": { "enabled": true },
-  "reviewFocus": ["code-quality", "test-coverage", "architecture", "security", "bug"],
-  "models": { "go": "sonnet", "builder": "sonnet", "verifier": "inherit" },
-  "artifactPaths": { "specs": "specs", "reviewOutput": "review-output" }
+  "improve": {
+    "enabled": true
+  },
+  "reviewFocus": [
+    "code-quality",
+    "test-coverage",
+    "architecture",
+    "security",
+    "bug"
+  ],
+  "models": {
+    "go": "sonnet",
+    "builder": "sonnet",
+    "verifier": "inherit"
+  },
+  "artifactPaths": {
+    "specs": "specs",
+    "reviewOutput": "review-output"
+  }
 }
