@@ -1,9 +1,9 @@
 {
   "project": "g2g",
-  "reviewDate": "2026-07-22",
+  "reviewDate": "2026-07-24",
   "scope": {
     "target": "plugin/",
-    "diffBase": "",
+    "diffBase": "428830abe1f7d69aeb082a747055c6e75545f576",
     "focus": [
       "code-quality",
       "test-coverage",
@@ -11,14 +11,14 @@
       "security",
       "bug"
     ],
-    "lastReviewedSha": "428830abe1f7d69aeb082a747055c6e75545f576"
+    "lastReviewedSha": "23649449d506c9aa0aceeeb157ae08313ba7bf66"
   },
   "summary": {
-    "total": 47,
+    "total": 57,
     "critical": 0,
     "high": 1,
-    "medium": 20,
-    "low": 26,
+    "medium": 24,
+    "low": 32,
     "info": 0
   },
   "findings": [
@@ -248,10 +248,10 @@
       "severity": "medium",
       "file": "plugin/README.md",
       "title": "Config section contradicts itself on whether models is live",
-      "description": "The Config section's intro sentence (line 134) states models and artifactPaths are deliberately reserved, but the detailed bullet at line 141 says models — live now for builder and verifier and documents active model routing consumed by /g2g:build (default sonnet builder / inherit verifier). The two statements directly contradict each other. This is stale summary text left behind when model routing was added (commit 5b2464b). An operator reading the intro will believe model routing does nothing and never configure it; only artifactPaths remains genuinely reserved. build.md Phase 3 step 6 and Phase 4 step 1 both rely on models being live.",
+      "description": "The Config section's intro sentence (line 134) states models and artifactPaths are deliberately reserved, but the detailed bullet at line 141 says models — live now for builder and verifier and documents active model routing consumed by /g2g:build (default sonnet builder / inherit verifier). The two statements directly contradict each other. This is stale summary text left behind when model routing was added (commit 5b2464b). An operator reading the intro will believe model routing does nothing and never configure it; only artifactPaths remains genuinely reserved. build.md Phase 3 step 6 and Phase 4 step 1 both rely on models being live. [stale-2026-07-24: README line 142 was corrected — it now lists models among the live fields with only artifactPaths reserved; the intro/bullet contradiction is gone.]",
       "suggestion": "Update line 134 to list models among the live fields (e.g. ...reviewFocus, sourceDirs, and models are live; artifactPaths is deliberately reserved), leaving only artifactPaths as reserved.",
       "effort": "small",
-      "addressed": null
+      "addressed": "stale-2026-07-24"
     },
     {
       "id": "F-021",
@@ -403,10 +403,10 @@
       "file": "plugin/commands/improve.md",
       "line": 51,
       "title": "Private repo checkout and transcript written to world-readable /tmp",
-      "description": "The improve launcher creates the entire working checkout at a predictable, world-traversable path (git worktree add /tmp/g2g-improve-<ts>, improve.md:51) and writes the full headless run transcript to > \"$WT.log\" (improve.md:68); improve-cycle.md additionally writes selected finding objects to /tmp/g2g-improve-<ts>.selected.json. Under a normal umask these are mode 0644/0755, so on a multi-user host any local user can read the complete source tree (including any secrets checked into the repo), the stream-json transcript (command outputs, file contents, tokens), and the finding data. This is a confidentiality exposure distinct from the symlink-overwrite (integrity) issue on the same paths recorded as F-015.",
+      "description": "The improve launcher creates the entire working checkout at a predictable, world-traversable path (git worktree add /tmp/g2g-improve-<ts>, improve.md:51) and writes the full headless run transcript to > \"$WT.log\" (improve.md:68); improve-cycle.md additionally writes selected finding objects to /tmp/g2g-improve-<ts>.selected.json. Under a normal umask these are mode 0644/0755, so on a multi-user host any local user can read the complete source tree (including any secrets checked into the repo), the stream-json transcript (command outputs, file contents, tokens), and the finding data. This is a confidentiality exposure distinct from the symlink-overwrite (integrity) issue on the same paths recorded as F-015. [stale-2026-07-24: the predictable /tmp/g2g-improve-<ts> path was replaced by an owner-only mktemp -d run root (mode 0700) holding the worktree, tick.log, tick.pid, and selected.json; the world-readable checkout/transcript exposure is gone.]",
       "suggestion": "Place the worktree, log, pid, and selected.json under a per-user private base directory (e.g. ${XDG_RUNTIME_DIR:-$HOME/.cache}/g2g or a mktemp -d root created with mode 0700), or explicitly set umask 077 before creating them, so the checkout and transcript are not world-readable.",
       "effort": "small",
-      "addressed": null
+      "addressed": "stale-2026-07-24"
     },
     {
       "id": "F-035",
@@ -606,6 +606,153 @@
       "references": [
         "plugin/commands/improve.md"
       ],
+      "addressed": null
+    },
+    {
+      "id": "F-048",
+      "category": "test-coverage",
+      "severity": "low",
+      "confidence": "high",
+      "file": "tests/commands.bats",
+      "line": 46,
+      "title": "Stop-hook fail-open clause added this cycle is not pinned by any test",
+      "description": "hooks.json's Stop-hook prompt is the sole completion enforcer. This cycle it gained a deliberate liveness clause: 'If you cannot find this session arming a goal, that IS the no-goal case — respond {\"ok\": true}; uncertainty about arming always resolves to ok true (never to insufficient evidence).' The existing hooks test (commands.bats:46-52) only asserts the prompt contains '.g2g-goal' and 'THIS session' substrings, so a future rewrite could silently drop the fail-open rule (reintroducing the spurious-block regression) and every test would still pass. The project already pins hook-prompt substrings here, so extending that pin is in-scope and consistent.",
+      "suggestion": "Add an assertion in the existing 'hooks: hooks.json is valid, session-scoped, and Stop-typed' test that the prompt still contains the fail-open invariant (e.g. an 'ok\": true'/'uncertainty' resolution substring) and the 'Output nothing but the JSON object' instruction, mirroring the existing '.g2g-goal'/'THIS session' checks.",
+      "effort": "small",
+      "references": [
+        "plugin/hooks/hooks.json"
+      ],
+      "addressed": null
+    },
+    {
+      "id": "F-049",
+      "category": "security",
+      "severity": "medium",
+      "confidence": "medium",
+      "file": "plugin/hooks/hooks.json",
+      "line": 8,
+      "title": "Stop-hook fails open on arming-detection uncertainty",
+      "description": "The Stop hook adds a clause making any inability to locate this session arming a goal resolve to {\"ok\": true}, disengaging completion enforcement rather than only the clear no-arming case; the concern raised was that adversarial/noisy transcript content under the improve flywheel could push the judge into the uncertain bucket and skip enforcement. REJECTED (rejected-2026-07-24): this is intentional, documented behavior — commit 3939e98 'Harden Stop-hook prompt: uncertainty about arming resolves to allow' deliberately chose fail-open to prevent the worse failure mode (spurious infinite Stop blocks). Arming detection keys on a structural transcript fact (this session writing .g2g-goal and reading it back near build start), which injected finding-text in downstream builder task cards does not obscure. The flagged behavior IS the design intent, so it is not a defect. The residual-documentation suggestion is marginal and subsumed by the F-017 trust caveat.",
+      "suggestion": "No action: the fail-open choice is deliberate (commit 3939e98). If desired, note the residual risk alongside the F-017 trust caveat in plugin/README.md, but do not change the hook's resolution behavior.",
+      "effort": "small",
+      "references": [
+        "F-017"
+      ],
+      "addressed": "rejected-2026-07-24"
+    },
+    {
+      "id": "F-050",
+      "category": "code-quality",
+      "severity": "low",
+      "confidence": "high",
+      "file": "plugin/scripts/g2g-lock.sh",
+      "line": 121,
+      "title": "Mutex teardown (child list + rmdir) duplicated in release_mutex and acquire_mutex",
+      "description": "The exact mutex-dismantle sequence `rm -f \"$MUTEX/owner\" \"$MUTEX/lock.tmp\" \"$MUTEX\"/lock.tmp.* 2>/dev/null || true` followed by `rmdir \"$MUTEX\" 2>/dev/null || true` appears verbatim twice: in release_mutex (lines 121-122) and in acquire_mutex's stale-recovery path (lines 170-171). The drift-prone part is the enumerated list of documented mutex children (owner, lock.tmp.*): if a future child file is added to the mutex directory, both copies must be updated in lockstep or a crash-recovery path silently leaves debris that makes rmdir fail and forces a fail-closed deadline wait.",
+      "suggestion": "Extract a single helper (e.g. purge_mutex_dir) that removes the documented children then rmdirs $MUTEX, and call it from both sites; keep the ownership guard at the call sites since only release_mutex is ownership-gated. Update tests/plugin_lock.bats in the same change.",
+      "effort": "small",
+      "addressed": null
+    },
+    {
+      "id": "F-051",
+      "category": "code-quality",
+      "severity": "low",
+      "confidence": "high",
+      "file": "plugin/scripts/g2g-lock.sh",
+      "line": 121,
+      "title": "Cleanup removes $MUTEX/lock.tmp, a filename the protocol never writes",
+      "description": "Both mutex-teardown lines (121 and 170) rm the bare literal \"$MUTEX/lock.tmp\" alongside the \"$MUTEX\"/lock.tmp.* glob. write_lock only ever creates \"$MUTEX/lock.tmp.$$\" (line 198), which the glob already matches; the unsuffixed lock.tmp is created by no code path and is not matched by lock.tmp.*. The literal is a harmless no-op but misleads a reader into thinking an unsuffixed temp file exists.",
+      "suggestion": "Drop the bare \"$MUTEX/lock.tmp\" operand from both teardown lines; the lock.tmp.* glob covers every temp file write_lock actually creates. Confirm plugin_lock.bats still passes.",
+      "effort": "small",
+      "addressed": null
+    },
+    {
+      "id": "F-052",
+      "category": "code-quality",
+      "severity": "medium",
+      "confidence": "high",
+      "file": "plugin/commands/build.md",
+      "line": 322,
+      "title": "release-terminal exit-code handling recap duplicated verbatim 3x",
+      "description": "The parenthetical instructing how to branch on g2g-lock.sh release-terminal's exit codes — 'exit 5: the pair is no longer yours — delete nothing and say so; any other nonzero exit: report the helper's output verbatim and leave the files for a human' — is repeated near-verbatim at three terminal paths: Phase 4 step 5 (line 322, conflict abort), Phase 4 step 6 (line 337, clean PR), and Phase 5 (line 354, partial stop). This is a load-bearing RULE recap: if the exit-code contract or the required operator response changes, three copies must be edited together or the terminal paths diverge. Distinct from F-021 (no-attribution) and F-022 (rule-recap across dev.md/improve-cycle.md).",
+      "suggestion": "Define the release-terminal exit-code handling once (e.g. a short 'TERMINAL RELEASE' subsection next to OWNERSHIP LOST) and have Phase 4 steps 5-6 and Phase 5 reference it by name, the way Phase 3 step 1 already references Phase 2 step 1's refresh gate.",
+      "effort": "small",
+      "references": [
+        "F-021",
+        "F-022"
+      ],
+      "addressed": null
+    },
+    {
+      "id": "F-053",
+      "category": "code-quality",
+      "severity": "low",
+      "confidence": "medium",
+      "file": "plugin/commands/build.md",
+      "line": 10,
+      "title": "Orchestrator intro is a dense ~20-line paragraph mixing several contracts",
+      "description": "The opening orchestrator paragraph (roughly lines 9-33) packs the owner-token choice, the full lock-helper exit-code contract (0/2/4/5/6/7/8), the ownership-checked-release rules, the 'this pair is build.md's alone' invariant, and the ephemeral-file lifecycle into a single unbroken block before Phase 1 begins. Because it front-loads the exit-code list that is then re-explained per-phase, the load-bearing 'never proceed as if you held the lock' rule is easy to skim past. This is framing prose, not a numbered step, so it escapes the imperative-procedure structure the rest of the file follows.",
+      "suggestion": "Split into a short 'you coordinate; the lock is helper-only' intro plus a small labeled 'Lock helper exit codes' list (defer detailed per-code handling to the phases that branch on them), so the intro states the invariant crisply and the codes are scannable.",
+      "effort": "medium",
+      "addressed": null
+    },
+    {
+      "id": "F-054",
+      "category": "architecture",
+      "severity": "medium",
+      "confidence": "medium",
+      "file": "plugin/commands/improve.md",
+      "line": 30,
+      "title": "Run-root/sidecar layout contract duplicated across four files with no single source",
+      "description": "The 0.2.5 run-root layout — worktree at <RUNDIR>/worktree, sidecars at <RUNDIR>/tick.pid and <RUNDIR>/tick.log, scratch at <RUNDIR>/selected.json, plus the current-vs-legacy discriminator — is a structural contract restated independently in at least four places: improve.md Busy checks + Launch (improve.md:30-71, 84-105), status.md Improve-ticks (status.md:22-32, which literally says 'the same <RUNDIR> derivation as improve.md's Busy checks'), improve-cycle.md (derives RUNDIR via dirname $(pwd) and hardcodes tick.pid/selected.json), and improve-nightly.md (create-side). No file owns the layout; reader-side derivations only work if they stay bit-for-bit in lockstep with improve.md's writer-side construction. A future layout change must be mirrored by hand across all four or ticks silently misreport as CRASHED/FINISHED and cleanup targets the wrong path. Extends and largely subsumes F-041 (which covers only the status.md<->improve.md RUNNING/CRASHED/FINISHED state logic); this is the broader path-layout contract. Same drift class as F-032 (gitignore check).",
+      "suggestion": "Name the layout contract in exactly one authoritative place (a short 'Run-root layout' section in improve.md or the operator ref) defining RUNDIR derivation, the four sidecar paths, and the legacy-vs-current discriminator, and have status.md/improve-cycle.md/improve-nightly.md reference it rather than re-describe it. A tiny helper printing sidecar paths for a worktree entry (mirroring how g2g-lock.sh centralized the lock protocol) would make it executable and testable. A fix here should also resolve F-041.",
+      "effort": "medium",
+      "references": [
+        "F-032",
+        "F-041"
+      ],
+      "addressed": null
+    },
+    {
+      "id": "F-055",
+      "category": "architecture",
+      "severity": "low",
+      "confidence": "medium",
+      "file": "plugin/commands/improve-cycle.md",
+      "line": 46,
+      "title": "Low-confidence fix-candidacy rule stated in three places that can drift",
+      "description": "The rule 'exclude confidence == low from autonomous fix candidacy; absent confidence is treated as medium' is encoded independently in three files: improve-cycle.md Phase I-2 candidate filter, writing-g2g-specs/SKILL.md step 1 (lines 83-84), and reviewing-codebase/SKILL.md's confidence table (line 30). Because improve-cycle.md executes spec.md (which follows writing-g2g-specs), a low-confidence finding is filtered twice on the improve path — safe belt-and-suspenders, but the eligibility threshold and the 'absent = medium' default now live in three prose copies that must change together. Distinct topic from F-029 (config-value defaults).",
+      "suggestion": "Designate reviewing-codebase/SKILL.md as the single normative source for confidence semantics and fix-candidacy eligibility, and have improve-cycle.md and writing-g2g-specs reference it ('candidates per the skill's confidence rules') rather than restate the threshold and the absent-default independently.",
+      "effort": "small",
+      "references": [
+        "F-029"
+      ],
+      "addressed": null
+    },
+    {
+      "id": "F-056",
+      "category": "bug",
+      "severity": "medium",
+      "confidence": "high",
+      "file": "plugin/commands/build.md",
+      "line": 290,
+      "title": "Phase 4 completion loop never refreshes the checkout-lock heartbeat",
+      "description": "Phase 3's turn contract refreshes the lock heartbeat every turn (step 1, g2g-lock.sh refresh) and routes to OWNERSHIP LOST on any nonzero exit — the liveness signal that stops a concurrent /g2g:build from reclaiming the lock as stale. Phase 4 (verifier dispatch, up to REVERIFY_CAP fix rounds each dispatching several synchronous fix-builders, rebase, push, PR) contains no refresh call at all; step 3 explicitly re-runs only the turn line and the Phase 3 step 2 cap check, not the step-1 refresh. If Phase 4 wall-clock exceeds G2G_LOCK_STALE_SECONDS (default 3600s) during its most critical final work, the heartbeat mtime goes stale while the build is alive. A concurrent build's acquire would then reclaim the checkout as stale debris, delete THIS build's .g2g-goal (disarming its Stop-hook enforcement mid-flight) and its lock, and arm its own goal — two builds on one checkout, exactly what the lock exists to prevent.",
+      "suggestion": "Add the Phase 2 step 1 / Phase 3 step 1 OWNERSHIP-CHECKED REFRESH (g2g-lock.sh refresh <owner-token>, routing nonzero exits to OWNERSHIP LOST) at the start of each Phase 4 iteration — before the verifier dispatch in step 1 and before each fix-builder dispatch in step 3 — so the heartbeat stays fresh throughout completion, mirroring the per-turn contract Phase 3 enforces.",
+      "effort": "small",
+      "addressed": null
+    },
+    {
+      "id": "F-057",
+      "category": "bug",
+      "severity": "low",
+      "confidence": "medium",
+      "file": "plugin/commands/build.md",
+      "line": 307,
+      "title": "Phase 4 fix loop skips the crash-tree stash recovery Phase 3 performs",
+      "description": "Phase 3 step 3 (lines 209-218) checks the tree each turn and, if a builder crashed leaving it dirty beyond the goal/lock exclusions, stashes with g2g-crash-<task-id> and passes the stash ref as recovery context to the next builder. Phase 4 step 3 dispatches fix-builders with only a turn line + cap check between them and no tree/stash check. If a Phase 4 fix-builder crashes mid-write, the dirty tree persists: the next fix-builder starts from a contaminated tree, the re-verify (step 1) judges a diff that excludes the uncommitted changes, and the rebase in step 5 fails on the dirty tree. Phase 4's fix loop reimplements only part of Phase 3's turn contract.",
+      "suggestion": "In the Phase 4 fix-builder loop (step 3), apply the same tree check and g2g-crash-<task-id> stash-and-carry recovery as Phase 3 step 3 before/between fix-builder dispatches, so a crashed fix-builder cannot leave a dirty tree that corrupts re-verification or the rebase.",
+      "effort": "small",
       "addressed": null
     }
   ]
