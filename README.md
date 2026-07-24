@@ -193,7 +193,53 @@ g2g/
 
 ```bash
 make check   # shellcheck + manifest validation + bats (brew install bats-core shellcheck)
+make smoke   # real headless build in a throwaway sandbox (~$1-3) — merge gate for command/agent changes
 ```
+
+### Developing the plugin (the dev loop)
+
+Install the released plugin normally on every machine — including dev
+machines:
+
+```
+/plugin marketplace add gregsantos/g2g
+/plugin install g2g@g2g
+```
+
+To develop and test changes, launch sessions with the working tree
+loaded directly:
+
+```bash
+alias g2gdev='claude --plugin-dir "$HOME/Dev/g2g/plugin"'
+```
+
+`--plugin-dir` is the documented dev mechanism: it loads the directory
+fresh every session (no cache), works in interactive and headless
+(`-p`) mode, and when the loaded plugin shares a name with an installed
+one, **the local copy takes precedence for that session** — no
+uninstall needed, no duplicated commands.
+
+The rule to remember: **flag = working tree (whatever branch is
+checked out); no flag = installed release.** There is no runtime
+command that shows a loaded plugin's source path, so the launch command
+is the source of truth. Do not hand-edit
+`~/.claude/plugins/installed_plugins.json` to point an install at the
+working tree — it works, but any effective `plugin update` or
+reinstall silently reverts it to a cache snapshot (and stamps an
+untracked `plugin/.orphaned_at` file into the repo).
+
+How the tooling composes with a dev session:
+
+- `make smoke` always exercises the working tree — it passes the
+  repo's `plugin/` path explicitly — regardless of how you launched.
+- Inside a `g2gdev` session, `${CLAUDE_PLUGIN_ROOT}` *is* the working
+  tree, so headless children spawned by `/g2g:improve` inherit the
+  dev code too.
+
+Release flow: bump `plugin/.claude-plugin/plugin.json`'s `version`
+(required for consumers to see the change), merge to main, then on
+consuming machines run `/plugin marketplace update g2g` — third-party
+marketplaces do not background-auto-update by default.
 
 ## License
 
