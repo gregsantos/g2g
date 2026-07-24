@@ -30,11 +30,11 @@
         "make check passes."
       ],
       "dependsOn": [],
-      "status": "in_progress",
-      "passes": false,
+      "status": "complete",
+      "passes": true,
       "effort": "small",
       "attempts": 0,
-      "notes": ""
+      "notes": "Phase 5 release-terminal reordered to run before push/PR (step 1), mirroring Phase 4 conflict path; exit-5/nonzero handling preserved. make check 66/66."
     },
     {
       "id": "T-002",
