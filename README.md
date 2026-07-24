@@ -149,6 +149,19 @@ Notes:
   run has no completion gate.
 - `specs/` and `review-output/` must be git-tracked: worktrees and
   fresh clones only materialize tracked files.
+- **Measuring actual cost.** `ANTHROPIC_API_KEY` outranks subscription
+  OAuth in Claude Code's auth precedence and is used without prompting
+  in `-p` mode, so a per-invocation
+  `ANTHROPIC_API_KEY=... claude -p ...` (or `... make smoke`) bills
+  just that child run to the Console key — the interactive session's
+  subscription login is untouched. Note that the `total_cost_usd` in
+  `json`/`stream-json` output is a client-side *estimate* under both
+  auth modes; actual billed cost lives in the Console usage dashboard
+  or the Usage & Cost API. Use a key from a dedicated Console
+  workspace to see a run's spend in isolation, and pass it via the
+  environment only — never inline in a command string that lands in
+  `tick.log` or a commit. `--max-budget-usd` enforces identically
+  under both auth modes.
 - For scheduled improvement ticks, see
   [plugin/routines/improve-nightly.md](plugin/routines/improve-nightly.md);
   the improve flywheel additionally requires the explicit
