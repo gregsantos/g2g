@@ -86,11 +86,11 @@
         "T-002",
         "T-003"
       ],
-      "status": "in_progress",
-      "passes": false,
+      "status": "complete",
+      "passes": true,
       "effort": "small",
       "attempts": 0,
-      "notes": ""
+      "notes": "Bumped plugin version 0.2.6 -> 0.2.7. make check 66/66."
     }
   ]
 }
