@@ -66,11 +66,11 @@
         "make check passes."
       ],
       "dependsOn": [],
-      "status": "in_progress",
-      "passes": false,
+      "status": "complete",
+      "passes": true,
       "effort": "small",
       "attempts": 0,
-      "notes": ""
+      "notes": "improve.md + improve-nightly.md resolve models.improveCycle (default sonnet) and pass --model; README Config + runbook Budget documented. Builder chose not to add inherit special-casing (out of criteria scope). make check 66/66."
     },
     {
       "id": "T-004",
