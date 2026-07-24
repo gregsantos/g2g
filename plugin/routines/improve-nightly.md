@@ -29,11 +29,15 @@ You are a scheduled G2G improvement tick running in a fresh clone.
    - `mkdir -p "$WT/.claude" && cp plugin/hooks/hooks.json
      "$WT/.claude/settings.json"` (skip the copy if the file
      materialized)
+   - Cycle model: read `.claude/g2g.json` → `models.improveCycle`,
+     defaulting to `sonnet` when the file or field is absent — same
+     resolution as the `/g2g:improve` launcher, so a nightly tick costs
+     the same as an interactively-launched one.
    - from inside the worktree (`cd "$WT"`):
      `claude -p "/g2g:improve-cycle" --plugin-dir "$PWD/plugin"
      --setting-sources project --permission-mode acceptEdits
      --allowedTools "Agent,Bash,Read,Write,Edit,Glob,Grep"
-     --max-turns 50 --max-budget-usd 25`
+     --max-turns 50 --max-budget-usd 25 --model <cycleModel>`
    (the cycle's instructions come from the clone's own plugin dir — no
    inlined drift; this step runs in the foreground and blocks until
    the cycle exits, so no pid/log sidecar is needed)
