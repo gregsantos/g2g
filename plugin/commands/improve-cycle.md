@@ -42,8 +42,14 @@ Execute the full procedure in `${CLAUDE_PLUGIN_ROOT}/commands/review.md`
    reopen in the backlog commit message. MERGED or still OPEN findings
    keep their value. If gh fails, skip this step with a warning —
    never reset `addressed` without confirming the PR's state.
-2. Candidates: findings with `addressed` null-or-absent and severity !=
-   info, ordered critical → high → medium → low (ties: lower id first).
+2. Candidates: findings with `addressed` null-or-absent, severity !=
+   info, and confidence != low (absent confidence = medium — legacy
+   findings stay eligible; low-confidence findings need investigation,
+   not an autonomous fix, and stay open for a human). Order critical →
+   high → medium → low; within a severity, smaller `effort` first
+   (small → medium → large — a verifiable small fix is a better use of
+   a capped build than a sprawling one); remaining ties: lower id
+   first.
 3. PR-overlap filter: `gh pr list --state open --json number,headRefName`;
    for each open `g2g/*` PR, `gh pr diff <number> --name-only`; drop
    any candidate whose `file` appears in any of those diffs (someone is

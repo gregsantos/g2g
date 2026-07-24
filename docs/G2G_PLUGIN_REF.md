@@ -61,6 +61,7 @@ worktrees; a *gitignored* one is worse (see §8).
 | `null` / absent | open — selectable by improve cycles | review |
 | `<PR number>` | a fix PR delivered it | improve cycle, Phase I-5 |
 | `"stale-<date>"` | revalidation found the symptom already gone | improve cycle, selection |
+| `"rejected-<date>"` | vetting showed the finding was wrong (false positive, by-design) — kept, never re-reported | review, vet step |
 
 A PR number only counts while its PR is open or merged: selection
 (Phase I-2 step 1a) checks each addressed PR's state and **reopens**
@@ -73,8 +74,11 @@ Rules worth knowing:
   re-running a review. Don't hand-clear them either; open a new finding
   if a fix regressed.
 - Selection (inside a tick) takes the top `improveFindings` (default 3)
-  open, non-`info` findings ordered critical → high → medium → low,
-  ties by lower id.
+  open, non-`info`, non-`low`-confidence findings ordered critical →
+  high → medium → low; within a severity, smaller effort first, then
+  lower id. (`low`-confidence findings stay open for human
+  investigation — an autonomous builder never chases an unconfirmed
+  symptom.)
 - Findings whose `file` appears in any open `g2g/*` PR's diff are
   skipped (someone is already touching it). Requires `gh`; without it
   the filter is skipped with a warning.
@@ -183,7 +187,7 @@ Every cycle ends in exactly one of:
   PR branch and run `/g2g:build specs/improve-<date>.json` to
   continue the committed spec by hand.
 - **Empty cycle** — no actionable findings (all addressed, stale, info,
-  or PR-overlapped). Success, not an error.
+  low-confidence, or PR-overlapped). Success, not an error.
 - **Abort** — guard failure or spec-generation failure, reported
   honestly with cleanup done.
 

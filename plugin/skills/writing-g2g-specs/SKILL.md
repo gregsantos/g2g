@@ -80,7 +80,10 @@ workflow changes → README.
 Converting a findings backlog (`review-output/findings.json`) into a
 buildable spec:
 
-1. Skip `info` findings — observations don't need fix tasks.
+1. Skip `info` findings — observations don't need fix tasks. Skip
+   `low`-confidence findings too (absent confidence counts as medium) —
+   they need investigation, not a fix task; a builder pointed at an
+   unconfirmed symptom burns its budget chasing a ghost.
 2. Group related findings by file/module — one task per root cause, not
    one per symptom.
 3. Order tasks critical → high → medium → low.

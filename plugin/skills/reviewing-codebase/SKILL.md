@@ -27,8 +27,8 @@ Each finding is an object in the `findings` array:
 | `description` | string | Yes | Detailed explanation of the issue |
 | `suggestion` | string | Yes | Recommended fix or improvement |
 | `effort` | string | Yes | One of: `small`, `medium`, `large` |
-| `references` | string[] | No | Links to relevant docs, OWASP IDs, etc. |
-| `addressed` | number\|string\|null | No | `null` (or absent — treated as null) while open; the fix PR's number once an improve cycle delivers one; `"stale-<date>"` when revalidation finds the symptom already gone. Set by improve cycles. Reviews must PRESERVE existing values, never clear or overwrite them. |
+| `confidence` | string | No | One of: `high` (read the code, certain), `medium` (strong signal, needs verification), `low` (smell, needs investigation). Absent — legacy findings predate the field — is treated as `medium`. `low`-confidence findings are recorded but excluded from fix-spec candidacy: they need investigation, not an autonomous fix. |
+| `addressed` | number\|string\|null | No | `null` (or absent — treated as null) while open; the fix PR's number once an improve cycle delivers one; `"stale-<date>"` when revalidation finds the symptom already gone; `"rejected-<date>"` when vetting shows the finding was wrong (false positive, by-design behavior). Set by improve cycles and review vetting. Reviews must PRESERVE existing values, never clear or overwrite them. |
 
 ### Findings File Structure
 
@@ -77,6 +77,16 @@ length` invariant.
 - `critical` requires demonstrated exploitability or data-loss path
 - `info` findings should highlight good patterns, not just fill space
 - A finding without a clear `suggestion` should not be `high` or `critical`
+
+**Confidence calibration rules:**
+- `confidence` measures certainty the symptom is real, NOT severity —
+  a `critical` finding can be `low` confidence and vice versa
+- `high` requires having read the cited code and confirmed the symptom
+- Anything inferred from patterns or names without reading the
+  surrounding code is at most `medium`
+- `low` is a legitimate value — record the smell rather than dropping
+  it or inflating it; it just never becomes a fix task until someone
+  investigates and upgrades it
 
 ## Category Analysis Techniques
 
@@ -147,7 +157,7 @@ When merging new analysis into an existing `findings.json`:
 4. **Increment ids** — continue from the highest existing id (F-015 → F-016)
 5. **Preserve `addressed`** — existing findings keep their `addressed` value untouched; new findings get `addressed: null`
 6. **Don't downgrade severity** — unless new information justifies it
-7. **Remove false positives** — if deeper analysis shows a finding was wrong, remove it and say so in the report
+7. **Reject false positives, never delete them** — if vetting or deeper analysis shows a finding was wrong, keep it in the file with `addressed: "rejected-<date>"` and the rejection reason appended to its `description`, and say so in the report. A deleted false positive gets rediscovered and re-reported by the next review; a rejected one stays in the dedup context forever
 8. **Recompute `summary`** — counts must equal the findings array, every write
 
 ## Tips

@@ -77,10 +77,14 @@ The spec-writing guidance ships as a plugin skill
 
 `/g2g:review` writes `review-output/findings.json` (the tracked
 backlog; schema in `plugin/skills/reviewing-codebase/`) and a
-regenerated `REVIEW_REPORT.md`, never committing. Each finding carries
-`addressed`: `null` while open, the fix PR's number once an improve
-cycle delivers one, or `stale-<date>` when revalidation finds it
-already fixed.
+regenerated `REVIEW_REPORT.md`, never committing. New subagent findings
+are vetted by the orchestrator (cited code read and confirmed) before
+they get an id. Each finding carries a `confidence` level (`low` means
+investigate, never auto-fix) and `addressed`: `null` while open, the
+fix PR's number once an improve cycle delivers one, `stale-<date>` when
+revalidation finds it already fixed, or `rejected-<date>` when vetting
+shows it was a false positive (kept in the backlog so it is never
+re-reported).
 
 `/g2g:improve` runs one bounded cycle — review → select top-N open
 findings (default 3, `defaultBudgets.improveFindings`) → fix-spec →

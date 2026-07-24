@@ -38,7 +38,7 @@ them yourself, or let an improve cycle carry them inside its fix PR.
    (empty string on a full sweep). A diff-scoped run narrows only the
    files newly analyzed for NEW findings; it never narrows revalidation
    — every existing open finding is re-checked regardless of whether
-   its file is in the diff (see step 4).
+   its file is in the diff (see step 5).
 
 ## Procedure
 1. Read `${CLAUDE_PLUGIN_ROOT}/skills/reviewing-codebase/SKILL.md` — it
@@ -53,16 +53,32 @@ them yourself, or let an improve cycle carry them inside its fix PR.
    run in parallel. Each subagent is read-only (instruct it: analysis
    only, no Write/Edit, no state changes) and receives: its category;
    that category's section from the skill's "Category Analysis
-   Techniques"; the "Severity Rubric" table with its calibration rules;
-   the anti-patterns list; the resolved target file list; the titles of
-   existing findings in its category (do not re-report these); and this
-   output contract — final message is a RAW JSON ARRAY of finding
-   objects (no prose, no markdown fences, no `id` and no `addressed`
-   fields: the orchestrator assigns both), each with
-   category/severity/file/line?/title/description/suggestion/effort/references?.
+   Techniques"; the "Severity Rubric" table with its calibration rules
+   and the "Confidence calibration rules"; the anti-patterns list; the
+   resolved target file list; the titles of existing findings in its
+   category (do not re-report these — this list includes rejected
+   findings, which stay rejected); recon context — 2–5 lines of decided
+   tradeoffs and conventions from CLAUDE.md and any docs/ decision
+   records, so documented, intentional behavior is not reported as a
+   finding; and this output contract — final message is a RAW JSON
+   ARRAY of finding objects (no prose, no markdown fences, no `id` and
+   no `addressed` fields: the orchestrator assigns both), each with
+   category/severity/confidence/file/line?/title/description/suggestion/effort/references?.
    If a subagent returns anything unparseable, re-dispatch it once;
    twice unparseable = drop that category and say so in the report.
-4. Merge per the skill's "Accumulation and Deduplication Rules": drop
+4. Vet every NEW finding before it gets an id — subagents over-report.
+   Open each cited location yourself and confirm the symptom is there
+   and is what the finding claims. Expect three failure classes:
+   by-design behavior reported as a defect (intentional patterns,
+   documented tradeoffs, framework conventions); mis-attributed
+   evidence (real symptom, wrong file or line — correct it); and
+   duplicates across subagents (same root cause — keep one). A finding
+   that fails vetting still enters the backlog, but with
+   `addressed: "rejected-<today>"` and the rejection reason appended to
+   its description, so no future review re-reports it. Downgrade
+   `confidence` where the evidence read weaker than claimed; never
+   upgrade it without reading the code.
+5. Merge per the skill's "Accumulation and Deduplication Rules": drop
    duplicates of existing findings and cross-category duplicates (same
    root cause); assign sequential ids continuing from the highest
    existing; new findings get `"addressed": null`; existing findings
@@ -72,7 +88,7 @@ them yourself, or let an improve cycle carry them inside its fix PR.
    diff-scoped run narrows only where NEW findings are hunted, never
    which open findings get re-checked; mark ones whose symptom is gone
    `"stale-<date>"` per the skill. Never clear a non-null `addressed`.
-5. Write `review-output/findings.json` (create the directory if
+6. Write `review-output/findings.json` (create the directory if
    needed) using the skill's file structure — project (repo name),
    reviewDate (today), scope {target, diffBase, focus,
    lastReviewedSha}, summary, findings. Set `scope.lastReviewedSha` to
@@ -81,13 +97,14 @@ them yourself, or let an improve cycle carry them inside its fix PR.
    incremental). Validate with real commands and show the output:
    `jq -e '.summary.total == (.findings | length)'
    review-output/findings.json` must print `true`.
-6. Regenerate `review-output/REVIEW_REPORT.md` from the merged
+7. Regenerate `review-output/REVIEW_REPORT.md` from the merged
    findings: title + reviewDate + scope line; a summary table (counts
    by severity); then one section per severity in rubric order, each
    finding rendered as `### F-xxx [severity] title` with file:line,
    description, suggestion, and `addressed` status; end with an "Open
    vs addressed" count line.
-7. Report: new findings vs pre-existing (counts by severity), the top
+8. Report: new findings vs pre-existing (counts by severity), findings
+   vetted out as rejected (with the one-line reason each), the top
    findings by severity, the scope actually used, and both artifact
    paths. If `git check-ignore review-output/findings.json` exits 0,
    WARN prominently: an ignored backlog vanishes in worktrees and
