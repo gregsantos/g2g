@@ -47,7 +47,7 @@
         "tests/templates.bats passes, and make check passes."
       ],
       "dependsOn": [],
-      "status": "pending",
+      "status": "in_progress",
       "passes": false,
       "effort": "small",
       "attempts": 0,
