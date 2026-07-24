@@ -47,11 +47,11 @@
         "tests/templates.bats passes, and make check passes."
       ],
       "dependsOn": [],
-      "status": "in_progress",
-      "passes": false,
+      "status": "complete",
+      "passes": true,
       "effort": "small",
       "attempts": 0,
-      "notes": ""
+      "notes": "Set builder:sonnet in all four templates + README Config sentence reconciled. make check 66/66 (templates + models tests pass)."
     },
     {
       "id": "T-003",
