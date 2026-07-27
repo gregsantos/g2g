@@ -134,15 +134,20 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
         || { echo "Phase 5 release must run on both push outcomes"; return 1; }
 }
 
-@test "contract: improveCycle 'inherit' is a sentinel, never a --model value" {
-    # models.improveCycle: "inherit" means use the invoking model. Both
-    # spawn sites must instruct dropping the --model flag for it —
-    # passing 'inherit' literally fails the claude -p spawn.
+@test "contract: improveCycle rejects 'inherit' at both spawn sites" {
+    # A spawned headless process has no session to inherit from: passing
+    # 'inherit' literally fails the claude -p spawn, and omitting --model
+    # silently selects the machine's CLI default. Both spawn sites must
+    # therefore reject the value outright, never reinterpret it.
     for f in commands/improve.md routines/improve-nightly.md; do
         grep -q 'models.improveCycle' "$PLUGIN_DIR/$f" \
             || { echo "$f no longer resolves models.improveCycle"; return 1; }
-        grep -Eqi '(omit|drop)[^.]*--model' "$PLUGIN_DIR/$f" \
-            || { echo "$f does not instruct omitting --model for inherit"; return 1; }
+        grep -q 'does not support `inherit`' "$PLUGIN_DIR/$f" \
+            || { echo "$f does not reject inherit for models.improveCycle"; return 1; }
+        if grep -Eqi '(omit|drop)[^.]*--model' "$PLUGIN_DIR/$f"; then
+            echo "$f reintroduced omit---model semantics for inherit (selects CLI default)"
+            return 1
+        fi
     done
 }
 

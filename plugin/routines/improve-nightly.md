@@ -33,14 +33,16 @@ You are a scheduled G2G improvement tick running in a fresh clone.
      defaulting to `sonnet` when the file or field is absent — same
      resolution as the `/g2g:improve` launcher, so a nightly tick costs
      the same as an interactively-launched one. As in the launcher,
-     `inherit` is a sentinel, not a model name: when the resolved value
-     is exactly `inherit`, omit the `--model` flag below entirely.
+     `models.improveCycle` does not support `inherit` (a spawned
+     headless process has no session to inherit from, and a routine has
+     no invoking model at all): if the resolved value is exactly
+     `inherit`, STOP and report the misconfiguration — never spawn on
+     the machine's CLI default.
    - from inside the worktree (`cd "$WT"`):
      `claude -p "/g2g:improve-cycle" --plugin-dir "$PWD/plugin"
      --setting-sources project --permission-mode acceptEdits
      --allowedTools "Agent,Bash,Read,Write,Edit,Glob,Grep"
      --max-turns 50 --max-budget-usd 25 --model <cycleModel>`
-     (drop `--model <cycleModel>` when the resolved value is `inherit`)
    (the cycle's instructions come from the clone's own plugin dir — no
    inlined drift; this step runs in the foreground and blocks until
    the cycle exits, so no pid/log sidecar is needed)
