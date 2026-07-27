@@ -75,7 +75,7 @@ EOF
 # hooks do not fire under --setting-sources project, which is the shape
 # every supervised smoke run here uses (see plugin/README.md, "Running
 # headless / unattended"). Copying hooks.json keeps a single source for
-# the hook prompt and its pinned model ID.
+# the hook prompt and its evaluator model.
 cp "$SCRIPT_DIR/../plugin/hooks/hooks.json" .claude/settings.json
 
 cat > review-output/findings.json <<'EOF'

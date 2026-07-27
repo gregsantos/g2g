@@ -90,9 +90,18 @@ age_seconds() {
     # restore, suspend/resume). Prints nothing when the mtime is
     # unreadable — callers must treat those two cases differently:
     # a future mtime is a LIVE artifact, never debris.
+    #
+    # The numeric guard (not just non-empty) is load-bearing: if the
+    # path vanishes between mtime_epoch's two stat calls and reappears
+    # (another contender recreating the mutex), GNU `stat -f %m <path>`
+    # — filesystem mode there — prints a multi-line block for the
+    # now-existing path. Feeding that to the arithmetic below dies
+    # under set -u ("File: unbound variable"), killing the caller with
+    # an unclassified exit instead of a protocol code. Garbage mtime =
+    # unreadable = live: never debris, never a crash.
     local mt
     mt=$(mtime_epoch "$1")
-    if [[ -z "$mt" ]]; then
+    if [[ ! "$mt" =~ ^[0-9]+$ ]]; then
         echo ""
         return 0
     fi

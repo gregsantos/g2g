@@ -27,9 +27,5 @@
     "go": "sonnet",
     "builder": "sonnet",
     "verifier": "inherit"
-  },
-  "artifactPaths": {
-    "specs": "specs",
-    "reviewOutput": "review-output"
   }
 }

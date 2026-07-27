@@ -4,6 +4,11 @@ argument-hint: '[--wait|--background] [--base <ref>] [--scope auto|working-tree|
 allowed-tools: Read, Glob, Grep, Bash(node:*), Bash(git:*), Bash(ls:*), AskUserQuestion
 ---
 
+NOTE: this is a repo-local command for g2g development, NOT part of the
+shipped plugin. It requires the third-party `openai-codex` plugin to be
+installed (`~/.claude/plugins/cache/openai-codex/...`); without it the
+command reports failure and does nothing.
+
 Project wrapper around the codex plugin's `/codex:adversarial-review`, without
 `disable-model-invocation` so it can run as the standing PR-review step: after
 `/g2g:build` or `/g2g:improve` opens a (never-merged) PR, run this against the

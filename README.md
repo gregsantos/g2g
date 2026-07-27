@@ -35,6 +35,21 @@ instead of spinning forever.
 | **Safety** | Auto-mode flags risky actions, but nothing mandates a PR workflow | **Branch-first, PR-gated, never self-merges**; one push at PR time; no detached background processes |
 | **Concurrency** | Single session, no coordination | A **checkout lock** (mutex + ownership token + stale reclaim) stops two builds corrupting one working copy |
 
+**What about dynamic workflows?** Native [dynamic
+workflows](https://code.claude.com/docs/en/workflows) are the closest
+primitive: a script the runtime executes, spawning fresh-context agents
+with caps and sequencing in code — exactly the shape of g2g's task loop.
+They do not, on their own, provide the rest: a completion gate that
+holds the session (Stop hook + evidence artifact), an adversarial
+verifier stage, the branch-first/PR-gated/never-merge ceremony, budget
+degradation to a reviewable partial PR, or the persistent findings
+backlog. g2g composes *with* workflows rather than competing:
+`/g2g:build-wf` (experimental) runs the same build with its task loop on
+the workflow runtime — caps enforced by counters instead of transcript
+lines — while keeping every g2g guarantee around it. It requires Claude
+Code >= 2.1.154 with workflows enabled; `/g2g:build` remains the stable
+engine everywhere else.
+
 ### The dimensions that matter
 
 - **Context rot.** A `/goal` run reasons about task 8 through the residue of
@@ -96,6 +111,7 @@ claude -p "/g2g:go 'fix the failing lint rules'" --plugin-dir /path/to/g2g/plugi
 | `/g2g:go "<task>" [--pr]` | One-off task: branch-first, implement, verify, commit |
 | `/g2g:spec "<prompt>" \| -f <file> \| --from-findings` | Generate a validated spec JSON in `specs/` for review |
 | `/g2g:build <spec.json> [--continue-branch]` | Goal-driven build: fresh builder per task, verifier-gated PR |
+| `/g2g:build-wf <spec.json> [--continue-branch]` | Experimental: the same build with the task loop on the dynamic-workflow runtime (caps enforced in code; requires workflows) |
 | `/g2g:dev "<prompt>" [--review]` | Pipeline: generate spec → build it |
 | `/g2g:review [--diff-base <ref>] [--full] [--focus <cats>] [--target <path>]` | Read-only review into the tracked findings backlog |
 | `/g2g:improve [--wait]` | One bounded improve tick: review → fix-spec → build → PR (strictly opt-in) |

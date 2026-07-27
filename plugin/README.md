@@ -31,12 +31,44 @@ New to the plugin in a fresh repo? Three steps:
 | `/g2g:init` | Interactive onboarding for a new repo: detect the stack, confirm the verification suite, write `.claude/g2g.json` and safety plumbing (never commits) |
 | `/g2g:go "<task>" [--pr]` | One-off task: branch-first, implement, verify, commit; `--pr` opens a PR |
 | `/g2g:build <spec.json> [--continue-branch]` | Goal-driven build from a spec: fresh builder per task, verifier-gated PR; `--continue-branch` resumes an existing `g2g/*` branch |
+| `/g2g:build-wf <spec.json> [--continue-branch]` | Experimental: same build with the task loop on the dynamic-workflow runtime — caps, sequencing, and report handling enforced in code (requires Claude Code >= 2.1.154 with workflows enabled) |
 | `/g2g:status` | Read-only dashboard: active goal, spec progress, open `g2g/*` PRs, worktrees |
 | `/g2g:spec "<prompt>" \| -f <file> \| --from-findings [path]` | Generate a validated spec JSON in `specs/` (no commit — review, then build) |
 | `/g2g:dev "<prompt>" [--review]` | Full pipeline: generate spec → build it; `--review` pauses for spec approval |
 | `/g2g:review [--diff-base <ref>] [--full] [--focus <cats>] [--target <path>]` | Read-only codebase review — parallel category subagents merged into the tracked findings backlog |
 | `/g2g:improve [--wait]` | One bounded improve tick: headless review → fix-spec → build → PR in a fresh worktree; `--wait` blocks until done |
 | `/g2g:improve-cycle` | Internal — the unit of work `/g2g:improve` spawns; refuses to run outside a `g2g/improve-*` worktree |
+
+## The workflow-backed build loop (experimental)
+
+`/g2g:build-wf` runs the same build as `/g2g:build` with the task loop
+moved onto the native dynamic-workflow runtime
+(`plugin/workflows/g2g-build.js`, invoked as the `g2g:build-loop`
+workflow). What changes and what doesn't:
+
+- **In code instead of prose:** dependency-ordered task selection,
+  TURN_CAP/HOURS_CAP enforcement (counters and a deadline, not a
+  `G2G TURN` transcript line an evaluator must spot), builder-report
+  handling (schema-validated structured output instead of marker-block
+  seeking), `attempts >= 2 -> blocked` bookkeeping, and the per-turn
+  heartbeat refresh + tree check (a scripted step no phase can skip).
+- **Unchanged:** preflight and the checkout lock, the `.g2g-goal`
+  Stop-hook gate (the armed condition keeps the subagent-delivered
+  VERIFIER REPORT requirement; only the turn-line cap clauses are
+  replaced by the workflow's terminal-outcome report), the adversarial
+  verifier gate and REVERIFY_CAP, spec state committed on every
+  transition (so `--continue-branch` and human inspection work
+  identically), single push at PR time, draft partial PRs, never merges.
+- **Builders read their contract from `agents/g2g-builder.md` at
+  runtime** — the rules live in one place and cannot drift between the
+  two engines.
+
+Requirements: Claude Code >= 2.1.154 with dynamic workflows enabled
+(`disableWorkflows` unset). Where the runtime is unavailable the command
+refuses and points at `/g2g:build`, which remains the stable engine.
+Until the workflow path has accumulated the same live mileage, treat it
+as experimental: run `make smoke` against it before relying on it
+unattended.
 
 ## Spec generation & the dev pipeline
 
@@ -139,7 +171,7 @@ budget-exhausted cycle lands a graceful partial draft PR.
 
 ## Config
 
-Optional `.claude/g2g.json` in the host repo (see [`.claude/g2g.json`](../.claude/g2g.json) here for an example). Field status below — `verificationCommands`, `defaultBudgets`, `reviewFocus`, `sourceDirs`, and `models` are live; only `artifactPaths` is deliberately reserved:
+Optional `.claude/g2g.json` in the host repo (see [`.claude/g2g.json`](../.claude/g2g.json) here for an example). Field status below — `verificationCommands`, `defaultBudgets`, `reviewFocus`, `sourceDirs`, and `models` are all live:
 
 - `verificationCommands` — **live now**: `/g2g:go` reads this to verify a one-off task, if the file exists and defines it (falls back to the repo's documented test/lint commands otherwise). `/g2g:spec` (and therefore `/g2g:dev`, which chains it) also reads this field as the priority source for a generated spec's `context.verificationCommands`, before falling back to the repo's documented test commands. **Not** read by `/g2g:build` — that command sources its verification commands from the spec's `context.verificationCommands` instead (already populated by `/g2g:spec` from this field, if present), see Spec format below.
 - `defaultBudgets` — **live now**: `buildTurnsFactor`/`buildHours` set `/g2g:build`'s TURN_CAP factor and wall-clock cap (defaults 2 / 2h); `improveTurns`/`improveUsd` cap the improve spawn (defaults 50 / $25); `improveFindings` sets findings-per-cycle (default 3). `improveHours` is documented-only: no wall-clock CLI flag exists, the turn cap approximates it.
@@ -147,7 +179,7 @@ Optional `.claude/g2g.json` in the host repo (see [`.claude/g2g.json`](../.claud
 - `reviewFocus` — **live now**: the categories `/g2g:review` fans out across when `--focus` isn't given.
 - `sourceDirs` — **live now**: the default review targets when `--target` isn't given.
 - `models` — **live now** for `builder`, `verifier`, and `improveCycle`: `/g2g:build` dispatches builder subagents with `models.builder` (falls back to `sonnet` when the field is absent — tasks are pre-decomposed with explicit criteria, a Sonnet-shaped job; every shipped template sets `builder: "sonnet"` explicitly, matching this default) and the verifier with `models.verifier` (default `inherit` — adversarial judgment stays on the session model). `"inherit"` means use the invoking session's model. `models.improveCycle` (default `sonnet`) is passed as `--model` on the `claude -p` process the `/g2g:improve` launcher (and the nightly routine) spawns — it does not support `inherit`, and both spawn sites fail the launch on it: a separate headless process has no session to inherit from (unlike `models.verifier`, a subagent dispatch inside the session, where inheritance is real), and omitting the flag would silently select the machine's CLI default; set an explicit model or omit the field for the `sonnet` default. The value crosses into the spawn command line, so both spawn sites validate it against a strict token pattern (`^[A-Za-z0-9][A-Za-z0-9._-]*$`) and pass it only as a quoted variable — anything else fails the launch rather than being interpolated — it routes the *entire* headless cycle (orchestrator, parallel review subagents, spec generation, and any builder/verifier dispatch inside it that doesn't set its own model), separately from the per-dispatch `models.builder`/`models.verifier` fields above. `models.go` is not read: `/g2g:go` hardcodes `model: sonnet` in its frontmatter (go.md); `/g2g:status` likewise pins `haiku`.
-- `artifactPaths` — **reserved (deliberately — no consumer in v1)**: intended override for where specs and review output live, for non-standard layouts; no command reads this yet.
+- Artifact locations are fixed at `specs/` and `review-output/` in v1. (An `artifactPaths` override was previously documented as reserved; it has been dropped from the templates until a command actually reads it — a config field with no consumer only invites misconfiguration.)
 
 ## Spec format
 
@@ -225,15 +257,15 @@ claude -p "/g2g:build specs/feature.json" \
   --max-budget-usd 20
 ```
 
-- `--allowedTools` is required alongside `acceptEdits` (which only auto-approves `Edit`/`Write`) — otherwise `Bash` calls get rejected until the session dies (Task 7; full list including `Agent` validated end-to-end in Task 11, Scenario A, ~line 707).
+- `--allowedTools` is required alongside `acceptEdits` (which only auto-approves `Edit`/`Write`) — otherwise `Bash` calls get rejected until the session dies (the full list including `Agent` was validated in recorded end-to-end spike runs).
 - `--setting-sources project` excludes the invoking user's personal settings — a real incident had a user-level `git push` approval gate silently deny a build's push.
-- `--max-budget-usd` is what backs the "headless spawns add a dollar cap" guardrail above — the recorded end-to-end runs (Task 7, Task 11) predate this flag being added to the invocation and ran without it; include it for any new headless spawn.
+- `--max-budget-usd` is what backs the "headless spawns add a dollar cap" guardrail above — the recorded end-to-end spike runs predate this flag being added to the invocation and ran without it; include it for any new headless spawn.
 - **Caveat:** under `--setting-sources project` the plugin's own Stop hook does not fire at all (re-confirmed 2026-07-20) — the host repo needs the hook duplicated into its own `.claude/settings.json`. **`/g2g:init` installs (or merges) this hook for you as part of onboarding** — run it once per repo and commit the result. Manual fallback, verbatim from [`plugin/hooks/hooks.json`](hooks/hooks.json) (this repo tracks such a copy at `.claude/settings.json`, so fresh clones and worktrees of g2g already have it):
 
   ```bash
   cp plugin/hooks/hooks.json .claude/settings.json
   ```
 
-The hook is **session-scoped**: it enforces only goals armed by the same session (the transcript must show that session writing `.g2g-goal` and reading it back). Sessions that never armed a goal — interactive sessions, or sessions running concurrently while another session's build has a live `.g2g-goal` — are allowed to stop immediately, so an armed goal can never conscript a bystander session into completing it.
+The hook is **session-scoped**: it enforces only goals armed by the same session (the transcript must show that session writing `.g2g-goal` and reading it back). Sessions that never armed a goal — interactive sessions, or sessions running concurrently while another session's build has a live `.g2g-goal` — are allowed to stop immediately, so an armed goal can never conscript a bystander session into completing it. The evaluator's uncertainty handling is asymmetric by design: uncertainty about whether a goal was *armed* resolves to allowing the stop (fail-open, protecting bystanders), but within the arming session uncertainty about whether the *condition is met* resolves to not met (fail-closed, protecting the build). Note also that once this hook is installed in a repo's `.claude/settings.json` it runs a small-model evaluation at every session Stop in that repo — cheap per call (the no-goal case short-circuits), but a standing cost worth knowing about.
 
 Interactive sessions need none of this setup — the plugin's hook fires normally there.

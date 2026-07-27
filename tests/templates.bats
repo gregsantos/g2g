@@ -2,7 +2,7 @@
 
 # Tests for plugin/templates/*.json — the g2g init starter templates.
 # Every template must parse as valid JSON and expose the required
-# defaultBudgets defaults and reviewFocus categories (see issue #15).
+# defaultBudgets defaults and reviewFocus categories.
 
 TEMPLATES_DIR="$BATS_TEST_DIRNAME/../plugin/templates"
 
@@ -97,4 +97,32 @@ TEMPLATES_DIR="$BATS_TEST_DIRNAME/../plugin/templates"
     run jq -e '.verificationCommands == ["bash verify.sh"]' \
         "$TEMPLATES_DIR/g2g-greenfield.json"
     [[ "$status" -eq 0 ]]
+}
+
+@test "templates: builder model is pinned to sonnet for predictable cost" {
+    # PR #3 (T-002) reconciled shipped templates with the documented
+    # sonnet default: "inherit" makes every builder dispatch run on the
+    # orchestrating session's model (interactive: possibly a much more
+    # expensive one). Pinned so a stale patch can't silently revert it.
+    for f in "$TEMPLATES_DIR"/*.json; do
+        run jq -e '.models.builder == "sonnet"' "$f"
+        [[ "$status" -eq 0 ]] || {
+            echo "models.builder must be \"sonnet\": $f"
+            return 1
+        }
+    done
+}
+
+@test "templates: no template ships config keys without a consumer (artifactPaths)" {
+    # artifactPaths was dropped from the templates because no command
+    # reads it — a config field with no consumer only invites
+    # misconfiguration (same principle as backlog finding F-030). If a
+    # consumer lands, reintroduce the field and update this test.
+    for f in "$TEMPLATES_DIR"/*.json; do
+        run jq -e 'has("artifactPaths") | not' "$f"
+        [[ "$status" -eq 0 ]] || {
+            echo "artifactPaths has no consumer and must not ship: $f"
+            return 1
+        }
+    done
 }

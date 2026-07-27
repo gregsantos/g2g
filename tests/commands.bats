@@ -229,6 +229,38 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     done
 }
 
+@test "safety: goal condition requires a subagent-delivered VERIFIER REPORT" {
+    # The evidence block's `verifier: PASS` line is read from the spec
+    # JSON, which the orchestrator itself writes; without this clause,
+    # completion could be reached by spec edits alone.
+    grep -q 'VERIFIER REPORT block with a verdict line of PASS' \
+        "$PLUGIN_DIR/commands/build.md"
+}
+
+@test "safety: verifier dispatch is preceded by an ownership-checked refresh" {
+    # A verification pass can outlast the lock's stale threshold; an
+    # unrefreshed heartbeat there lets a concurrent build reclaim the
+    # checkout mid-verify.
+    grep -A6 'Increment VERIFY_ROUND by 1' "$PLUGIN_DIR/commands/build.md" \
+        | grep -q 'OWNERSHIP-CHECKED REFRESH'
+}
+
+@test "hooks: arming-session uncertainty about the condition fails closed" {
+    # Bystander uncertainty (about ARMING) stays fail-open; the arming
+    # session's uncertainty (about the CONDITION) must block the stop.
+    run jq -r '.hooks.Stop[0].hooks[0].prompt' "$PLUGIN_DIR/hooks/hooks.json"
+    [[ "$output" == *"uncertainty about whether the condition is met resolves to NOT met"* ]] \
+        || { echo "prompt lost the arming-session fail-closed clause"; return 1; }
+}
+
+@test "contract: evidence head line is pinned by the evidence tests" {
+    # build.md's audit trail relies on the head line binding evidence to
+    # a tree state; if the script or its tests drop it, fail loudly here.
+    grep -q '^    echo "head: ' "$PLUGIN_DIR/scripts/g2g-evidence.sh" \
+        || grep -q 'head: \$HEAD_SHA' "$PLUGIN_DIR/scripts/g2g-evidence.sh"
+    grep -q 'head: none' "$BATS_TEST_DIRNAME/plugin_evidence.bats"
+}
+
 @test "safety: ownership loss is a terminal clause of the armed goal" {
     # The ownership-lost path deletes nothing, so without its own clause
     # in the goal condition the Stop hook would block the session until
@@ -258,6 +290,64 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     grep -q 'models.verifier' "$PLUGIN_DIR/commands/build.md"
     grep -q '^model: sonnet' "$PLUGIN_DIR/commands/go.md"
     grep -q '^model: haiku' "$PLUGIN_DIR/commands/status.md"
+}
+
+@test "workflow: build-loop script parses as JavaScript" {
+    command -v node >/dev/null 2>&1 || skip "node not installed"
+    # Workflow scripts use the runtime's documented shape: an exported
+    # meta block plus a body with top-level await/return, which the
+    # runtime executes as a function. Reproduce that for node --check:
+    # drop the export block and wrap the body in an async function.
+    WRAPPED="$BATS_TEST_TMPDIR/g2g-build-wrapped.js"
+    {
+        echo 'async function __wf(agent, pipeline, args) {'
+        sed '/^export const meta/,/^}/d' "$PLUGIN_DIR/workflows/g2g-build.js"
+        echo '}'
+    } > "$WRAPPED"
+    run node --check "$WRAPPED"
+    [[ "$status" -eq 0 ]] || { echo "$output"; return 1; }
+}
+
+@test "workflow: meta name agrees between the script and its wrapper" {
+    grep -q "name: 'build-loop'" "$PLUGIN_DIR/workflows/g2g-build.js"
+    grep -q 'build-loop' "$PLUGIN_DIR/commands/build-wf.md"
+}
+
+@test "workflow: builder schema fields agree with the agent contract" {
+    # The structured result replaces BUILDER REPORT parsing; its fields
+    # must track the report block in agents/g2g-builder.md.
+    for k in result commit verified notes; do
+        grep -q "$k" "$PLUGIN_DIR/workflows/g2g-build.js" \
+            || { echo "builder schema lost field: $k"; return 1; }
+        grep -q "$k" "$PLUGIN_DIR/agents/g2g-builder.md" \
+            || { echo "agent contract lost field: $k"; return 1; }
+    done
+    # Builders read the contract file at runtime — one source of truth.
+    grep -q 'agents/g2g-builder.md' "$PLUGIN_DIR/workflows/g2g-build.js"
+}
+
+@test "workflow: caps and ownership loss are enforced in code" {
+    grep -q 'turnCap' "$PLUGIN_DIR/workflows/g2g-build.js"
+    grep -q 'deadlineMs' "$PLUGIN_DIR/workflows/g2g-build.js"
+    grep -q "ownership-lost" "$PLUGIN_DIR/workflows/g2g-build.js"
+    grep -q 'g2g-lock.sh refresh' "$PLUGIN_DIR/workflows/g2g-build.js"
+}
+
+@test "safety: build-wf keeps the P1 verifier gate and terminal release" {
+    grep -q 'VERIFIER REPORT block with a verdict line of PASS' \
+        "$PLUGIN_DIR/commands/build-wf.md"
+    grep -q 'release-terminal' "$PLUGIN_DIR/commands/build-wf.md"
+    grep -qi 'NEVER merges' "$PLUGIN_DIR/commands/build-wf.md"
+}
+
+@test "safety: build-wf refuses to emulate the loop without the runtime" {
+    grep -qi 'do NOT emulate the loop' "$PLUGIN_DIR/commands/build-wf.md"
+}
+
+@test "contract: build-wf composes phases from build.md" {
+    grep -q 'build.md' "$PLUGIN_DIR/commands/build-wf.md"
+    [[ -f "$PLUGIN_DIR/commands/build.md" ]]
+    grep -q 'G2G OWNERSHIP LOST' "$PLUGIN_DIR/commands/build-wf.md"
 }
 
 @test "metadata: plugin and marketplace names agree" {

@@ -1,6 +1,6 @@
 ---
 name: g2g-builder
-description: Fresh-context executor for exactly one G2G spec task. Implements, verifies, commits, reports. Dispatched by /g2g:build — do not invoke for general work.
+description: Fresh-context executor for exactly one G2G spec task. Implements, verifies, commits, reports. Dispatched by /g2g:build and by the g2g:build-loop workflow (/g2g:build-wf) — do not invoke for general work.
 ---
 
 You are a G2G builder: you execute EXACTLY ONE task from a spec, then stop.

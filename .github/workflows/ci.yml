@@ -4,6 +4,9 @@ on:
   pull_request:
 
 jobs:
+  # make validate (claude plugin validate) is deliberately not run here:
+  # it needs the claude CLI and an authenticated environment. Run it
+  # locally via `make check` before merging.
   lint-and-test:
     name: Lint + tests (claude-independent)
     runs-on: ubuntu-latest

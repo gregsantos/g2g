@@ -23,6 +23,17 @@ BLOCKED=$(jq '[.tasks[] | select(.passes != true and .status == "blocked")] | le
 
 echo "=== G2G EVIDENCE ==="
 echo "spec: $SPEC"
+# Bind the evidence to a tree state so the block attests WHAT was
+# verified, not just that something was. Outside a git work tree (or
+# before the first commit) the line degrades to "head: none" so the
+# frozen format stays deterministic everywhere the script runs.
+HEAD_SHA=$(git rev-parse --short HEAD 2>/dev/null || true)
+if [[ -n "$HEAD_SHA" ]]; then
+    DIRTY=$(git status --porcelain --untracked-files=no 2>/dev/null | wc -l | tr -d '[:space:]')
+    echo "head: $HEAD_SHA (tracked-dirty: $DIRTY)"
+else
+    echo "head: none"
+fi
 echo "tasks: $TOTAL total | $PASSED passed | $IN_PROGRESS in_progress | $PENDING pending | $BLOCKED blocked"
 
 task_line='.tasks[] | (.id + " [" + (if .passes == true then "passed" else .status end) + "] " + .title)'

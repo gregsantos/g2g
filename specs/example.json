@@ -49,7 +49,8 @@
       "status": "pending",
       "passes": false,
       "effort": "small",
-      "notes": ""
+      "notes": "",
+      "attempts": 0
     },
     {
       "id": "T-003",
@@ -66,7 +67,8 @@
       "status": "pending",
       "passes": false,
       "effort": "medium",
-      "notes": ""
+      "notes": "",
+      "attempts": 0
     },
     {
       "id": "T-004",
@@ -84,7 +86,8 @@
       "status": "pending",
       "passes": false,
       "effort": "medium",
-      "notes": ""
+      "notes": "",
+      "attempts": 0
     },
     {
       "id": "T-005",
@@ -99,7 +102,8 @@
       "status": "pending",
       "passes": false,
       "effort": "small",
-      "notes": ""
+      "notes": "",
+      "attempts": 0
     }
   ],
   "verifier": null,

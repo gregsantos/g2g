@@ -152,7 +152,11 @@ command (confirmed by spike). Instead:
    not authored as plain assistant text, shows the tasks summary line
    reporting all tasks passed — <N> total | <N> passed — with zero
    in_progress/pending/blocked, every verify line exiting 0, and verifier:
-   PASS — or the transcript shows a G2G TURN line where k >= <TURN_CAP>,
+   PASS, AND the transcript also shows, after this condition was armed, a
+   VERIFIER REPORT block with a verdict line of PASS delivered as the
+   final message of a dispatched g2g:g2g-verifier subagent (visible as
+   Agent tool output in the transcript, not authored as plain assistant
+   text) — or the transcript shows a G2G TURN line where k >= <TURN_CAP>,
    or shows a G2G TURN line whose 'now' timestamp is more than
    <HOURS_CAP> hours past its 'build started' timestamp, or shows the
    exact line 'G2G OWNERSHIP LOST <owner-token>' printed BY ITSELF as a
@@ -165,7 +169,12 @@ command (confirmed by spike). Instead:
    (Keying on the always-present counts line rather than per-task lines
    matters because `g2g-evidence.sh` omits per-task listings once a spec
    has more than 12 tasks — the summary line is the only completion signal
-   guaranteed to be present at any spec size. The ownership-lost clause
+   guaranteed to be present at any spec size. The VERIFIER REPORT clause
+   exists because the evidence block's `verifier: PASS` line is read from
+   the spec JSON, which YOU maintain — requiring the subagent's own
+   report in the transcript means completion cannot be reached by spec
+   edits alone; the verdict must come from a real g2g-verifier dispatch.
+   The ownership-lost clause
    exists because that terminal path deletes nothing — without it the
    armed goal would block the session's Stop indefinitely once the caps
    are unreachable.)
@@ -254,8 +263,8 @@ reimplemented directly since the plugin-command layer can't reach
    (a completion claim). Print its output verbatim, as the real output of
    running the script — do not hand-write this block; the goal condition
    requires it to come from the script, and the evaluator has been
-   confirmed able to tell tool-emitted output from typed text when the
-   condition says so (spike doc, Task 2).
+   confirmed by spike able to tell tool-emitted output from typed text
+   when the condition says so.
 
 ## OWNERSHIP LOST — non-mutating terminal path
 Reached only from a heartbeat refresh (Phase 2 step 1, Phase 3 step 1)
@@ -287,8 +296,13 @@ this phase. This round cap is an ADDITIONAL bound on top of — never a
 replacement for — the per-finding TURN_CAP/HOURS_CAP checks in step 3: a
 verifier/builder disagreement that keeps failing must not ping-pong at the
 finish line and burn the whole remaining budget before surfacing partial work.
-1. Increment VERIFY_ROUND by 1, then dispatch a `g2g:g2g-verifier` subagent
-   SYNCHRONOUSLY, passing the
+1. Increment VERIFY_ROUND by 1. Before dispatching, print the turn line
+   (same format as Phase 3 step 1) and run the OWNERSHIP-CHECKED REFRESH
+   exactly as Phase 3 step 1 does — a verification pass can outlast the
+   lock's stale threshold, and an unrefreshed heartbeat here would let a
+   concurrent build reclaim the checkout mid-verify; any nonzero exit
+   routes to OWNERSHIP LOST per that step's branch table. Then dispatch
+   a `g2g:g2g-verifier` subagent SYNCHRONOUSLY, passing the
    spec path and base ref = the default branch. Model routing: from
    `.claude/g2g.json` → `models.verifier`, same rules as the builder
    dispatch (Phase 3 step 6) except the default is `inherit` — the

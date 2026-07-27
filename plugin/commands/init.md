@@ -82,7 +82,10 @@ silently.
      hook does not fire under `--setting-sources project` (how headless
      builds run), so the host repo needs the hook duplicated into its
      own `.claude/settings.json` (plugin README, "Running headless /
-     unattended"). Then:
+     unattended"). Also state the standing cost before asking: once
+     installed, the hook runs a small-model evaluation at every session
+     Stop in this repo — cheap per call (the no-goal case
+     short-circuits), but permanent until removed. Then:
      - `.claude/settings.json` ABSENT: show what will be written (a copy
        of `${CLAUDE_PLUGIN_ROOT}/hooks/hooks.json`), ASK, and copy on
        approval.

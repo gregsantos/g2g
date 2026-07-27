@@ -123,13 +123,44 @@ setup() {
         {"id":"T-001","title":"First","status":"complete","passes":true},
         {"id":"T-002","title":"Second","status":"pending","passes":false}
     ]' '{"verdict":"PASS"}'
-    run "$EVIDENCE" "$GOLD"
+    # GIT_DIR points at a non-repo so the head line is deterministic
+    # regardless of where bats was invoked from.
+    run env GIT_DIR="$BATS_TEST_TMPDIR/nogit" "$EVIDENCE" "$GOLD"
     expected="=== G2G EVIDENCE ===
 spec: $GOLD
+head: none
 tasks: 2 total | 1 passed | 0 in_progress | 1 pending | 0 blocked
 T-001 [passed] First
 T-002 [pending] Second
 verifier: PASS
 === END G2G EVIDENCE ==="
     [[ "$output" == "$expected" ]]
+}
+
+@test "evidence: head line binds the block to a commit and tracked-dirty count" {
+    REPO="$BATS_TEST_TMPDIR/repo"
+    mkdir -p "$REPO"
+    cd "$REPO" || return 1
+    git init -q -b main
+    git -c user.email=t@t -c user.name=t commit -q --allow-empty -m init
+    echo x > tracked.txt
+    git add tracked.txt
+    git -c user.email=t@t -c user.name=t commit -qm add
+    SPEC2="$REPO/spec.json"
+    make_spec "$SPEC2" '[{"id":"T-001","title":"First","status":"pending","passes":false}]'
+    run "$EVIDENCE" "$SPEC2"
+    [[ "$status" -eq 0 ]]
+    # spec.json itself is untracked, so tracked-dirty stays 0.
+    [[ "$output" =~ head:\ [0-9a-f]+\ \(tracked-dirty:\ 0\) ]] || {
+        echo "missing clean head line: $output"; return 1; }
+    echo y > tracked.txt   # dirty a TRACKED file
+    run "$EVIDENCE" "$SPEC2"
+    [[ "$output" =~ head:\ [0-9a-f]+\ \(tracked-dirty:\ 1\) ]] || {
+        echo "missing dirty head line: $output"; return 1; }
+}
+
+@test "evidence: head line degrades to none outside a git work tree" {
+    run env GIT_DIR="$BATS_TEST_TMPDIR/nogit" "$EVIDENCE" "$SPEC"
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == *"head: none"* ]]
 }
