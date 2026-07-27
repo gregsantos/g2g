@@ -29,11 +29,27 @@ You are a scheduled G2G improvement tick running in a fresh clone.
    - `mkdir -p "$WT/.claude" && cp plugin/hooks/hooks.json
      "$WT/.claude/settings.json"` (skip the copy if the file
      materialized)
+   - Cycle model: read `.claude/g2g.json` → `models.improveCycle`,
+     defaulting to `sonnet` when the file or field is absent — same
+     resolution as the `/g2g:improve` launcher, so a nightly tick costs
+     the same as an interactively-launched one. As in the launcher,
+     `models.improveCycle` does not support `inherit` (a spawned
+     headless process has no session to inherit from, and a routine has
+     no invoking model at all): if the resolved value is exactly
+     `inherit`, STOP and report the misconfiguration — never spawn on
+     the machine's CLI default. Every other value must be a JSON
+     string matching `^[A-Za-z0-9][A-Za-z0-9._-]*$` — it crosses into
+     the spawn command line, so any other type or shape (null, number,
+     array, empty, whitespace, metacharacters) STOPS the run with the
+     offending value quoted, never interpolated. Set `CYCLE_MODEL` to
+     the validated value.
    - from inside the worktree (`cd "$WT"`):
      `claude -p "/g2g:improve-cycle" --plugin-dir "$PWD/plugin"
      --setting-sources project --permission-mode acceptEdits
      --allowedTools "Agent,Bash,Read,Write,Edit,Glob,Grep"
-     --max-turns 50 --max-budget-usd 25`
+     --max-turns 50 --max-budget-usd 25 --model "$CYCLE_MODEL"`
+     (always the quoted variable expansion of the validated value,
+     never raw config text substituted into the command)
    (the cycle's instructions come from the clone's own plugin dir — no
    inlined drift; this step runs in the foreground and blocks until
    the cycle exits, so no pid/log sidecar is needed)

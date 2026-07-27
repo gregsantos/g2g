@@ -231,6 +231,12 @@ PR. That data is why the default is now **25**. Sizing guidance:
   *nothing*, unlike the inner caps which route to a partial draft PR.
 - `improveFindings` (default 3): fewer findings per tick = cheaper,
   more predictable cycles; the flywheel's cadence does the rest.
+- `models.improveCycle` (default `sonnet`): the model the spawned
+  `claude -p` cycle process itself runs on — orchestrator, review
+  subagents, and spec generation all inherit it, so tick cost scales
+  directly with this choice; raise it to a premium model only if you
+  need stronger judgment there and are willing to pay the cycle's full
+  turn count at that rate.
 - **Incremental review (biggest lever):** the five parallel category
   subagents are what make review the dominant tick cost. After its
   first run, `/g2g:review` records `scope.lastReviewedSha` in

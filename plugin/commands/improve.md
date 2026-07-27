@@ -76,8 +76,32 @@ fallback.
 
 ## Launch
 1. Caps: `.claude/g2g.json` → `defaultBudgets.improveTurns` (else 50)
-   and `defaultBudgets.improveUsd` (else 25). (`improveHours` is
+   and `defaultBudgets.improveUsd` (else 25). Both must be positive
+   JSON numbers — any other type or shape FAILS the launch; they cross
+   into the spawn command line. (`improveHours` is
    approximated by the turn cap — no wall-clock flag exists.)
+   Cycle model: `.claude/g2g.json` → `models.improveCycle`, defaulting
+   to `sonnet` when the file or field is absent. `models.improveCycle`
+   does not support `inherit`: a spawned headless process has no
+   session to inherit from — a spawn without `--model` silently selects
+   the machine's CLI default (possibly the most expensive tier), and
+   passing `inherit` literally fails the spawn. If the resolved value
+   is exactly `inherit`, FAIL the launch now with that explanation and
+   tell the operator to set an explicit model or remove the field for
+   the `sonnet` default. Every other value is untrusted input crossing
+   into a shell command: it must be a JSON string matching
+   `^[A-Za-z0-9][A-Za-z0-9._-]*$` (alphanumeric start; no whitespace,
+   quotes, leading dashes, or shell metacharacters — a value like
+   `sonnet --max-budget-usd 1000` would otherwise smuggle extra CLI
+   flags past the caps). Any other type or shape (null, number, array,
+   empty, pattern miss): FAIL the launch quoting the offending value —
+   never interpolate it. Set `CYCLE_MODEL` to the validated value for
+   step 4. This is distinct from
+   `models.builder`/`models.verifier`, which only route dispatches
+   *within* the cycle (subagent dispatches, where `inherit` is real
+   inheritance) — `models.improveCycle` is what the whole spawned
+   process (orchestrator + review subagents + spec generation, plus any
+   builder/verifier dispatch that doesn't itself set a model) runs on.
 2. Create the run root unpredictably and owner-only, then the
    worktree inside it (never a bare `date`-derived /tmp path — that
    is a symlink-plantable, world-readable location):
@@ -101,9 +125,14 @@ fallback.
    --permission-mode acceptEdits
    --allowedTools "Agent,Bash,Read,Write,Edit,Glob,Grep"
    --max-turns <improveTurns> --max-budget-usd <improveUsd>
+   --model "$CYCLE_MODEL"
    --output-format stream-json --verbose
    > "$RUNDIR/tick.log" 2>&1 & echo $! > "$RUNDIR/tick.pid"`
-   where `<SPAWN_PROMPT>` is `/g2g:improve-cycle`.
+   where `<SPAWN_PROMPT>` is `/g2g:improve-cycle` and `$CYCLE_MODEL`
+   holds the value resolved AND validated in step 1 — always the
+   quoted variable expansion, never a raw substitution of config text
+   into the command (`inherit` and pattern misses never reach this
+   point; step 1 fails the launch on them).
 5. Without `--wait`: report the worktree path, branch, PID, log path
    (`$RUNDIR/tick.log`), and caps, plus how to watch it
    (`tail -f "$RUNDIR/tick.log"`, `/g2g:status`) and how to kill it

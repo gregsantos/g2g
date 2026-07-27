@@ -341,19 +341,33 @@ finish line and burn the whole remaining budget before surfacing partial work.
    in your final message. Report the PR URL.
 
 ## Phase 5 — Terminal stop (cap hit, re-verify round cap hit, or all remaining tasks blocked)
-Push the branch once and open a DRAFT PR labeled `g2g:partial` — title
-"g2g: <project> (partial)", body = the latest evidence block + which
-tasks are blocked/pending and why. When Phase 4 step 3 routed here because
-the re-verification round cap was reached, also list the verifier's
-outstanding findings it passed in, so the disagreement is surfaced for a
-human rather than retried indefinitely. The PR title and body must contain no
-attribution lines (no 'Generated with Claude Code', no Co-Authored-By
-trailers). Before finishing, run
-`${CLAUDE_PLUGIN_ROOT}/scripts/g2g-lock.sh release-terminal <owner-token>`
-to remove the goal/lock pair (so the Stop hook allows the session to
-stop; exit 5: the pair is no longer yours — delete nothing and say
-so; any other nonzero exit: report the helper's output verbatim and
-leave the files for a human) and mention the release outcome in your
-final message. Partial work
-is always surfaced, never abandoned. Report honestly: this is a partial
-result, not a completion.
+1. FIRST, before attempting any push or PR creation, run
+   `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-lock.sh refresh <owner-token>`
+   to confirm the checkout is still yours — never publish while
+   ownership is in doubt. Any nonzero exit: go to OWNERSHIP LOST —
+   push nothing, open no PR. Releasing before the push is forbidden:
+   a released checkout is up for grabs, and a reclaiming build could
+   advance this branch between the release and the push.
+2. Push the branch once (`git push -u origin <branch>`) and open a
+   DRAFT PR labeled `g2g:partial` — title "g2g: <project> (partial)",
+   body = the latest evidence block + which tasks are blocked/pending
+   and why. When Phase 4 step 3 routed here because the re-verification
+   round cap was reached, also list the verifier's outstanding findings
+   it passed in, so the disagreement is surfaced for a human rather
+   than retried indefinitely. The PR title and body must contain no
+   attribution lines (no 'Generated with Claude Code', no
+   Co-Authored-By trailers). If `git push` or `gh pr create` fails,
+   report the failure verbatim along with the branch/commit state for a
+   human to salvage, then CONTINUE to step 3 — the release below runs
+   on the failure path too.
+3. Run `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-lock.sh release-terminal
+   <owner-token>` — on BOTH the success and failure outcomes of step 2,
+   mirroring Phase 4 step 6's push-then-release order. This is what
+   lets the Stop hook allow the session to end, so it must happen
+   regardless of whether the push or PR creation succeeded; exit 5:
+   the pair is no longer yours — delete nothing and say so; any other
+   nonzero exit: report the helper's output verbatim and leave the
+   files for a human. Mention the release outcome in your final
+   message.
+4. Partial work is always surfaced, never abandoned. Report honestly:
+   this is a partial result, not a completion.

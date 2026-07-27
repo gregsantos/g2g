@@ -109,6 +109,74 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     fi
 }
 
+@test "safety: Phase 5 holds ownership through the push, then releases" {
+    # Control-flow pin, not a mention count: within the Phase 5 section,
+    # the ownership check (refresh) must precede the push, and
+    # release-terminal must come after the push — a release-before-push
+    # window lets a reclaiming build advance the branch before this
+    # session publishes it.
+    section=$(sed -n '/^## Phase 5/,/^## /p' "$PLUGIN_DIR/commands/build.md")
+    refresh_line=$(printf '%s\n' "$section" | grep -n 'g2g-lock.sh refresh' | head -1 | cut -d: -f1)
+    push_line=$(printf '%s\n' "$section" | grep -n 'git push -u origin' | head -1 | cut -d: -f1)
+    release_line=$(printf '%s\n' "$section" | grep -n 'release-terminal' | head -1 | cut -d: -f1)
+    [[ -n "$refresh_line" && -n "$push_line" && -n "$release_line" ]] \
+        || { echo "Phase 5 missing refresh/push/release (got: refresh=$refresh_line push=$push_line release=$release_line)"; return 1; }
+    [[ "$refresh_line" -lt "$push_line" ]] \
+        || { echo "Phase 5 must confirm ownership (refresh) before pushing"; return 1; }
+    [[ "$push_line" -lt "$release_line" ]] \
+        || { echo "Phase 5 must push before release-terminal (release-before-push publishes contested state)"; return 1; }
+    # The failure path must still reach the release: the push step has to
+    # route to it explicitly, and nonzero refresh must route to the
+    # non-mutating OWNERSHIP LOST path.
+    printf '%s\n' "$section" | grep -q 'OWNERSHIP LOST' \
+        || { echo "Phase 5 refresh failure must route to OWNERSHIP LOST"; return 1; }
+    printf '%s\n' "$section" | grep -qi 'BOTH the success and failure' \
+        || { echo "Phase 5 release must run on both push outcomes"; return 1; }
+}
+
+@test "safety: improveCycle model value is validated and quoted at both spawn sites" {
+    # The config value crosses into the spawn command line: both spawn
+    # sites must pin the strict allowlist pattern and pass the value only
+    # as a quoted variable expansion — raw interpolation of config text
+    # after the caps could smuggle extra CLI flags past the budget.
+    pattern='^[A-Za-z0-9][A-Za-z0-9._-]*$'
+    for f in commands/improve.md routines/improve-nightly.md; do
+        grep -qF "$pattern" "$PLUGIN_DIR/$f" \
+            || { echo "$f missing the model allowlist pattern"; return 1; }
+        grep -qF -- '--model "$CYCLE_MODEL"' "$PLUGIN_DIR/$f" \
+            || { echo "$f does not pass the model as a quoted variable"; return 1; }
+    done
+    # Behavioral: the pinned allowlist itself must reject injection
+    # shapes and accept real model slugs.
+    for bad in 'sonnet --max-budget-usd 1000' '-opus' 'son;net' '' 'a b' '$(id)' 'a"b'; do
+        if [[ "$bad" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+            echo "allowlist accepts unsafe value: '$bad'"
+            return 1
+        fi
+    done
+    for good in sonnet opus haiku claude-fable-5 us.anthropic.claude-sonnet-5 gpt-5.4; do
+        [[ "$good" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] \
+            || { echo "allowlist rejects real slug: $good"; return 1; }
+    done
+}
+
+@test "contract: improveCycle rejects 'inherit' at both spawn sites" {
+    # A spawned headless process has no session to inherit from: passing
+    # 'inherit' literally fails the claude -p spawn, and omitting --model
+    # silently selects the machine's CLI default. Both spawn sites must
+    # therefore reject the value outright, never reinterpret it.
+    for f in commands/improve.md routines/improve-nightly.md; do
+        grep -q 'models.improveCycle' "$PLUGIN_DIR/$f" \
+            || { echo "$f no longer resolves models.improveCycle"; return 1; }
+        grep -q 'does not support `inherit`' "$PLUGIN_DIR/$f" \
+            || { echo "$f does not reject inherit for models.improveCycle"; return 1; }
+        if grep -Eqi '(omit|drop)[^.]*--model' "$PLUGIN_DIR/$f"; then
+            echo "$f reintroduced omit---model semantics for inherit (selects CLI default)"
+            return 1
+        fi
+    done
+}
+
 @test "safety: clean-tree preflight exempts the goal/lock pair" {
     # Host repos without the .gitignore rule show the just-created lock
     # as untracked; treating that as dirt would abort every build there.
