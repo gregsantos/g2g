@@ -134,6 +134,32 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
         || { echo "Phase 5 release must run on both push outcomes"; return 1; }
 }
 
+@test "safety: improveCycle model value is validated and quoted at both spawn sites" {
+    # The config value crosses into the spawn command line: both spawn
+    # sites must pin the strict allowlist pattern and pass the value only
+    # as a quoted variable expansion — raw interpolation of config text
+    # after the caps could smuggle extra CLI flags past the budget.
+    pattern='^[A-Za-z0-9][A-Za-z0-9._-]*$'
+    for f in commands/improve.md routines/improve-nightly.md; do
+        grep -qF "$pattern" "$PLUGIN_DIR/$f" \
+            || { echo "$f missing the model allowlist pattern"; return 1; }
+        grep -qF -- '--model "$CYCLE_MODEL"' "$PLUGIN_DIR/$f" \
+            || { echo "$f does not pass the model as a quoted variable"; return 1; }
+    done
+    # Behavioral: the pinned allowlist itself must reject injection
+    # shapes and accept real model slugs.
+    for bad in 'sonnet --max-budget-usd 1000' '-opus' 'son;net' '' 'a b' '$(id)' 'a"b'; do
+        if [[ "$bad" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]]; then
+            echo "allowlist accepts unsafe value: '$bad'"
+            return 1
+        fi
+    done
+    for good in sonnet opus haiku claude-fable-5 us.anthropic.claude-sonnet-5 gpt-5.4; do
+        [[ "$good" =~ ^[A-Za-z0-9][A-Za-z0-9._-]*$ ]] \
+            || { echo "allowlist rejects real slug: $good"; return 1; }
+    done
+}
+
 @test "contract: improveCycle rejects 'inherit' at both spawn sites" {
     # A spawned headless process has no session to inherit from: passing
     # 'inherit' literally fails the claude -p spawn, and omitting --model
