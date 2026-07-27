@@ -109,6 +109,43 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     fi
 }
 
+@test "safety: Phase 5 holds ownership through the push, then releases" {
+    # Control-flow pin, not a mention count: within the Phase 5 section,
+    # the ownership check (refresh) must precede the push, and
+    # release-terminal must come after the push — a release-before-push
+    # window lets a reclaiming build advance the branch before this
+    # session publishes it.
+    section=$(sed -n '/^## Phase 5/,/^## /p' "$PLUGIN_DIR/commands/build.md")
+    refresh_line=$(printf '%s\n' "$section" | grep -n 'g2g-lock.sh refresh' | head -1 | cut -d: -f1)
+    push_line=$(printf '%s\n' "$section" | grep -n 'git push -u origin' | head -1 | cut -d: -f1)
+    release_line=$(printf '%s\n' "$section" | grep -n 'release-terminal' | head -1 | cut -d: -f1)
+    [[ -n "$refresh_line" && -n "$push_line" && -n "$release_line" ]] \
+        || { echo "Phase 5 missing refresh/push/release (got: refresh=$refresh_line push=$push_line release=$release_line)"; return 1; }
+    [[ "$refresh_line" -lt "$push_line" ]] \
+        || { echo "Phase 5 must confirm ownership (refresh) before pushing"; return 1; }
+    [[ "$push_line" -lt "$release_line" ]] \
+        || { echo "Phase 5 must push before release-terminal (release-before-push publishes contested state)"; return 1; }
+    # The failure path must still reach the release: the push step has to
+    # route to it explicitly, and nonzero refresh must route to the
+    # non-mutating OWNERSHIP LOST path.
+    printf '%s\n' "$section" | grep -q 'OWNERSHIP LOST' \
+        || { echo "Phase 5 refresh failure must route to OWNERSHIP LOST"; return 1; }
+    printf '%s\n' "$section" | grep -qi 'BOTH the success and failure' \
+        || { echo "Phase 5 release must run on both push outcomes"; return 1; }
+}
+
+@test "contract: improveCycle 'inherit' is a sentinel, never a --model value" {
+    # models.improveCycle: "inherit" means use the invoking model. Both
+    # spawn sites must instruct dropping the --model flag for it —
+    # passing 'inherit' literally fails the claude -p spawn.
+    for f in commands/improve.md routines/improve-nightly.md; do
+        grep -q 'models.improveCycle' "$PLUGIN_DIR/$f" \
+            || { echo "$f no longer resolves models.improveCycle"; return 1; }
+        grep -Eqi '(omit|drop)[^.]*--model' "$PLUGIN_DIR/$f" \
+            || { echo "$f does not instruct omitting --model for inherit"; return 1; }
+    done
+}
+
 @test "safety: clean-tree preflight exempts the goal/lock pair" {
     # Host repos without the .gitignore rule show the just-created lock
     # as untracked; treating that as dirt would abort every build there.
