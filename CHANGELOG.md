@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.3.1 (unreleased)
+## 0.3.1 (2026-07-27)
 
 First live run of `/g2g:build-wf` (controlled sandbox test) caught two
 workflow-runtime contract violations in the shipped script — exactly
@@ -31,7 +31,7 @@ the offline-unverifiable API surface its authoring notes flagged.
   0.2.7 Phase 5 ordering held under a real `gh pr create` failure —
   release-terminal still ran on the failure path (22 turns, ~$1.9).
 
-## 0.3.0 (unreleased)
+## 0.3.0 (2026-07-27)
 
 Architecture: the build task loop can now run on the native
 dynamic-workflow runtime. Also carries the completion-gate hardening

@@ -10,10 +10,10 @@
 |----------|-------|
 | Critical | 0 |
 | High | 1 |
-| Medium | 24 |
+| Medium | 25 |
 | Low | 32 |
 | Info | 0 |
-| **Total** | **57** |
+| **Total** | **58** |
 
 ## High (1)
 
@@ -27,7 +27,7 @@ The --from-findings path copies finding titles/descriptions/suggestions into spe
 
 **References:** plugin/commands/build.md, plugin/agents/g2g-builder.md
 
-## Medium (24)
+## Medium (25)
 
 ### F-002 [medium] Every review is a full five-category sweep — no incremental mode
 
@@ -244,6 +244,16 @@ The 0.2.5 run-root layout — worktree at <RUNDIR>/worktree, sidecars at <RUNDIR
 Phase 3's turn contract refreshes the lock heartbeat every turn (step 1, g2g-lock.sh refresh) and routes to OWNERSHIP LOST on any nonzero exit — the liveness signal that stops a concurrent /g2g:build from reclaiming the lock as stale. Phase 4 (verifier dispatch, up to REVERIFY_CAP fix rounds each dispatching several synchronous fix-builders, rebase, push, PR) contains no refresh call at all; step 3 explicitly re-runs only the turn line and the Phase 3 step 2 cap check, not the step-1 refresh. If Phase 4 wall-clock exceeds G2G_LOCK_STALE_SECONDS (default 3600s) during its most critical final work, the heartbeat mtime goes stale while the build is alive. A concurrent build's acquire would then reclaim the checkout as stale debris, delete THIS build's .g2g-goal (disarming its Stop-hook enforcement mid-flight) and its lock, and arm its own goal — two builds on one checkout, exactly what the lock exists to prevent.
 
 **Suggestion:** Add the Phase 2 step 1 / Phase 3 step 1 OWNERSHIP-CHECKED REFRESH (g2g-lock.sh refresh <owner-token>, routing nonzero exits to OWNERSHIP LOST) at the start of each Phase 4 iteration — before the verifier dispatch in step 1 and before each fix-builder dispatch in step 3 — so the heartbeat stays fresh throughout completion, mirroring the per-turn contract Phase 3 enforces.
+
+### F-058 [medium] /g2g:build-wf has no behavioral smoke coverage (promotion blocked on smoke parity)
+
+**Location:** `tests/smoke.sh` · **category:** test-coverage · **confidence:** high · **effort:** medium · **status:** OPEN
+
+The experimental workflow-backed build engine (/g2g:build-wf, plugin/workflows/g2g-build.js, shipped 0.3.0, runtime-contract fixes in 0.3.1) is validated only by one manual controlled test (2026-07-27: full pass and forced cap-hit both green). tests/smoke.sh exercises only /g2g:build, so regressions in the workflow engine or its wrapper have no repeatable behavioral gate. The authoring plan's migration path (stage 1) says build-wf must not replace /g2g:build until smoke parity.
+
+**Suggestion:** Add a smoke-wf target mirroring tests/smoke.sh against /g2g:build-wf: same sandbox and artifact assertions, plus Workflow in --allowedTools, --max-turns 60 (48 observed on the 2-task sandbox), and an assertion that the Workflow tool actually ran so the wrapper cannot silently emulate the loop. Run as the merge gate for changes to plugin/workflows/ or build-wf.md; never wire into make check.
+
+**References:** plugin/commands/build-wf.md, plugin/workflows/g2g-build.js, CHANGELOG.md (0.3.1 'Verified live')
 
 ## Low (32)
 
@@ -519,4 +529,4 @@ Phase 3 step 3 (lines 209-218) checks the tree each turn and, if a builder crash
 
 ---
 
-**Open vs addressed:** 48 open · 9 addressed/stale/rejected (of 57 total)
+**Open vs addressed:** 49 open · 9 addressed/stale/rejected (of 58 total)

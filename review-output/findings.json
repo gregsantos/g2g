@@ -14,10 +14,10 @@
     "lastReviewedSha": "23649449d506c9aa0aceeeb157ae08313ba7bf66"
   },
   "summary": {
-    "total": 57,
+    "total": 58,
     "critical": 0,
     "high": 1,
-    "medium": 24,
+    "medium": 25,
     "low": 32,
     "info": 0
   },
@@ -753,6 +753,23 @@
       "description": "Phase 3 step 3 (lines 209-218) checks the tree each turn and, if a builder crashed leaving it dirty beyond the goal/lock exclusions, stashes with g2g-crash-<task-id> and passes the stash ref as recovery context to the next builder. Phase 4 step 3 dispatches fix-builders with only a turn line + cap check between them and no tree/stash check. If a Phase 4 fix-builder crashes mid-write, the dirty tree persists: the next fix-builder starts from a contaminated tree, the re-verify (step 1) judges a diff that excludes the uncommitted changes, and the rebase in step 5 fails on the dirty tree. Phase 4's fix loop reimplements only part of Phase 3's turn contract.",
       "suggestion": "In the Phase 4 fix-builder loop (step 3), apply the same tree check and g2g-crash-<task-id> stash-and-carry recovery as Phase 3 step 3 before/between fix-builder dispatches, so a crashed fix-builder cannot leave a dirty tree that corrupts re-verification or the rebase.",
       "effort": "small",
+      "addressed": null
+    },
+    {
+      "id": "F-058",
+      "category": "test-coverage",
+      "severity": "medium",
+      "file": "tests/smoke.sh",
+      "title": "/g2g:build-wf has no behavioral smoke coverage (promotion blocked on smoke parity)",
+      "description": "The experimental workflow-backed build engine (/g2g:build-wf, plugin/workflows/g2g-build.js, shipped 0.3.0, runtime-contract fixes in 0.3.1) is validated only by one manual controlled test (2026-07-27: full pass \u2014 loop -> verifier PASS -> Stop gate cleared -> goal/lock released -> branch pushed, 48 turns ~$4.2; forced cap-hit \u2014 one builder, cap-turns outcome, partial path with release on the gh-failure path, 22 turns ~$1.9). tests/smoke.sh exercises only /g2g:build, so regressions in the workflow engine or its wrapper have no repeatable behavioral gate. The authoring plan's migration path (stage 1) says build-wf must not replace /g2g:build until smoke parity.",
+      "suggestion": "Add a smoke-wf target mirroring tests/smoke.sh against /g2g:build-wf: same sandbox and artifact assertions, plus Workflow in --allowedTools, --max-turns 60 (48 observed on the 2-task sandbox), and an assertion that the Workflow tool actually ran (stream-json shows one Workflow tool_use) so the wrapper cannot silently emulate the loop. Run it as the merge gate for changes to plugin/workflows/ or build-wf.md; never wire it into make check. Promotion of build-wf to default awaits sustained smoke-wf parity plus real-spec mileage.",
+      "effort": "medium",
+      "confidence": "high",
+      "references": [
+        "plugin/commands/build-wf.md",
+        "plugin/workflows/g2g-build.js",
+        "CHANGELOG.md (0.3.1 'Verified live')"
+      ],
       "addressed": null
     }
   ]
