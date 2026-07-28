@@ -42,10 +42,7 @@
 
 export const meta = {
   name: 'build-loop',
-  description:
-    'Internal: the G2G build task loop — fresh builder per task, caps ' +
-    'enforced in code. Dispatched by /g2g:build-wf with structured args; ' +
-    'do not run directly.',
+  description: 'Internal: the G2G build task loop — fresh builder per task, caps enforced in code. Dispatched by /g2g:build-wf with structured args; do not run directly.',
 }
 
 // ---- input validation (fail loudly before spending any agent) ----
@@ -60,8 +57,20 @@ if (!Array.isArray(a.tasks) || a.tasks.length === 0) {
   throw new Error('g2g build-loop: tasks must be a non-empty array')
 }
 
-const startedAt = Date.now()
-const deadlineMs = Date.parse(a.buildStart) + a.hoursCap * 3600 * 1000
+// The workflow runtime bans the nondeterministic clock and random
+// APIs — they would break resume — so the script never reads a clock
+// itself: wall-clock time
+// comes from the turnkeeper agent's `now` field (epoch seconds from
+// `date +%s` — a tool result, deterministic on replay). Cap checks use
+// the last keeper reading, mirroring build.md's "the turn that reaches
+// the cap does not dispatch" semantics with an at-most-one-turn-stale
+// clock — negligible against an hours-scale cap.
+const buildStartMs = Date.parse(a.buildStart)
+if (!Number.isFinite(buildStartMs)) {
+  throw new Error(`g2g build-loop: buildStart is not a parseable timestamp: ${a.buildStart}`)
+}
+const deadlineMs = buildStartMs + a.hoursCap * 3600 * 1000
+let lastNowMs = buildStartMs
 
 // Script-held task state, seeded from the on-disk spec. The spec file
 // stays the durable record: every transition below is mirrored to disk
@@ -90,7 +99,7 @@ function done(outcome, detail) {
   return {
     outcome,
     turnsUsed: turn,
-    elapsedMs: Date.now() - startedAt,
+    elapsedMs: Math.max(0, lastNowMs - buildStartMs),
     detail: detail || '',
     tasks: taskSummary(),
   }
@@ -99,12 +108,13 @@ function done(outcome, detail) {
 // ---- agent schemas ----
 const keeperSchema = {
   type: 'object',
-  required: ['refreshExit', 'refreshLine', 'treeDirty'],
+  required: ['refreshExit', 'refreshLine', 'treeDirty', 'now'],
   properties: {
     refreshExit: { type: 'number' },
     refreshLine: { type: 'string' },
     treeDirty: { type: 'boolean' },
     stashRef: { type: 'string' },
+    now: { type: 'number' },
   },
 }
 // Mirrors the BUILDER REPORT contract in agents/g2g-builder.md — the
@@ -153,7 +163,7 @@ while (true) {
   turn += 1
   if (turn >= a.turnCap) return done('cap-turns',
     `turn ${turn} reached TURN_CAP ${a.turnCap}`)
-  if (Date.now() > deadlineMs) return done('cap-hours',
+  if (lastNowMs > deadlineMs) return done('cap-hours',
     `wall clock passed ${a.hoursCap}h from ${a.buildStart}`)
 
   // Turnkeeper: ownership-checked heartbeat refresh, then the tree check
@@ -161,10 +171,14 @@ while (true) {
   // exceptions — a skipped refresh is what lets a stale reclaim race in.
   const keeper = await agent(
     `You maintain a running G2G build's liveness. Work from the repo root; change nothing except an explicit stash. ` +
-    `Step 1: run \`${a.pluginRoot}/scripts/g2g-lock.sh refresh ${a.ownerToken}\` and record its exit code as refreshExit and its single output line as refreshLine. If refreshExit is nonzero, STOP after step 1 (report treeDirty false). ` +
-    `Step 2: run \`git status --porcelain\`. Ignore these exact paths: the spec file ${a.specPath}, .g2g-goal, .g2g-goal.lock, .g2g-goal.mutex. ` +
+    `Step 1: run \`date +%s\` and report the integer as now. ` +
+    `Step 2: run \`${a.pluginRoot}/scripts/g2g-lock.sh refresh ${a.ownerToken}\` and record its exit code as refreshExit and its single output line as refreshLine. If refreshExit is nonzero, STOP after step 2 (report treeDirty false). ` +
+    `Step 3: run \`git status --porcelain\`. Ignore these exact paths: the spec file ${a.specPath}, .g2g-goal, .g2g-goal.lock, .g2g-goal.mutex. ` +
     `If anything else is dirty or untracked (a builder crashed), run \`git stash push -u -m "g2g-crash-${task.id}"\` and report the stash reference in stashRef; report treeDirty true. Otherwise treeDirty false.`,
     { schema: keeperSchema, label: `turn ${turn}: heartbeat + tree check` })
+  if (Number.isFinite(keeper.now) && keeper.now * 1000 > lastNowMs) {
+    lastNowMs = keeper.now * 1000
+  }
   if (keeper.refreshExit !== 0) {
     // Exit 5 = stale reclaim took the checkout; 6/7/8 = unjudgeable.
     // Either way: mutate nothing from here — the wrapper prints the

@@ -1,10 +1,18 @@
 {
   "name": "g2g",
-  "version": "0.3.0",
+  "version": "0.3.1",
   "description": "Goal-driven autonomous builds for Claude Code: fresh-context builders, adversarial verification, PR-gated autonomy, and deterministic completion evidence.",
-  "author": { "name": "Greg Santos" },
+  "author": {
+    "name": "Greg Santos"
+  },
   "homepage": "https://github.com/gregsantos/g2g",
   "repository": "https://github.com/gregsantos/g2g",
   "license": "MIT",
-  "keywords": ["autonomous-builds", "verification", "specs", "goal-driven", "pull-requests"]
+  "keywords": [
+    "autonomous-builds",
+    "verification",
+    "specs",
+    "goal-driven",
+    "pull-requests"
+  ]
 }

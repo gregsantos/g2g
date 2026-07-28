@@ -1,5 +1,36 @@
 # Changelog
 
+## 0.3.1 (unreleased)
+
+First live run of `/g2g:build-wf` (controlled sandbox test) caught two
+workflow-runtime contract violations in the shipped script — exactly
+the offline-unverifiable API surface its authoring notes flagged.
+
+### Fixed
+- `g2g-build.js` called `Date.now()` (start time, `elapsedMs`, the
+  HOURS_CAP deadline check) — the dynamic-workflow runtime bans it
+  (breaks resume) and throws at invocation. The script now never reads
+  a clock itself: the turnkeeper agent reports `date +%s` each turn
+  (a tool result, deterministic on replay), and cap checks use the
+  last keeper reading — at most one turn stale, negligible against an
+  hours-scale cap.
+- `meta.description` was built by string concatenation; the runtime
+  requires `meta` to be a pure literal.
+- New test pin: no workflow script may call `Date.now()`,
+  `Math.random()`, or argless `new Date()`.
+- Docs: headless `/g2g:build-wf` runs need `Workflow` in
+  `--allowedTools` (the documented flag set predates the command) and
+  more outer `--max-turns` headroom than `/g2g:build` (48 observed on
+  the 2-task sandbox vs smoke's 40; start at 60).
+
+### Verified live (controlled sandbox tests)
+- Full pass: workflow-driven loop → verifier PASS → Stop gate cleared
+  → goal/lock released → branch pushed (48 turns, ~$4.2).
+- Forced cap-hit (TURN_CAP=2): exactly one builder dispatched,
+  `cap-turns` returned, wrapper routed to the partial path, and the
+  0.2.7 Phase 5 ordering held under a real `gh pr create` failure —
+  release-terminal still ran on the failure path (22 turns, ~$1.9).
+
 ## 0.3.0 (unreleased)
 
 Architecture: the build task loop can now run on the native

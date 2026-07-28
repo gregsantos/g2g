@@ -64,7 +64,12 @@ workflow). What changes and what doesn't:
   two engines.
 
 Requirements: Claude Code >= 2.1.154 with dynamic workflows enabled
-(`disableWorkflows` unset). Where the runtime is unavailable the command
+(`disableWorkflows` unset). Headless runs must add `Workflow` to the
+invocation's `--allowedTools` (the "Running headless" flag set predates
+this command) and need MORE outer `--max-turns` headroom than
+`/g2g:build` — the controlled sandbox run (2 tasks) used 48 outer
+turns where `/g2g:build`'s smoke fits in 40; start at 60 and size up
+with task count. Where the runtime is unavailable the command
 refuses and points at `/g2g:build`, which remains the stable engine.
 Until the workflow path has accumulated the same live mileage, treat it
 as experimental: run `make smoke` against it before relying on it

@@ -356,3 +356,17 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     [[ "$plugin_name" == "$market_entry" ]]
     [[ "$(jq -r '.plugins[0].source' "$REPO_DIR/.claude-plugin/marketplace.json")" == "./plugin" ]]
 }
+
+@test "workflow: scripts never call runtime-banned nondeterministic APIs" {
+    # The dynamic-workflow runtime throws on Date.now(), Math.random(),
+    # and argless new Date() (they would break resume) — a script using
+    # them fails at its first live invocation, exactly how the shipped
+    # 0.3.0 script failed its controlled test. Wall-clock time must come
+    # from an agent tool result (the turnkeeper's `now`).
+    for f in "$PLUGIN_DIR"/workflows/*.js; do
+        if grep -nE 'Date\.now\(|Math\.random\(|new Date\(\)' "$f"; then
+            echo "runtime-banned nondeterministic API in $f"
+            return 1
+        fi
+    done
+}
