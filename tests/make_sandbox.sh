@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 # Creates a throwaway sandbox repo for supervised g2g plugin smoke tests.
 set -euo pipefail
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DIR="${1:-/tmp/g2g-sandbox}"
 rm -rf "$DIR"
 mkdir -p "$DIR/specs"
@@ -65,18 +64,33 @@ EOF
 
 mkdir -p .claude review-output
 
+# buildTurnsFactor 4 gives TURN_CAP = 8 for this 2-task spec. The default of
+# 2 gave TURN_CAP = 4, which the build spends entirely on two builders plus
+# one verification round — so a verifier FAIL hit the cap before the first
+# fix-builder could be dispatched, and the smoke gate could only pass when
+# the builders happened to write correct code first time. The verifier ->
+# fix -> re-verify loop is the plugin's central mechanism; the gate has to
+# have room to reach it. 8 covers two builders, a verify round, a fix per
+# finding, and a re-verify.
 cat > .claude/g2g.json <<'EOF'
 {
-  "verificationCommands": ["./verify.sh"]
+  "verificationCommands": ["./verify.sh"],
+  "defaultBudgets": { "buildTurnsFactor": 4, "buildHours": 2 }
 }
 EOF
 
-# Duplicate the plugin's Stop hook into project settings: plugin-shipped
-# hooks do not fire under --setting-sources project, which is the shape
-# every supervised smoke run here uses (see plugin/README.md, "Running
-# headless / unattended"). Copying hooks.json keeps a single source for
-# the hook prompt and its evaluator model.
-cp "$SCRIPT_DIR/../plugin/hooks/hooks.json" .claude/settings.json
+# The smoke run passes --plugin-dir, which loads the plugin and its own
+# Stop hook even under --setting-sources project. Never copy the hook in:
+# the point of the smoke run is to exercise the hook the plugin actually
+# ships, and a copy here would let the shipped one rot untested. Project
+# settings still declare the plugin, which is how a real onboarded repo is
+# configured by /g2g:init and the only thing that loads g2g when
+# --plugin-dir is absent.
+cat > .claude/settings.json <<'EOF'
+{
+  "enabledPlugins": { "g2g@g2g": true }
+}
+EOF
 
 cat > review-output/findings.json <<'EOF'
 {

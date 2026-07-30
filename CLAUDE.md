@@ -31,7 +31,13 @@ markdown, or tests:
 - Behavioral: `make smoke` — real headless build against a throwaway
   sandbox; costs API dollars and minutes. Run as the merge gate for
   changes to `plugin/commands/` or `plugin/agents/`; never wire it
-  into check.
+  into check. It gates the PROTOCOL, not the sandbox build's quality:
+  terminal state reached, goal/lock/mutex cleaned up, branch pushed, no
+  task abandoned in_progress. A run that ends PARTIAL because the
+  verifier found a real bug exercised the protocol correctly and passes;
+  add `SMOKE_REQUIRE_COMPLETE=1` to also demand a fully green build.
+  `tests/smoke.sh --assert-only <preserved-dir>` re-checks a previous
+  run's artifacts with no API spend.
 
 # Project structure
 
@@ -43,9 +49,10 @@ g2g/
 │   ├── commands/                     # /g2g:* command procedures (markdown)
 │   ├── agents/                       # g2g-builder, g2g-verifier definitions
 │   ├── skills/                       # writing-g2g-specs, reviewing-codebase
-│   ├── hooks/hooks.json              # Stop hook — goal enforcement
+│   ├── hooks/hooks.json              # Stop hook registration → g2g-stop.sh
 │   ├── scripts/g2g-evidence.sh       # Deterministic evidence generator
 │   ├── scripts/g2g-lock.sh           # Checkout-lock protocol (sole implementation)
+│   ├── scripts/g2g-stop.sh           # Stop-hook goal enforcement (sole implementation)
 │   ├── templates/                    # /g2g:init config starters (g2g-*.json)
 │   ├── routines/                     # Scheduled-run templates
 │   └── evals/                        # plugin-eval cases (harness in early access)
@@ -69,9 +76,19 @@ g2g/
   without updating `plugin/commands/build.md` in the same change.
 - **The evidence script's output is frozen.** `tests/plugin_evidence.bats`
   pins `g2g-evidence.sh`'s header, footer, summary line, and exit codes
-  (0 ok / 2 invalid spec / 3 no verificationCommands); the Stop-hook
-  goal condition in build.md keys on the summary line. Change output
-  format only with the tests and build.md updated together.
+  (0 ok / 2 invalid spec / 3 no verificationCommands); `g2g-stop.sh` keys
+  its completion check on the summary line. Change output format only
+  with the tests, `g2g-stop.sh`, and build.md updated together.
+- **The Stop hook is deterministic — never make it a prompt again.**
+  `plugin/scripts/g2g-stop.sh` is the sole implementation of goal
+  enforcement; `hooks.json` only registers it. `tests/plugin_stop.bats`
+  pins the behaviour, and the direction of its uncertainty is the whole
+  point: anything leaving *arming* in doubt allows the stop, and only a
+  proven-armed session fails closed. The hook it replaced asked one small
+  model to do both jobs and inverted that branch in production, blocking
+  sessions that had armed nothing. Never reintroduce a model call here,
+  and never copy the hook into a host repo — a vendored copy is one no
+  plugin update can patch.
 - **The lock script is the protocol.** `plugin/scripts/g2g-lock.sh` is
   the sole implementation of checkout-lock synchronization;
   `tests/plugin_lock.bats` pins its exit codes and outcome lines, and

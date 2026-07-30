@@ -110,10 +110,14 @@ fallback.
    `WT="$RUNDIR/worktree"`;
    `git worktree add "$WT" -b "g2g/improve-$ID" <default-branch>`.
    Any failure here fails the tick — report the git error verbatim.
-3. Stop-hook carry (plugin hooks are inert under
-   `--setting-sources project`): if `$WT/.claude/settings.json` does
-   not exist, `mkdir -p "$WT/.claude" && cp
-   "${CLAUDE_PLUGIN_ROOT}/hooks/hooks.json" "$WT/.claude/settings.json"`.
+3. No Stop-hook carry is needed, and copying one in is forbidden. The
+   spawn below passes `--plugin-dir`, which loads the plugin and its own
+   Stop hook even under `--setting-sources project` (verified against CC
+   2.1.220; earlier versions of this file claimed otherwise). The hook
+   must stay in the plugin so fixes reach every run — a copy in a
+   worktree is a copy nothing can patch. Copy NOTHING into
+   `$WT/.claude/`; the worktree is a checkout, so any declarations the
+   repo tracks are already there.
 4. Spawn from inside $WT, as one Bash command run through your Bash
    tool's background facility — NEVER nohup/disown/setsid (orphaned
    background runs are the incident class this design exists to

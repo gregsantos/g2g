@@ -53,9 +53,10 @@ workflow). What changes and what doesn't:
   seeking), `attempts >= 2 -> blocked` bookkeeping, and the per-turn
   heartbeat refresh + tree check (a scripted step no phase can skip).
 - **Unchanged:** preflight and the checkout lock, the `.g2g-goal`
-  Stop-hook gate (the armed condition keeps the subagent-delivered
-  VERIFIER REPORT requirement; only the turn-line cap clauses are
-  replaced by the workflow's terminal-outcome report), the adversarial
+  Stop-hook gate (the goal file and the hook are identical on both build
+  paths since 0.4.0 — the hook reads fields, so there is no
+  workflow-specific condition to write; the turn-cap clause simply never
+  fires here because the workflow prints no turn lines), the adversarial
   verifier gate and REVERIFY_CAP, spec state committed on every
   transition (so `--continue-branch` and human inspection work
   identically), single push at PR time, draft partial PRs, never merges.
@@ -229,8 +230,11 @@ This repo tracks `specs/`, `review-output/`, and
 - **PR-gated, branch-first, never merges** — every writing command
   refuses the default branch; only `g2g/*` branches are ever pushed, and
   only at PR time.
-- **Caps everywhere** — every goal carries turn and wall-clock stop
-  clauses; headless spawns add a dollar cap. There is no unlimited mode.
+- **Caps everywhere** — every goal carries turn and wall-clock caps as
+  data the Stop hook enforces itself; headless spawns add a dollar cap.
+  There is no unlimited mode. The wall-clock cap is computed from the
+  goal's `buildStart` and needs nothing from the transcript, so it holds
+  even if everything else about a run has gone wrong.
 - **POSIX shell required** — the evidence script needs `bash`; pure
   Windows without git-bash/WSL is unsupported in v1.
 - **`.g2g-goal` and `.g2g-goal.lock`** are ephemeral, gitignored runtime
@@ -265,12 +269,12 @@ claude -p "/g2g:build specs/feature.json" \
 - `--allowedTools` is required alongside `acceptEdits` (which only auto-approves `Edit`/`Write`) — otherwise `Bash` calls get rejected until the session dies (the full list including `Agent` was validated in recorded end-to-end spike runs).
 - `--setting-sources project` excludes the invoking user's personal settings — a real incident had a user-level `git push` approval gate silently deny a build's push.
 - `--max-budget-usd` is what backs the "headless spawns add a dollar cap" guardrail above — the recorded end-to-end spike runs predate this flag being added to the invocation and ran without it; include it for any new headless spawn.
-- **Caveat:** under `--setting-sources project` the plugin's own Stop hook does not fire at all (re-confirmed 2026-07-20) — the host repo needs the hook duplicated into its own `.claude/settings.json`. **`/g2g:init` installs (or merges) this hook for you as part of onboarding** — run it once per repo and commit the result. Manual fallback, verbatim from [`plugin/hooks/hooks.json`](hooks/hooks.json) (this repo tracks such a copy at `.claude/settings.json`, so fresh clones and worktrees of g2g already have it):
+- `--plugin-dir` is what loads the plugin, and with it the Stop hook. It is **not** optional: `--setting-sources project` excludes your personal settings, so a plugin enabled only in `~/.claude/settings.json` is not loaded at all in that session — no `/g2g:*` commands and no hook. The alternative to passing `--plugin-dir` is declaring the plugin in the repo's own `.claude/settings.json`, which `/g2g:init` sets up (see [New repo quickstart](#new-repo-quickstart)). Either is sufficient; this file's invocation uses `--plugin-dir`.
 
-  ```bash
-  cp plugin/hooks/hooks.json .claude/settings.json
-  ```
+  Earlier versions of this README claimed the plugin's own Stop hook "does not fire at all" under `--setting-sources project` and told you to copy the hook into each repo. That was wrong — the symptom was the plugin not being *loaded*, not the hook not firing — and the advice was actively harmful: a copied hook cannot be patched, so a repo onboarded before 0.4.0 keeps running the hook it was given no matter what the plugin ships later. Verified against CC 2.1.220 with a project-scoped marketplace install, no `--plugin-dir`: the plugin's own command hook fires with `${CLAUDE_PLUGIN_ROOT}` interpolated. `/g2g:init` now removes legacy copies rather than creating them.
 
-The hook is **session-scoped**: it enforces only goals armed by the same session (the transcript must show that session writing `.g2g-goal` and reading it back). Sessions that never armed a goal — interactive sessions, or sessions running concurrently while another session's build has a live `.g2g-goal` — are allowed to stop immediately, so an armed goal can never conscript a bystander session into completing it. The evaluator's uncertainty handling is asymmetric by design: uncertainty about whether a goal was *armed* resolves to allowing the stop (fail-open, protecting bystanders), but within the arming session uncertainty about whether the *condition is met* resolves to not met (fail-closed, protecting the build). Note also that once this hook is installed in a repo's `.claude/settings.json` it runs a small-model evaluation at every session Stop in that repo — cheap per call (the no-goal case short-circuits), but a standing cost worth knowing about.
+The hook is **session-scoped**: it enforces only goals armed by the same session, which it establishes by finding the goal's `ownerToken` inside one of that session's own tool-call inputs. Sessions that never armed a goal — ordinary interactive sessions, or a session running concurrently while another build has a live `.g2g-goal` — stop immediately, so an armed goal can never conscript a bystander into completing it.
 
-Interactive sessions need none of this setup — the plugin's hook fires normally there.
+Uncertainty is asymmetric by design, and since 0.4.0 that asymmetry is enforced mechanically rather than by instructing a model. Anything that leaves *arming* in doubt — no goal file, unparsable goal JSON, an unreadable transcript, a foreign owner token, no `jq` — allows the stop (fail-open, protecting bystanders). Only once arming is proven does uncertainty about whether the *condition is met* block the stop (fail-closed, protecting the build). The escape hatches never depend on the transcript: the hours cap is computed from `buildStart` in the goal file, so a build cannot wedge even if transcript parsing breaks.
+
+Cost is no longer a consideration: sessions with no `.g2g-goal` exit on a single file test, and there is no per-Stop model call anywhere. Before 0.4.0 the hook ran a small-model evaluation at every Stop in every repo where it was installed.
