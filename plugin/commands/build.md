@@ -27,8 +27,9 @@ Stop hook lets the session end. The helper deletes the pair only while
 line 2 of the lock still holds this build's owner token; exit 5 there
 means a later build reclaimed the lock as stale and NEITHER file is
 yours anymore — delete nothing and say so in your final message (your
-own session can still end via the cap clauses in the goal condition you
-armed, which live in your transcript, not on disk). This pair is
+own session can still end: the Stop hook reads the caps from the goal
+file and computes the wall-clock one itself, and the ownership-lost
+marker below clears the goal outright). This pair is
 build.md's alone: no wrapper (improve-cycle) ever deletes a live,
 foreign-owned pair.
 
@@ -139,70 +140,82 @@ command (confirmed by spike). Instead:
      the lock was reclaimed when it was stuck.
    Verifying ownership first is why step 2's goal write is safe. The
    lock stays separate from `.g2g-goal` precisely so `.g2g-goal`'s own
-   contents never change after arming — the Stop hook only ever reads
-   the condition text written in step 2.
-2. Write the following condition — with `<spec-path>`, `<N>` (the spec's
-   total task count), `<TURN_CAP>`, `<HOURS_CAP>`, and `<owner-token>`
-   filled in with their real values — to a file named `.g2g-goal` in
-   the repo root:
+   contents never change after arming — the Stop hook reads the fields
+   written in step 2 and nothing else from that file.
+2. Write a JSON object — with `<owner-token>`, `<spec-path>`, `<N>` (the
+   spec's total task count), `<TURN_CAP>`, `<HOURS_CAP>`, and
+   `<BUILD_START>` (ISO 8601, the same value used for the turn line and
+   the cap checks) filled in with their real values — to a file named
+   `.g2g-goal` in the repo root, using the Write tool. Exactly this
+   shape, and nothing else in the file:
 
-   "The most recent G2G EVIDENCE block in the transcript was produced by
-   running `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-evidence.sh <spec-path> --full`
-   as a real command execution (visible as tool output in the transcript),
-   not authored as plain assistant text, shows the tasks summary line
-   reporting all tasks passed — <N> total | <N> passed — with zero
-   in_progress/pending/blocked, every verify line exiting 0, and verifier:
-   PASS, AND the transcript also shows, after this condition was armed, a
-   VERIFIER REPORT block with a verdict line of PASS delivered as the
-   final message of a dispatched g2g:g2g-verifier subagent (visible as
-   Agent tool output in the transcript, not authored as plain assistant
-   text) — or the transcript shows a G2G TURN line where k >= <TURN_CAP>,
-   or shows a G2G TURN line whose 'now' timestamp is more than
-   <HOURS_CAP> hours past its 'build started' timestamp, or shows the
-   exact line 'G2G OWNERSHIP LOST <owner-token>' printed BY ITSELF as a
-   standalone terminal marker after this condition was armed — the
-   quoted occurrence of that text inside this condition (including this
-   read-back) does NOT count (this build's checkout lock was reclaimed
-   by another build or became unjudgeable; the run ended on the
-   non-mutating terminal path)."
+   {"version": 1, "ownerToken": "<owner-token>", "specPath": "<spec-path>",
+    "taskTotal": <N>, "turnCap": <TURN_CAP>, "hoursCap": <HOURS_CAP>,
+    "buildStart": "<BUILD_START>"}
 
-   (Keying on the always-present counts line rather than per-task lines
-   matters because `g2g-evidence.sh` omits per-task listings once a spec
-   has more than 12 tasks — the summary line is the only completion signal
-   guaranteed to be present at any spec size. The VERIFIER REPORT clause
-   exists because the evidence block's `verifier: PASS` line is read from
-   the spec JSON, which YOU maintain — requiring the subagent's own
-   report in the transcript means completion cannot be reached by spec
-   edits alone; the verdict must come from a real g2g-verifier dispatch.
-   The ownership-lost clause
-   exists because that terminal path deletes nothing — without it the
-   armed goal would block the session's Stop indefinitely once the caps
-   are unreachable.)
+   The goal file carries DATA, not prose. `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-stop.sh`
+   — the Stop hook — reads these fields and decides deterministically
+   whether this session may end. It allows the stop when any of these
+   holds, so you never need to phrase a condition:
+   - `.g2g-goal` is absent (every terminal path deletes it, so a normal
+     completion clears the goal by definition);
+   - the hours cap has elapsed since `buildStart`, computed by the hook
+     itself from wall-clock time — it does NOT depend on a turn line
+     being present, which is why a forgotten turn line can no longer
+     make the caps unreachable;
+   - a `G2G TURN` line shows `k >= turnCap`;
+   - the exact line `G2G OWNERSHIP LOST <owner-token>` appears by itself
+     and the on-disk lock confirms the reclaim;
+   - a `release-terminal` call reported a failure outcome
+     (`ownership-lost`, `mutex-stuck`, `malformed-state`,
+     `operational-error`), which by procedure ends the run and leaves
+     the files for a human;
+   - the build is genuinely complete: the most recent G2G EVIDENCE block
+     that the hook can pair by tool-use id to a real
+     `g2g-evidence.sh <spec-path> --full` invocation reports all tasks
+     passed with zero in_progress/pending/blocked and `verifier: PASS`,
+     AND a `VERIFIER REPORT` with `verdict: PASS` arrived from a
+     dispatched `g2g:g2g-verifier` subagent after the goal was armed.
+
+   Otherwise it blocks and names the missing element. Two properties are
+   worth knowing because they constrain how you must work, not just how
+   the hook reads: the evidence check keys on the always-present counts
+   line (`g2g-evidence.sh` omits per-task listings above 12 tasks, so the
+   summary line is the only completion signal guaranteed at any spec
+   size), and it pairs that block to the actual command that produced it
+   — so an evidence block you type out yourself, or one produced by a run
+   without `--full`, does not count. The verifier clause exists because
+   the evidence block's `verifier: PASS` line is read from the spec JSON,
+   which YOU maintain: completion must not be reachable by spec edits
+   alone.
 
 3. Immediately READ `.g2g-goal` back with the Read tool and print its
-   contents verbatim. This step is MANDATORY and load-bearing twice
-   over: it surfaces the condition as real transcript content (the Stop
-   hook judges only the transcript), and it is the act that BINDS this
-   session to the goal — the hook's scoping check allows any session
-   whose transcript lacks this write-and-read-back to stop freely, so a
-   goal you never read back is a goal that will not be enforced.
+   contents verbatim. What BINDS this session to the goal is step 2's
+   Write itself — the hook looks for your owner token inside a tool-call
+   input, which a bystander session reading the same file can never
+   produce, so a goal armed by another build is never yours to finish.
+   The read-back is still MANDATORY: it puts the armed caps and spec path
+   in the transcript where a human reviewing the run can see what this
+   session committed to.
 
-The plugin ships a Stop hook (`plugin/hooks/hooks.json`) that fires on
-every Stop event. It is session-scoped: sessions that never armed a
-goal (including concurrent sessions in the same repo while a build's
-`.g2g-goal` is live) are allowed to stop immediately. For the arming
-session it blocks stopping with a reason until the transcript shows the
-condition met — or shows `.g2g-goal` deleted at a terminal state. This
-is the same prompt-type Stop hook mechanism `/goal` itself wraps,
-reimplemented directly since the plugin-command layer can't reach
-`/goal`'s UI.
+The plugin ships that Stop hook in `plugin/hooks/hooks.json`, pointed at
+`scripts/g2g-stop.sh`. It fires on every Stop event and is
+session-scoped: a session that never armed a goal — including a
+concurrent session in this repo while another build's `.g2g-goal` is
+live — exits on the first check with no work done. Uncertainty is
+asymmetric by design. Anything that leaves arming in doubt (no goal
+file, unparsable goal JSON, unreadable transcript, a foreign owner
+token) allows the stop, because conscripting a bystander is the worse
+failure. Only once arming is proven does uncertainty about whether the
+condition is MET block the stop.
 
 ## Phase 3 — Turn contract (repeat every turn until the goal clears)
 1. Print `G2G TURN <k>/<TURN_CAP> (build started <BUILD_START>, now
    <current ISO 8601 timestamp>)` where `k` is this turn's 1-based
-   count. This line is the only way the Stop-hook
-   evaluator — which judges only the transcript — can see the turn/time
-   caps. Never omit it, and never change its format. Then refresh the
+   count. The Stop hook reads the turn cap from this line, so omitting it
+   or changing its format disables the turn cap (the wall-clock cap still
+   holds — the hook computes that from the goal's `buildStart` — but it
+   is a much later backstop). Print it every turn. Then refresh the
    heartbeat exactly as Phase 2 step 1's OWNERSHIP-CHECKED REFRESH:
    run `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-lock.sh refresh <owner-token>`
    — exit 0 → continue this turn; any other exit → go to OWNERSHIP
@@ -261,10 +274,9 @@ reimplemented directly since the plugin-command layer can't reach
    `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-evidence.sh <spec>` — with
    `--full` ONLY when the status table would show all tasks passed
    (a completion claim). Print its output verbatim, as the real output of
-   running the script — do not hand-write this block; the goal condition
-   requires it to come from the script, and the evaluator has been
-   confirmed by spike able to tell tool-emitted output from typed text
-   when the condition says so.
+   running the script — never hand-write this block. The Stop hook pairs
+   the evidence block to the tool call that produced it, so a typed block
+   is not merely disallowed by convention: it cannot satisfy the goal.
 
 ## OWNERSHIP LOST — non-mutating terminal path
 Reached only from a heartbeat refresh (Phase 2 step 1, Phase 3 step 1)
@@ -277,12 +289,13 @@ NOTHING here is safely yours. Therefore: write and delete NOTHING on
 disk (no helper release calls, no goal deletion, no further spec
 commits, no stash), push nothing, open no PR. Do exactly two things:
 1. Print the exact line `G2G OWNERSHIP LOST <owner-token>` — your own
-   token, matching the one embedded in the goal condition you armed —
-   BY ITSELF as a standalone line, not quoted inside other prose.
-   This is the armed condition's third terminal clause: it is what lets
-   the Stop hook allow this session to end, since this path deletes
-   nothing and the turn/time caps may be far away. Emit it ONLY from
-   this path, never speculatively.
+   token, the `ownerToken` value you wrote into `.g2g-goal` — BY ITSELF
+   as a standalone line, not quoted inside other prose. This is what
+   lets the Stop hook allow this session to end, since this path deletes
+   nothing and the turn/time caps may be far away. The hook matches the
+   whole line and cross-checks the on-disk lock, so the token appearing
+   inside the goal JSON read-back cannot be mistaken for this marker.
+   Emit it ONLY from this path, never speculatively.
 2. Report plainly: the helper's exact outcome line (foreign token,
    missing file, or stuck/malformed state), what it means, and which
    tasks had completed before the stall — their commits remain on the

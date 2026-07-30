@@ -43,17 +43,35 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     done
 }
 
-@test "hooks: hooks.json is valid, session-scoped, and Stop-typed" {
-    run jq -e '.hooks.Stop[0].hooks[0].type == "prompt"' "$PLUGIN_DIR/hooks/hooks.json"
-    [[ "$status" -eq 0 ]]
-    run jq -r '.hooks.Stop[0].hooks[0].prompt' "$PLUGIN_DIR/hooks/hooks.json"
-    [[ "$output" == *".g2g-goal"* ]] || { echo "prompt lost .g2g-goal reference"; return 1; }
-    [[ "$output" == *"THIS session"* ]] || { echo "prompt lost session-scoping clause"; return 1; }
+@test "hooks: hooks.json is a Stop command hook invoking the plugin's script" {
+    run jq -e '.hooks.Stop[0].hooks[0].type == "command"' "$PLUGIN_DIR/hooks/hooks.json"
+    [[ "$status" -eq 0 ]] || { echo "Stop hook is no longer command-typed"; return 1; }
+    run jq -r '.hooks.Stop[0].hooks[0].command' "$PLUGIN_DIR/hooks/hooks.json"
+    [[ "$output" == *'${CLAUDE_PLUGIN_ROOT}/scripts/g2g-stop.sh'* ]] \
+        || { echo "Stop hook does not invoke the plugin's own g2g-stop.sh"; return 1; }
+    [[ -x "$PLUGIN_DIR/scripts/g2g-stop.sh" ]] \
+        || { echo "g2g-stop.sh is missing or not executable"; return 1; }
 }
 
-@test "hooks: tracked settings copy is in sync with plugin hooks.json" {
-    run diff "$PLUGIN_DIR/hooks/hooks.json" "$REPO_DIR/.claude/settings.json"
-    [[ "$status" -eq 0 ]] || { echo "settings.json drifted from hooks.json — re-copy it"; return 1; }
+@test "hooks: the Stop hook reaches no model — the precondition is mechanical" {
+    # The 0.4.0 fix IS that arming is decided mechanically. Any model call
+    # reintroduces the failure class where an evaluator finds "no goal was
+    # armed" and blocks the stop anyway.
+    run jq -e '[.hooks[][].hooks[].type] | index("prompt")' "$PLUGIN_DIR/hooks/hooks.json"
+    [[ "$status" -ne 0 ]] || { echo "a prompt-type hook is back in hooks.json"; return 1; }
+    ! grep -qE 'claude -p|claude --print' "$PLUGIN_DIR/scripts/g2g-stop.sh" \
+        || { echo "g2g-stop.sh shells out to a model"; return 1; }
+}
+
+@test "hooks: tracked settings declares the plugin and vendors no hook" {
+    # The hook must live only in the plugin. A copy in a host repo is a copy
+    # no plugin update can ever patch — that is how the pre-0.4.0 defect
+    # would have outlived its own fix.
+    run jq -e '.enabledPlugins["g2g@g2g"] == true' "$REPO_DIR/.claude/settings.json"
+    [[ "$status" -eq 0 ]] || { echo "settings.json no longer declares the g2g plugin"; return 1; }
+    run jq -e 'has("hooks")' "$REPO_DIR/.claude/settings.json"
+    [[ "$status" -ne 0 ]] \
+        || { echo "settings.json vendors a hook again — the plugin's hook is the only copy"; return 1; }
 }
 
 @test "gate: improve opt-in is enforced in both improve commands" {
@@ -229,12 +247,14 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     done
 }
 
-@test "safety: goal condition requires a subagent-delivered VERIFIER REPORT" {
+@test "safety: completion requires a subagent-delivered VERIFIER REPORT" {
     # The evidence block's `verifier: PASS` line is read from the spec
-    # JSON, which the orchestrator itself writes; without this clause,
-    # completion could be reached by spec edits alone.
-    grep -q 'VERIFIER REPORT block with a verdict line of PASS' \
-        "$PLUGIN_DIR/commands/build.md"
+    # JSON, which the orchestrator itself writes; without this requirement,
+    # completion could be reached by spec edits alone. Since 0.4.0 the hook
+    # enforces it by matching the dispatched subagent's own result record.
+    grep -q 'g2g:g2g-verifier' "$PLUGIN_DIR/scripts/g2g-stop.sh"
+    grep -q 'VERIFIER REPORT' "$PLUGIN_DIR/scripts/g2g-stop.sh"
+    grep -q 'VERIFIER REPORT' "$PLUGIN_DIR/commands/build.md"
 }
 
 @test "safety: verifier dispatch is preceded by an ownership-checked refresh" {
@@ -245,12 +265,12 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
         | grep -q 'OWNERSHIP-CHECKED REFRESH'
 }
 
-@test "hooks: arming-session uncertainty about the condition fails closed" {
-    # Bystander uncertainty (about ARMING) stays fail-open; the arming
-    # session's uncertainty (about the CONDITION) must block the stop.
-    run jq -r '.hooks.Stop[0].hooks[0].prompt' "$PLUGIN_DIR/hooks/hooks.json"
-    [[ "$output" == *"uncertainty about whether the condition is met resolves to NOT met"* ]] \
-        || { echo "prompt lost the arming-session fail-closed clause"; return 1; }
+@test "hooks: build.md documents the asymmetric uncertainty rule" {
+    # Behavioural coverage lives in tests/plugin_stop.bats; this only keeps
+    # the rule documented where a command author will read it, since the
+    # direction of the asymmetry is what the pre-0.4.0 evaluator inverted.
+    grep -qi 'asymmetric' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'foreign owner' "$PLUGIN_DIR/commands/build.md"
 }
 
 @test "contract: evidence head line is pinned by the evidence tests" {
@@ -261,11 +281,12 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     grep -q 'head: none' "$BATS_TEST_DIRNAME/plugin_evidence.bats"
 }
 
-@test "safety: ownership loss is a terminal clause of the armed goal" {
-    # The ownership-lost path deletes nothing, so without its own clause
-    # in the goal condition the Stop hook would block the session until
-    # the turn/time caps — which may be unreachable.
+@test "safety: ownership loss is a terminal allow path in build.md and the hook" {
+    # The ownership-lost path deletes nothing, so without the hook honouring
+    # its marker the goal would block the session until the turn/time caps —
+    # which may be unreachable.
     grep -c 'G2G OWNERSHIP LOST' "$PLUGIN_DIR/commands/build.md" | grep -qE '^[2-9]'
+    grep -q 'G2G OWNERSHIP LOST' "$PLUGIN_DIR/scripts/g2g-stop.sh"
 }
 
 @test "safety: run-root delete guard tolerates documented sidecars" {
@@ -334,8 +355,12 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
 }
 
 @test "safety: build-wf keeps the P1 verifier gate and terminal release" {
-    grep -q 'VERIFIER REPORT block with a verdict line of PASS' \
-        "$PLUGIN_DIR/commands/build-wf.md"
+    # build-wf no longer writes its own goal condition; it defers to
+    # build.md's Phase 2 so one goal schema and one hook serve both paths.
+    grep -q "build.md's Phase 2" "$PLUGIN_DIR/commands/build-wf.md"
+    ! grep -q 'The most recent G2G EVIDENCE block in the transcript' \
+        "$PLUGIN_DIR/commands/build-wf.md" \
+        || { echo "build-wf resurrected a duplicate prose goal condition"; return 1; }
     grep -q 'release-terminal' "$PLUGIN_DIR/commands/build-wf.md"
     grep -qi 'NEVER merges' "$PLUGIN_DIR/commands/build-wf.md"
 }

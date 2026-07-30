@@ -7,8 +7,11 @@ model: haiku
 Report G2G state, read-only (change nothing):
 
 1. Goal: check for a `.g2g-goal` file in the repo root. If it exists,
-   print its condition as the active goal. If absent, report "None
-   active".
+   read it as JSON and report the active goal as its fields — spec path,
+   task total, turn and hours caps, build start, owner token. If it does
+   not parse as JSON it is a pre-0.4.0 prose goal from a build armed
+   before the upgrade; print it verbatim and say so. If absent, report
+   "None active".
 2. Specs: for each specs/*.json (skip example.json), run
    `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-evidence.sh <spec>` and show the
    counts line. Note: exit 3 means the spec lacks verificationCommands —

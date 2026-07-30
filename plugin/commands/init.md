@@ -8,7 +8,8 @@ Onboard the current repo to the g2g plugin: $ARGUMENTS
 
 This command writes at most three files, EVERY one only after showing
 you the content and getting your confirmation: `.claude/g2g.json`,
-`.claude/settings.json` (copy or Stop-hook merge), and — greenfield path
+`.claude/settings.json` (plugin declaration, and removal of any legacy
+copied Stop hook), and — greenfield path
 only — a `verify.sh` at the repo root. It never edits `.gitignore` or
 any other file (gitignore problems are reported with the exact fix, not
 applied), never commits, never creates branches, and never pushes — you
@@ -78,27 +79,56 @@ silently.
    user approves; otherwise leave it untouched.
 
 4. **Safety plumbing.**
-   - **Stop-hook settings** — explain WHY first: the plugin's own Stop
-     hook does not fire under `--setting-sources project` (how headless
-     builds run), so the host repo needs the hook duplicated into its
-     own `.claude/settings.json` (plugin README, "Running headless /
-     unattended"). Also state the standing cost before asking: once
-     installed, the hook runs a small-model evaluation at every session
-     Stop in this repo — cheap per call (the no-goal case
-     short-circuits), but permanent until removed. Then:
-     - `.claude/settings.json` ABSENT: show what will be written (a copy
-       of `${CLAUDE_PLUGIN_ROOT}/hooks/hooks.json`), ASK, and copy on
-       approval.
-     - PRESENT and already containing the plugin's Stop hook (compare
-       against the `Stop` entry in `${CLAUDE_PLUGIN_ROOT}/hooks/hooks.json`):
-       say so and leave it untouched.
-     - PRESENT but MISSING the Stop hook (ordinary existing settings):
-       do NOT leave it silently — headless builds in this repo would run
-       unprotected. Show a diff of the existing file versus the file
-       with the Stop hook entry merged in (preserving everything already
-       there), ASK, and apply the merge only on approval. If declined,
-       WARN prominently that unattended runs here have no Stop-hook
-       safety net.
+   - **Plugin declaration** — explain WHY first: headless builds run with
+     `--setting-sources project`, which excludes the invoking user's
+     personal settings. A plugin enabled only in `~/.claude/settings.json`
+     is therefore not loaded at all in those sessions — no `/g2g:*`
+     commands, and no Stop hook. Declaring the plugin in the repo's own
+     `.claude/settings.json` fixes that, and the same declaration is what
+     makes g2g work in Claude Code on the web, where plugins declared in
+     the repo install at session start. NEVER copy the Stop hook into the
+     host repo: it ships with the plugin, so fixes reach every repo on
+     plugin update, and a committed copy could never be patched.
+     Determine the real values first — the plugin id
+     (`<plugin>@<marketplace>`) and that marketplace's source — by reading
+     the local install registry
+     (`~/.claude/plugins/installed_plugins.json` and
+     `~/.claude/plugins/known_marketplaces.json`); never guess them. The
+     two keys to end up with, shown here with this plugin's canonical
+     marketplace:
+
+     ```json
+     {
+       "extraKnownMarketplaces": {
+         "g2g": { "source": { "source": "github", "repo": "gregsantos/g2g" } }
+       },
+       "enabledPlugins": { "g2g@g2g": true }
+     }
+     ```
+
+     Then:
+     - `.claude/settings.json` ABSENT: show exactly what will be written,
+       ASK, and write on approval.
+     - PRESENT and already declaring this plugin: say so and leave it
+       untouched.
+     - PRESENT but not declaring it: show a diff of the existing file
+       versus the file with those two keys merged in (preserving
+       everything already there), ASK, and apply only on approval. If
+       declined, WARN prominently that headless runs in this repo will
+       not load g2g at all.
+   - **Legacy Stop-hook removal (migration).** Plugin versions before
+     0.4.0 had `/g2g:init` copy a prompt-type Stop hook into the host
+     repo's `.claude/settings.json`. Those copies are stale the moment the
+     plugin updates and cannot be fixed from here, and the one shipped
+     before 0.4.0 has a known defect: its evaluator could block a stop in
+     a session that never armed a goal. If `.claude/settings.json`
+     contains a `Stop` hook entry of `"type": "prompt"` whose prompt text
+     mentions `.g2g-goal`, say plainly that it is superseded by the
+     plugin's own hook and defective, show the exact removal diff, ASK,
+     and delete just that entry on approval (leave every other hook and
+     setting intact; if `hooks` ends up empty, remove the empty key). If
+     declined, WARN that the stale hook will keep evaluating at every Stop
+     in this repo and may block sessions that armed no goal.
    - **Artifact tracking check (advisory only — never edit files):**
      test each of these four paths INDIVIDUALLY with
      `git check-ignore -q <path>`:

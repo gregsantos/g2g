@@ -35,35 +35,20 @@ Additionally read `.claude/g2g.json` → `models.builder` (default
 `sonnet` when the file or field is absent) for Phase 3's args.
 
 ## Phase 2 — Arm the goal
-Execute build.md's Phase 2 (ownership-checked refresh first, write
-`.g2g-goal`, then the MANDATORY read-back that binds this session), but
-write this MODIFIED condition instead of build.md's — with
-`<spec-path>`, `<N>`, and `<owner-token>` filled in:
+Execute build.md's Phase 2 exactly as written (ownership-checked refresh
+first, write the `.g2g-goal` JSON with the Write tool, then the MANDATORY
+read-back). The goal file is DATA, identical in shape here — there is no
+workflow-specific variant to write, because the Stop hook evaluates
+fields rather than prose.
 
-   "The most recent G2G EVIDENCE block in the transcript was produced by
-   running `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-evidence.sh <spec-path> --full`
-   as a real command execution (visible as tool output in the transcript),
-   not authored as plain assistant text, shows the tasks summary line
-   reporting all tasks passed — <N> total | <N> passed — with zero
-   in_progress/pending/blocked, every verify line exiting 0, and verifier:
-   PASS, AND the transcript also shows, after this condition was armed, a
-   VERIFIER REPORT block with a verdict line of PASS delivered as the
-   final message of a dispatched g2g:g2g-verifier subagent (visible as
-   Agent tool output in the transcript, not authored as plain assistant
-   text) — or the transcript shows, as real tool output of the
-   g2g:build-loop workflow run, a returned result whose outcome field is
-   cap-turns, cap-hours, blocked, ownership-lost, or error — or shows the
-   exact line 'G2G OWNERSHIP LOST <owner-token>' printed BY ITSELF as a
-   standalone terminal marker after this condition was armed — the quoted
-   occurrence of that text inside this condition (including this
-   read-back) does NOT count."
-
-   (Differences from build.md's condition, deliberate: the per-turn
-   `G2G TURN k/CAP` clauses are gone because the workflow enforces both
-   caps in code and reports a terminal outcome as tool output — there is
-   no turn line for an evaluator to miss. The completion clause,
-   including the P1 requirement of a subagent-delivered VERIFIER REPORT,
-   is unchanged.)
+One thing to know about how the caps clear on this path: the workflow
+enforces both caps in code and never prints per-turn `G2G TURN` lines, so
+the hook's turn-cap clause never fires here. The hours cap still does —
+the hook computes elapsed wall-clock time from `buildStart` itself — and
+every terminal route below (Phase 4, Phase 5, OWNERSHIP LOST) either
+deletes the goal file via `release-terminal` or prints the ownership-lost
+marker. Write `turnCap` into the goal anyway, with the real value: it
+costs nothing, and it keeps one goal-file schema across both build paths.
 
 ## Phase 3 — Run the task loop
 Invoke the `g2g:build-loop` workflow via the Workflow tool with `args`

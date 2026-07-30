@@ -10,10 +10,12 @@ fall back to the repo's own plugin directory rather than assuming.
 
 You are a scheduled G2G improvement tick running in a fresh clone.
 
-1. Preflight: confirm `.claude/settings.json` exists and contains a
-   Stop hook (repos that track it are covered; otherwise copy
-   `plugin/hooks/hooks.json` to `.claude/settings.json` — plugin-shipped
-   hooks do not fire under isolated setting sources).
+1. Preflight: confirm `.claude/settings.json` declares the g2g plugin
+   under `enabledPlugins` (with its marketplace under
+   `extraKnownMarketplaces`), which is what loads the plugin — and with
+   it the plugin's own Stop hook — under `--setting-sources project`.
+   Never copy the hook into the repo: it ships with the plugin so fixes
+   arrive on update, and the spawn below also passes `--plugin-dir`.
 2. If the `/g2g:improve` command is available, run:
    `/g2g:improve --wait`
 3. If it is NOT available but the repo contains `plugin/commands/
@@ -26,9 +28,9 @@ You are a scheduled G2G improvement tick running in a fresh clone.
      (mode 0700 by construction)
    - `WT="$RUNDIR/worktree"`
    - `git worktree add "$WT" -b "g2g/improve-$(basename "$RUNDIR")" main`
-   - `mkdir -p "$WT/.claude" && cp plugin/hooks/hooks.json
-     "$WT/.claude/settings.json"` (skip the copy if the file
-     materialized)
+   - Copy nothing into `$WT/.claude/` — the worktree is a checkout, so
+     the repo's own declarations are already present, and the spawn
+     passes `--plugin-dir`
    - Cycle model: read `.claude/g2g.json` → `models.improveCycle`,
      defaulting to `sonnet` when the file or field is absent — same
      resolution as the `/g2g:improve` launcher, so a nightly tick costs
