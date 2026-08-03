@@ -27,10 +27,49 @@ set -uo pipefail
 
 allow() { exit 0; }
 
+# Every block reason starts with this, which is also how prior blocks by THIS
+# hook are counted for escalation (see block()).
+REASON_PREFIX="Condition not met:"
+
+# After this many blocks with no progress, stop repeating the same demand and
+# name the legitimate exits instead. A goal can be genuinely unreachable — spec
+# deleted mid-run, a wedged build, or an operator arming one by hand — and in
+# that state repeating "no evidence block" forever is useless. Claude Code caps
+# consecutive blocks at 9 by default (CLAUDE_CODE_STOP_HOOK_BLOCK_CAP), so this
+# has to escalate below that to be worth anything.
+ESCALATE_AFTER=3
+
+# Count prior blocks from THIS hook. `stop_hook_summary` records are written by
+# the harness, not the model, so this cannot be inflated by an assistant turn
+# quoting an earlier reason back — and keying on hookErrors keeps other
+# plugins' Stop hooks out of the count.
+count_prior_blocks() {
+    [ -n "${transcript_path:-}" ] && [ -r "${transcript_path:-}" ] || { echo 0; return; }
+    jq -s --arg prefix "$REASON_PREFIX" '
+        [ .[] | select(.type=="system" and .subtype=="stop_hook_summary")
+          | select(((.hookErrors // []) | tostring) | contains($prefix)) ] | length' \
+        "$transcript_path" 2>/dev/null || echo 0
+}
+
 block() {
+    local reason="$1" prior
+    prior=$(count_prior_blocks)
+    if [ "${prior:-0}" -ge "$ESCALATE_AFTER" ] 2>/dev/null; then
+        reason="$reason
+
+This goal has now blocked $prior stops without reaching a terminal state.
+Stop retrying the same step. Either finish the build properly, or end it
+deliberately:
+  - Reachable but incomplete: continue the procedure in build.md — for a
+    terminal stop that is Phase 5 (push, then
+    \`\${CLAUDE_PLUGIN_ROOT}/scripts/g2g-lock.sh release-terminal <owner-token>\`).
+  - Unreachable (spec missing, no build in progress, goal armed by hand):
+    say so plainly and delete .g2g-goal. That clears the goal and this hook
+    will allow the stop."
+    fi
     # jq -Rs produces a correctly escaped JSON string for arbitrary reason text.
     local reason_json
-    reason_json=$(printf '%s' "$1" | jq -Rs . 2>/dev/null) || reason_json='"G2G goal not met"'
+    reason_json=$(printf '%s' "$reason" | jq -Rs . 2>/dev/null) || reason_json='"G2G goal not met"'
     printf '{"decision":"block","reason":%s}\n' "$reason_json"
     exit 0
 }

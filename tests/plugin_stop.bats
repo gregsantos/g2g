@@ -282,6 +282,76 @@ EOF
     assert_blocked
 }
 
+# --- escalation after repeated blocks ---------------------------------------
+#
+# A goal can be genuinely unreachable. Repeating "no evidence block" until the
+# harness's own consecutive-block cap overrides us wastes turns and tells the
+# session nothing it can act on.
+
+# Emit a harness-written stop_hook_summary record carrying a block from THIS
+# hook. Args: reason-text
+prior_block_record() {
+    cat <<EOF
+{"type":"system","subtype":"stop_hook_summary","hookCount":1,"hookErrors":["$1"],"timestamp":"$NOW"}
+EOF
+}
+
+@test "stop: the first blocks stay terse — no escalation yet" {
+    write_goal "$TOKEN" "specs/x.json" 40 6 "$NOW"
+    { arming_record
+      prior_block_record "Condition not met: no G2G EVIDENCE block."
+    } > "$TRANSCRIPT"
+    run_hook
+    assert_blocked
+    [[ "$output" != *"blocked"*"stops without reaching a terminal state"* ]] \
+        || { echo "escalated too early: $output"; return 1; }
+}
+
+@test "stop: repeated blocks escalate to naming the legitimate exits" {
+    write_goal "$TOKEN" "specs/x.json" 40 6 "$NOW"
+    { arming_record
+      prior_block_record "Condition not met: no G2G EVIDENCE block."
+      prior_block_record "Condition not met: no G2G EVIDENCE block."
+      prior_block_record "Condition not met: no G2G EVIDENCE block."
+    } > "$TRANSCRIPT"
+    run_hook
+    assert_blocked
+    [[ "$output" == *"stops without reaching a terminal state"* ]] \
+        || { echo "did not escalate after 3 prior blocks: $output"; return 1; }
+    [[ "$output" == *"release-terminal"* ]] \
+        || { echo "escalation does not name the terminal release: $output"; return 1; }
+    [[ "$output" == *"delete .g2g-goal"* ]] \
+        || { echo "escalation does not name the unreachable-goal exit: $output"; return 1; }
+}
+
+@test "stop: escalation still names the original missing element" {
+    # Escalating must not replace the diagnosis — a session that can finish
+    # needs to know what is still missing.
+    write_goal "$TOKEN" "specs/x.json" 40 6 "$NOW"
+    { arming_record
+      prior_block_record "Condition not met: x"
+      prior_block_record "Condition not met: x"
+      prior_block_record "Condition not met: x"
+    } > "$TRANSCRIPT"
+    run_hook
+    assert_blocked
+    [[ "$output" == *"EVIDENCE"* ]] \
+        || { echo "escalation lost the specific reason: $output"; return 1; }
+}
+
+@test "stop: another plugin's Stop hook errors do not count toward escalation" {
+    write_goal "$TOKEN" "specs/x.json" 40 6 "$NOW"
+    { arming_record
+      echo '{"type":"system","subtype":"stop_hook_summary","hookErrors":["some other plugin: review gate failed"],"timestamp":"'"$NOW"'"}'
+      echo '{"type":"system","subtype":"stop_hook_summary","hookErrors":["some other plugin: review gate failed"],"timestamp":"'"$NOW"'"}'
+      echo '{"type":"system","subtype":"stop_hook_summary","hookErrors":["some other plugin: review gate failed"],"timestamp":"'"$NOW"'"}'
+    } > "$TRANSCRIPT"
+    run_hook
+    assert_blocked
+    [[ "$output" != *"stops without reaching a terminal state"* ]] \
+        || { echo "counted another plugin's hook errors: $output"; return 1; }
+}
+
 # --- shape ------------------------------------------------------------------
 
 @test "stop: the hook never exits nonzero and emits valid JSON when blocking" {

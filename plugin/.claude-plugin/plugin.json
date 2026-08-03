@@ -1,6 +1,6 @@
 {
   "name": "g2g",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "Goal-driven autonomous builds for Claude Code: fresh-context builders, adversarial verification, PR-gated autonomy, and deterministic completion evidence.",
   "author": {
     "name": "Greg Santos"
