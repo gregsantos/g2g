@@ -12,6 +12,18 @@ fail() { echo "g2g-evidence: $2" >&2; exit "$1"; }
 [[ -n "$SPEC" && -f "$SPEC" ]] || fail 2 "spec not found: ${SPEC:-<missing>}"
 jq empty "$SPEC" 2>/dev/null || fail 2 "spec is not valid JSON: $SPEC"
 
+# verificationCommands must be an array of non-empty single-line strings.
+# A malformed value is an invalid spec (exit 2), not an empty one: a bare
+# length check passes a string, and jq's failed iteration inside process
+# substitution is invisible to set -e — the verify loop would run zero
+# times and 'proven' could be earned without running anything. A command
+# containing control characters could also inject verdict-shaped lines
+# into the block, so both die here before any output is printed.
+jq -e '(.context.verificationCommands // [])
+       | type == "array"
+         and all(.[]?; type == "string" and length > 0 and (test("[[:cntrl:]]") | not))' \
+    "$SPEC" >/dev/null \
+    || fail 2 "context.verificationCommands must be an array of non-empty single-line command strings: $SPEC"
 VERIFY_COUNT=$(jq '(.context.verificationCommands // []) | length' "$SPEC")
 [[ "$VERIFY_COUNT" -gt 0 ]] || fail 3 "context.verificationCommands is missing or empty — builds are unverifiable without it"
 
@@ -36,15 +48,19 @@ else
 fi
 echo "tasks: $TOTAL total | $PASSED passed | $IN_PROGRESS in_progress | $PENDING pending | $BLOCKED blocked"
 
-task_line='.tasks[] | (.id + " [" + (if .passes == true then "passed" else .status end) + "] " + .title)'
+# Task ids, statuses, and titles come from the spec JSON; gsub strips
+# control characters so spec-controlled text can never fabricate a line
+# of the block (e.g. an embedded "\nverdict: ..." inside a title).
+task_line='.tasks[] | (.id + " [" + (if .passes == true then "passed" else .status end) + "] " + .title) | gsub("[[:cntrl:]]"; " ")'
 if [[ "$TOTAL" -le 12 ]]; then
     jq -r "$task_line" "$SPEC"
 else
     echo "passed tasks omitted: $PASSED"
-    jq -r ".tasks[] | select(.passes != true) | (.id + \" [\" + .status + \"] \" + .title)" "$SPEC"
+    jq -r '.tasks[] | select(.passes != true) | (.id + " [" + .status + "] " + .title) | gsub("[[:cntrl:]]"; " ")' "$SPEC"
 fi
 
 VERIFY_ALL_OK=1
+VERIFY_EXECUTED=0
 FIRST_FAIL_CMD=""
 FIRST_FAIL_CODE=""
 if [[ "$MODE" == "--full" ]]; then
@@ -52,6 +68,7 @@ if [[ "$MODE" == "--full" ]]; then
         code=0
         bash -c "$cmd" >/dev/null 2>&1 || code=$?
         echo "verify: $cmd -> exit $code"
+        VERIFY_EXECUTED=$((VERIFY_EXECUTED + 1))
         if [[ "$code" -ne 0 && "$VERIFY_ALL_OK" -eq 1 ]]; then
             VERIFY_ALL_OK=0
             FIRST_FAIL_CMD="$cmd"
@@ -60,7 +77,7 @@ if [[ "$MODE" == "--full" ]]; then
     done < <(jq -r '.context.verificationCommands[]' "$SPEC")
 fi
 
-VERIFIER_VERDICT=$(jq -r '.verifier.verdict // "PENDING"' "$SPEC")
+VERIFIER_VERDICT=$(jq -r '(.verifier.verdict // "PENDING") | tostring | gsub("[[:cntrl:]]"; " ")' "$SPEC")
 echo "verifier: $VERIFIER_VERDICT"
 
 # Graded, machine-stable verdict line (F-045/F-043). 'proven' requires
@@ -77,6 +94,12 @@ if [[ "$MODE" == "--full" ]]; then
         echo "verdict: incomplete [tasks $PASSED/$TOTAL]"
     elif [[ "$VERIFY_ALL_OK" -ne 1 ]]; then
         echo "verdict: incomplete [tasks $PASSED/$TOTAL; verify: $FIRST_FAIL_CMD -> exit $FIRST_FAIL_CODE]"
+    elif [[ "$VERIFY_EXECUTED" -ne "$VERIFY_COUNT" ]]; then
+        # Belt-and-braces: 'proven' asserts every DECLARED command ran in
+        # this process, so a command enumeration that dies mid-stream
+        # (invisible to set -e inside process substitution) must not
+        # leave a clean-looking loop counted as full verification.
+        echo "verdict: incomplete [tasks $PASSED/$TOTAL; verify: executed $VERIFY_EXECUTED/$VERIFY_COUNT commands]"
     elif [[ "$VERIFIER_VERDICT" != "PASS" ]]; then
         echo "verdict: incomplete [tasks $PASSED/$TOTAL; verify all exit 0; verifier $VERIFIER_VERDICT]"
     else

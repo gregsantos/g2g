@@ -28,6 +28,23 @@ always-present task-counts line rather than from verification results.
 - `build.md` Phase 2 and `CLAUDE.md`'s evidence-output invariant updated
   to describe the verdict line instead of the summary line.
 
+### Hardened (post-review, same release)
+- `g2g-evidence.sh` validates `context.verificationCommands` as an array
+  of non-empty single-line strings (exit 2 otherwise) — a malformed
+  value previously skipped the verify loop silently and could earn
+  `(proven)` without running anything — and `(proven)` additionally
+  requires every declared command to have actually executed in this run.
+- `g2g-evidence.sh` strips control characters from spec-controlled text
+  (task ids/titles, verifier verdict) so it can never fabricate a
+  verdict-shaped line inside the block.
+- `g2g-stop.sh` accepts only a paired block with exactly one verdict
+  line (conflicting verdicts are treated as forged), and pairs only a
+  bare `g2g-evidence.sh <spec> --full` invocation — nothing chained
+  before or after — so a compound command cannot append a passing line
+  to its own tool result.
+- Rewrote two `A && B || C` guards in `g2g-stop.sh` as explicit
+  conditionals (shellcheck SC2015, flagged by CI).
+
 ### Verified
 - `make check` passing, including the new 12-task boundary and
   verdict-grade tests.

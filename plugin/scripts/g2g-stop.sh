@@ -44,7 +44,7 @@ ESCALATE_AFTER=3
 # quoting an earlier reason back — and keying on hookErrors keeps other
 # plugins' Stop hooks out of the count.
 count_prior_blocks() {
-    [ -n "${transcript_path:-}" ] && [ -r "${transcript_path:-}" ] || { echo 0; return; }
+    if [ -z "${transcript_path:-}" ] || [ ! -r "${transcript_path:-}" ]; then echo 0; return; fi
     jq -s --arg prefix "$REASON_PREFIX" '
         [ .[] | select(.type=="system" and .subtype=="stop_hook_summary")
           | select(((.hookErrors // []) | tostring) | contains($prefix)) ] | length' \
@@ -113,7 +113,7 @@ build_start=$(goal_field buildStart)
 [ -n "$owner_token" ] || allow
 
 transcript_path=$(payload_field transcript_path)
-[ -n "$transcript_path" ] && [ -r "$transcript_path" ] || allow
+if [ -z "$transcript_path" ] || [ ! -r "$transcript_path" ]; then allow; fi
 
 # ---------------------------------------------------------------------------
 # Transcript-independent escape hatches. These run before any transcript
@@ -220,12 +220,18 @@ fi
 # it never re-derives completion from the counts/summary line or the
 # in_progress/pending/blocked substrings, so a paired --full run whose
 # verification command failed can no longer coexist with a passing check.
+# Two hardenings keep the single token unforgeable: pairing accepts only a
+# bare invocation ENDING at --full (a compound command that merely contains
+# the invocation could append its own passing line to the tool_result), and
+# the paired block must carry exactly ONE verdict line — a second one means
+# spec-controlled text or a chained command injected a verdict, and a
+# conflicted block never satisfies the goal.
 evidence_check=$(jq -rs --arg spec "$spec_path" '
-    [ .[] | select(.type=="assistant") | .message.content[]?
+    ($spec | gsub("(?<c>[\\\\^$.|?*+()\\[\\]{}])"; "\\" + .c)) as $spec_re
+    | [ .[] | select(.type=="assistant") | .message.content[]?
       | select(type=="object" and .type=="tool_use")
-      | select(((.input.command? // "") | test("g2g-evidence\\.sh"))
-               and ((.input.command? // "") | test("--full"))
-               and ((.input.command? // "") | contains($spec)))
+      | select((.input.command? // "")
+               | test("g2g-evidence\\.sh\\s+" + $spec_re + "\\s+--full\\s*$"))
       | .id ] as $evidence_ids
     | [ .[] | select(.type=="user") | .message.content[]?
         | select(type=="object" and .type=="tool_result")
@@ -236,8 +242,10 @@ evidence_check=$(jq -rs --arg spec "$spec_path" '
     | if ($blocks | length) == 0 then "NO-EVIDENCE"
       else
         ($blocks | last | split("\n") | map(select(startswith("verdict:")))) as $verdict_lines
-        | if ($verdict_lines | any(startswith("verdict: complete (proven)"))) then "EVIDENCE-OK"
-          elif ($verdict_lines | length) > 0 then "VERDICT-LINE:" + ($verdict_lines | last)
+        | if ($verdict_lines | length) > 1 then "MULTIPLE-VERDICT-LINES:" + ($verdict_lines | join(" || "))
+          elif ($verdict_lines | length) == 1
+               and ($verdict_lines[0] | startswith("verdict: complete (proven)")) then "EVIDENCE-OK"
+          elif ($verdict_lines | length) == 1 then "VERDICT-LINE:" + $verdict_lines[0]
           else "NO-VERDICT-LINE"
           end
       end' "$transcript_path" 2>/dev/null)
@@ -246,6 +254,7 @@ if [ "$evidence_check" != "EVIDENCE-OK" ]; then
     case "$evidence_check" in
         NO-EVIDENCE|"") block "Condition not met: no G2G EVIDENCE block from a real \`g2g-evidence.sh $spec_path --full\` run appears in this transcript." ;;
         NO-VERDICT-LINE) block "Condition not met: the latest evidence block has no verdict line (a pre-0.5.0 g2g-evidence.sh run) -- the orchestrator's next turn re-runs g2g-evidence.sh and self-heals." ;;
+        MULTIPLE-VERDICT-LINES:*) block "Condition not met: the latest evidence block contains multiple verdict lines (${evidence_check#MULTIPLE-VERDICT-LINES:}) -- conflicting verdicts are treated as forged and never satisfy the goal." ;;
         VERDICT-LINE:*) block "Condition not met: ${evidence_check#VERDICT-LINE:}" ;;
         *)              block "Condition not met: evidence check returned $evidence_check." ;;
     esac

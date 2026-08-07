@@ -172,10 +172,11 @@ command (confirmed by spike). Instead:
      the files for a human;
    - the build is genuinely complete: the most recent G2G EVIDENCE block
      that the hook can pair by tool-use id to a real
-     `g2g-evidence.sh <spec-path> --full` invocation carries a
-     `verdict: complete (proven)` line, AND a `VERIFIER REPORT` with
-     `verdict: PASS` arrived from a dispatched `g2g:g2g-verifier`
-     subagent after the goal was armed.
+     `g2g-evidence.sh <spec-path> --full` invocation — run as the entire
+     command, nothing chained before or after it — carries exactly one
+     verdict line, reading `verdict: complete (proven)`, AND a
+     `VERIFIER REPORT` with `verdict: PASS` arrived from a dispatched
+     `g2g:g2g-verifier` subagent after the goal was armed.
 
    Otherwise it blocks and names the missing element. Two properties are
    worth knowing because they constrain how you must work, not just how
@@ -184,9 +185,12 @@ command (confirmed by spike). Instead:
    prints only from a real `--full` run in which every verification
    command exited 0 on an all-passed spec with verifier PASS, so a
    failing verification command can never coexist with a passing
-   completion check — and it pairs that block to the actual command that
-   produced it — so an evidence block you type out yourself, or one
-   produced by a run without `--full`, does not count. The verifier
+   completion check; a paired block carrying more than one verdict line
+   is treated as forged and blocks — and it pairs that block to the
+   actual command that produced it, accepting only a bare invocation
+   that ends at `--full` — so an evidence block you type out yourself,
+   one produced by a run without `--full`, or one produced by a compound
+   command wrapping the script does not count. The verifier
    clause exists because the evidence block's `verifier: PASS` line is
    read from the spec JSON, which YOU maintain: completion must not be
    reachable by spec edits alone.
@@ -275,10 +279,14 @@ condition is MET block the stop.
 9. End the turn by running
    `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-evidence.sh <spec>` — with
    `--full` ONLY when the status table would show all tasks passed
-   (a completion claim). Print its output verbatim, as the real output of
-   running the script — never hand-write this block. The Stop hook pairs
-   the evidence block to the tool call that produced it, so a typed block
-   is not merely disallowed by convention: it cannot satisfy the goal.
+   (a completion claim). Run the script as the ENTIRE command of the tool
+   call — chain nothing before or after the invocation, which must end at
+   `--full`: the Stop hook pairs only a bare invocation, so a compound
+   command never counts as evidence. Print its output verbatim, as the
+   real output of running the script — never hand-write this block. The
+   Stop hook pairs the evidence block to the tool call that produced it,
+   so a typed block is not merely disallowed by convention: it cannot
+   satisfy the goal.
 
 ## OWNERSHIP LOST — non-mutating terminal path
 Reached only from a heartbeat refresh (Phase 2 step 1, Phase 3 step 1)

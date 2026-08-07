@@ -274,12 +274,16 @@ PR. That data is why the default is now **25**. Sizing guidance:
   spec-bookkeeping claim alone — verification commands never ran, so
   this grade can never be `(proven)`), or `incomplete` (naming the
   first failing fact). The Stop hook's completion check requires the
-  paired `--full` evidence block to contain a line beginning `verdict:
-  complete (proven)`, instead of re-deriving completion from the task
-  counts and `in_progress`/`pending`/`blocked` substrings — so a
-  failing verification command in that `--full` run now blocks
-  completion outright; it can no longer coexist with an all-tasks-
-  passed, verifier-PASS spec.
+  paired `--full` evidence block to carry exactly one verdict line,
+  reading `verdict: complete (proven)`, instead of re-deriving
+  completion from the task counts and
+  `in_progress`/`pending`/`blocked` substrings — so a failing
+  verification command in that `--full` run now blocks completion
+  outright; it can no longer coexist with an all-tasks-passed,
+  verifier-PASS spec. Pairing accepts only a bare invocation ending at
+  `--full`, and a block with multiple verdict lines is treated as
+  forged, so neither a compound command nor spec-injected text can
+  fabricate the token.
 - **Caps on every spawn:** `--max-turns` and `--max-budget-usd`, always;
   inner build caps route gracefully to partial PRs.
 - **No orphans:** no `nohup`/`disown`/`setsid` anywhere; every tick has
