@@ -133,8 +133,106 @@ tasks: 2 total | 1 passed | 0 in_progress | 1 pending | 0 blocked
 T-001 [passed] First
 T-002 [pending] Second
 verifier: PASS
+verdict: incomplete [tasks 1/2]
 === END G2G EVIDENCE ==="
     [[ "$output" == "$expected" ]]
+}
+
+@test "evidence: status mode prints exactly one verdict line, incomplete for a not-all-passed spec" {
+    run "$EVIDENCE" "$SPEC"
+    [[ "$status" -eq 0 ]]
+    verdict_lines=$(echo "$output" | grep -c '^verdict: ')
+    [[ "$verdict_lines" -eq 1 ]]
+    [[ "$output" == *"verdict: incomplete"* ]]
+}
+
+@test "evidence: example.json prints exactly one verdict line beginning 'verdict: incomplete'" {
+    run "$EVIDENCE" "$BATS_TEST_DIRNAME/../specs/example.json"
+    [[ "$status" -eq 0 ]]
+    verdict_lines=$(echo "$output" | grep -c '^verdict: ')
+    [[ "$verdict_lines" -eq 1 ]]
+    verdict_line=$(echo "$output" | grep '^verdict: ')
+    [[ "$verdict_line" == verdict:\ incomplete* ]]
+}
+
+@test "evidence: status mode with all-passed spec and verifier PASS yields complete (assumed)" {
+    ALLPASS="$BATS_TEST_TMPDIR/allpass.json"
+    make_spec "$ALLPASS" '[
+        {"id":"T-001","title":"First","status":"complete","passes":true},
+        {"id":"T-002","title":"Second","status":"complete","passes":true}
+    ]' '{"verdict":"PASS"}'
+    run "$EVIDENCE" "$ALLPASS"
+    [[ "$output" == *"verdict: complete (assumed) [tasks 2/2; verify not run; verifier PASS]"* ]]
+}
+
+@test "evidence: --full with all-passed spec, all verify commands exit 0, verifier PASS yields complete (proven)" {
+    FULLGOOD="$BATS_TEST_TMPDIR/fullgood.json"
+    jq -n '{
+        context: { verificationCommands: ["true", "true"] },
+        tasks: [
+            {"id":"T-001","title":"First","status":"complete","passes":true},
+            {"id":"T-002","title":"Second","status":"complete","passes":true}
+        ],
+        verifier: {"verdict":"PASS"}
+    }' > "$FULLGOOD"
+    run "$EVIDENCE" "$FULLGOOD" --full
+    [[ "$output" == *"verdict: complete (proven) [tasks 2/2; verify all exit 0; verifier PASS]"* ]]
+}
+
+@test "evidence: --full with one failing verification command on an otherwise all-passed spec yields incomplete" {
+    FULLBAD="$BATS_TEST_TMPDIR/fullbad.json"
+    jq -n '{
+        context: { verificationCommands: ["true", "false"] },
+        tasks: [
+            {"id":"T-001","title":"First","status":"complete","passes":true},
+            {"id":"T-002","title":"Second","status":"complete","passes":true}
+        ],
+        verifier: {"verdict":"PASS"}
+    }' > "$FULLBAD"
+    run "$EVIDENCE" "$FULLBAD" --full
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == *"verdict: incomplete"* ]]
+    [[ "$output" != *"complete (proven)"* ]]
+    [[ "$output" == *"verify: false -> exit 1"* ]]
+}
+
+@test "evidence: status mode can never yield '(proven)'" {
+    ALLPASS="$BATS_TEST_TMPDIR/allpass2.json"
+    make_spec "$ALLPASS" '[
+        {"id":"T-001","title":"First","status":"complete","passes":true}
+    ]' '{"verdict":"PASS"}'
+    run "$EVIDENCE" "$ALLPASS"
+    [[ "$output" != *"complete (proven)"* ]]
+    run "$EVIDENCE" "$SPEC"
+    [[ "$output" != *"complete (proven)"* ]]
+}
+
+@test "evidence: an empty tasks array never produces a 'verdict: complete' line" {
+    EMPTY="$BATS_TEST_TMPDIR/empty.json"
+    jq -n '{
+        context: { verificationCommands: ["true"] },
+        tasks: [],
+        verifier: {"verdict":"PASS"}
+    }' > "$EMPTY"
+    run "$EVIDENCE" "$EMPTY"
+    [[ "$output" != *"verdict: complete"* ]]
+    [[ "$output" == *"verdict: incomplete"* ]]
+    run "$EVIDENCE" "$EMPTY" --full
+    [[ "$output" != *"verdict: complete"* ]]
+    [[ "$output" == *"verdict: incomplete"* ]]
+}
+
+@test "evidence: 12-task spec prints one line per task with no omission line and a graded verdict" {
+    TWELVE="$BATS_TEST_TMPDIR/twelve.json"
+    tasks=$(jq -n '[range(0;12) | {id: ("T-" + (. | tostring)), title: "t", status: (if . < 10 then "complete" else "pending" end), passes: (. < 10)}]')
+    make_spec "$TWELVE" "$tasks"
+    run "$EVIDENCE" "$TWELVE"
+    [[ "$output" != *"passed tasks omitted"* ]]
+    [[ "$output" == *"T-0 [passed] t"* ]]
+    [[ "$output" == *"T-9 [passed] t"* ]]
+    [[ "$output" == *"T-10 [pending] t"* ]]
+    [[ "$output" == *"T-11 [pending] t"* ]]
+    [[ "$output" == *"verdict: incomplete [tasks 10/12]"* ]]
 }
 
 @test "evidence: head line binds the block to a commit and tracked-dirty count" {
