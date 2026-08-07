@@ -280,10 +280,12 @@ PR. That data is why the default is now **25**. Sizing guidance:
   `in_progress`/`pending`/`blocked` substrings — so a failing
   verification command in that `--full` run now blocks completion
   outright; it can no longer coexist with an all-tasks-passed,
-  verifier-PASS spec. Pairing accepts only a bare invocation ending at
-  `--full`, and a block with multiple verdict lines is treated as
-  forged, so neither a compound command nor spec-injected text can
-  fabricate the token.
+  verifier-PASS spec. Pairing accepts only a command that is exactly
+  the plugin's own evidence-script invocation ending at `--full` —
+  anchored start to end, so chained prefixes, shell comments, and
+  lookalike scripts at other paths all fail to pair — and a block with
+  multiple verdict lines is treated as forged, so neither a compound
+  command nor spec-injected text can fabricate the token.
 - **Caps on every spawn:** `--max-turns` and `--max-budget-usd`, always;
   inner build caps route gracefully to partial PRs.
 - **No orphans:** no `nohup`/`disown`/`setsid` anywhere; every tick has

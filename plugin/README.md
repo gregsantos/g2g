@@ -239,10 +239,11 @@ This repo tracks `specs/`, `review-output/`, and
   commands and so can never earn `(proven)`); `incomplete` otherwise,
   naming the first failing fact. The Stop hook's completion check keys
   on this token: it requires the transcript's evidence block — the one
-  it can pair by tool-use id to a real `--full` invocation, run bare
-  with nothing chained before or after it — to carry exactly one
-  verdict line, reading `verdict: complete (proven)`; a block with more
-  than one verdict line is treated as forged. A failing verification
+  it can pair by tool-use id to a command that is exactly the plugin's
+  own evidence-script `--full` invocation, start to end, nothing
+  chained before or after it — to carry exactly one verdict line,
+  reading `verdict: complete (proven)`; a block with more than one
+  verdict line is treated as forged. A failing verification
   command in that run makes the token unreachable, so it can never
   coexist with a passing completion check.
 - **Caps everywhere** — every goal carries turn and wall-clock caps as

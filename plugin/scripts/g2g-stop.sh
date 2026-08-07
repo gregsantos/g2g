@@ -221,17 +221,26 @@ fi
 # in_progress/pending/blocked substrings, so a paired --full run whose
 # verification command failed can no longer coexist with a passing check.
 # Two hardenings keep the single token unforgeable: pairing accepts only a
-# bare invocation ENDING at --full (a compound command that merely contains
-# the invocation could append its own passing line to the tool_result), and
-# the paired block must carry exactly ONE verdict line — a second one means
-# spec-controlled text or a chained command injected a verdict, and a
-# conflicted block never satisfies the goal.
-evidence_check=$(jq -rs --arg spec "$spec_path" '
-    ($spec | gsub("(?<c>[\\\\^$.|?*+()\\[\\]{}])"; "\\" + .c)) as $spec_re
+# command that IS the invocation — this hook's own sibling
+# scripts/g2g-evidence.sh (optionally bash-prefixed), the spec path, and
+# --full, anchored \A..\z with nothing else admitted. End-only anchoring
+# was bypassable (`printf <token>; # ...g2g-evidence.sh <spec> --full`
+# matches while the comment stops the script from running), and any
+# looser text match lets chained prefixes, lookalike paths, comments, or
+# redirects vouch for output the script never printed. Second, the paired
+# block must carry exactly ONE verdict line — more means spec-controlled
+# text or a compound command injected a verdict, and a conflicted block
+# never satisfies the goal.
+evidence_script="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/g2g-evidence.sh"
+evidence_check=$(jq -rs --arg spec "$spec_path" --arg script "$evidence_script" '
+    def regex_escape: gsub("(?<c>[\\\\^$.|?*+()\\[\\]{}])"; "\\" + .c);
+    ($spec | regex_escape) as $spec_re
+    | ($script | regex_escape) as $script_re
     | [ .[] | select(.type=="assistant") | .message.content[]?
       | select(type=="object" and .type=="tool_use")
       | select((.input.command? // "")
-               | test("g2g-evidence\\.sh\\s+" + $spec_re + "\\s+--full\\s*$"))
+               | test("\\A[[:space:]]*(?:bash[ \\t]+)?" + $script_re
+                      + "[ \\t]+" + $spec_re + "[ \\t]+--full[[:space:]]*\\z"))
       | .id ] as $evidence_ids
     | [ .[] | select(.type=="user") | .message.content[]?
         | select(type=="object" and .type=="tool_result")

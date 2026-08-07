@@ -39,9 +39,11 @@ always-present task-counts line rather than from verification results.
   verdict-shaped line inside the block.
 - `g2g-stop.sh` accepts only a paired block with exactly one verdict
   line (conflicting verdicts are treated as forged), and pairs only a
-  bare `g2g-evidence.sh <spec> --full` invocation — nothing chained
-  before or after — so a compound command cannot append a passing line
-  to its own tool result.
+  command that is exactly its own sibling `g2g-evidence.sh <spec>
+  --full` invocation, anchored start to end — a second review round
+  showed end-only anchoring was bypassable via a forging prefix plus a
+  commented-out invocation, so chained prefixes, comments, and
+  lookalike scripts at other paths now all fail to pair.
 - Rewrote two `A && B || C` guards in `g2g-stop.sh` as explicit
   conditionals (shellcheck SC2015, flagged by CI).
 
