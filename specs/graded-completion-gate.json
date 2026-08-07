@@ -58,10 +58,10 @@
       "dependsOn": [
         "T-001"
       ],
-      "status": "in_progress",
-      "passes": false,
+      "status": "complete",
+      "passes": true,
       "effort": "medium",
-      "notes": "",
+      "notes": "Commit 31b795a. Rewrote g2g-stop.sh's completion clause to require the paired block's 'verdict: complete (proven)' line (EVIDENCE-OK), quoting the block's own verdict line verbatim on block (VERDICT-LINE:*) or naming its absence (NO-VERDICT-LINE, pre-0.5.0 self-heal); counts/substring derivation removed. Added 4 tests to tests/plugin_stop.bats (failed-verify gap, diagnosis preservation, provenance-over-text, no-verdict-line); updated build.md Phase 2 prose and CLAUDE.md invariant bullet. make check green, 123/123 bats.",
       "attempts": 0
     },
     {
