@@ -87,7 +87,11 @@
       "attempts": 0
     }
   ],
-  "verifier": null,
+  "verifier": {
+    "verdict": "PASS",
+    "date": "2026-08-07",
+    "summary": "All 22 acceptance criteria across T-001/T-002/T-003 verified against the diff and by live execution; make check exits 0 (123 tests); strict additivity, intermediate states, and every binding constraint hold."
+  },
   "glossary": {
     "verdict line": "The single graded line g2g-evidence.sh prints before its footer: outcome (confidence) [basis]. 'proven' = observed by that very script run; 'assumed' = derived only from spec JSON the orchestrator maintains; 'incomplete' = anything else.",
     "structural pairing": "g2g-stop.sh's provenance mechanism: an evidence block counts only when it sits in a tool_result whose tool_use_id pairs it to a tool_use that actually ran g2g-evidence.sh with --full for the armed spec. Assistant text cannot forge the record shape.",
