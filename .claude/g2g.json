@@ -6,7 +6,7 @@
     "plugin/"
   ],
   "defaultBudgets": {
-    "buildTurnsFactor": 2,
+    "buildTurnsFactor": 3,
     "buildHours": 2,
     "improveTurns": 70,
     "improveHours": 1,
