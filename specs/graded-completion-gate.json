@@ -35,10 +35,10 @@
         "make check passes."
       ],
       "dependsOn": [],
-      "status": "in_progress",
-      "passes": false,
+      "status": "complete",
+      "passes": true,
       "effort": "medium",
-      "notes": "",
+      "notes": "Commit edae949. Added graded verdict: line to plugin/scripts/g2g-evidence.sh (between verifier: line and footer, both modes); extended tests/plugin_evidence.bats with 8 tests covering verdict rules plus the 12-task boundary both ways (13-task omission test retained). Strictly additive: g2g-stop.sh, tests/plugin_stop.bats (26/26 pass unmodified), build.md, CLAUDE.md untouched. make check green (120 bats tests).",
       "attempts": 0
     },
     {
