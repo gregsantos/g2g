@@ -80,10 +80,10 @@
         "T-001",
         "T-002"
       ],
-      "status": "in_progress",
-      "passes": false,
+      "status": "complete",
+      "passes": true,
       "effort": "small",
-      "notes": "",
+      "notes": "Commit 57f0b7d. plugin/README.md: Guardrails bullet documenting the three verdict grades and the required token; docs/G2G_PLUGIN_REF.md: matching Safety-model bullet incl. failed-verify gap closure; CHANGELOG.md: backfilled 0.4.0 (de893d4) and 0.4.1 (5f7e27a), added 0.5.0 citing F-043/F-045; plugin.json 0.4.1 -> 0.5.0 (version only). Neither doc file had stale counts-line prose (pre-edit grep empty). make check green, 123/123 bats.",
       "attempts": 0
     }
   ],
