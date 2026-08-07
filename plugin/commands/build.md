@@ -172,22 +172,24 @@ command (confirmed by spike). Instead:
      the files for a human;
    - the build is genuinely complete: the most recent G2G EVIDENCE block
      that the hook can pair by tool-use id to a real
-     `g2g-evidence.sh <spec-path> --full` invocation reports all tasks
-     passed with zero in_progress/pending/blocked and `verifier: PASS`,
-     AND a `VERIFIER REPORT` with `verdict: PASS` arrived from a
-     dispatched `g2g:g2g-verifier` subagent after the goal was armed.
+     `g2g-evidence.sh <spec-path> --full` invocation carries a
+     `verdict: complete (proven)` line, AND a `VERIFIER REPORT` with
+     `verdict: PASS` arrived from a dispatched `g2g:g2g-verifier`
+     subagent after the goal was armed.
 
    Otherwise it blocks and names the missing element. Two properties are
    worth knowing because they constrain how you must work, not just how
-   the hook reads: the evidence check keys on the always-present counts
-   line (`g2g-evidence.sh` omits per-task listings above 12 tasks, so the
-   summary line is the only completion signal guaranteed at any spec
-   size), and it pairs that block to the actual command that produced it
-   — so an evidence block you type out yourself, or one produced by a run
-   without `--full`, does not count. The verifier clause exists because
-   the evidence block's `verifier: PASS` line is read from the spec JSON,
-   which YOU maintain: completion must not be reachable by spec edits
-   alone.
+   the hook reads: the evidence check keys on the `verdict: complete
+   (proven)` line — a single machine-stable token `g2g-evidence.sh`
+   prints only from a real `--full` run in which every verification
+   command exited 0 on an all-passed spec with verifier PASS, so a
+   failing verification command can never coexist with a passing
+   completion check — and it pairs that block to the actual command that
+   produced it — so an evidence block you type out yourself, or one
+   produced by a run without `--full`, does not count. The verifier
+   clause exists because the evidence block's `verifier: PASS` line is
+   read from the spec JSON, which YOU maintain: completion must not be
+   reachable by spec edits alone.
 
 3. Immediately READ `.g2g-goal` back with the Read tool and print its
    contents verbatim. What BINDS this session to the goal is step 2's

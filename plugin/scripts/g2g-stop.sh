@@ -215,7 +215,12 @@ fi
 # record, and pairing to the command defeats echoing a fake block.
 # ---------------------------------------------------------------------------
 
-evidence_verdict=$(jq -rs --arg spec "$spec_path" '
+# One producer (g2g-evidence.sh, T-001) computes completion semantics and
+# prints exactly one graded `verdict:` line; this gate only greps for it —
+# it never re-derives completion from the counts/summary line or the
+# in_progress/pending/blocked substrings, so a paired --full run whose
+# verification command failed can no longer coexist with a passing check.
+evidence_check=$(jq -rs --arg spec "$spec_path" '
     [ .[] | select(.type=="assistant") | .message.content[]?
       | select(type=="object" and .type=="tool_use")
       | select(((.input.command? // "") | test("g2g-evidence\\.sh"))
@@ -229,23 +234,20 @@ evidence_verdict=$(jq -rs --arg spec "$spec_path" '
         | map(if type=="object" then (.text // "") else tostring end)
         | join("\n") ] as $blocks
     | if ($blocks | length) == 0 then "NO-EVIDENCE"
-      else ($blocks | last) as $latest
-        | ($latest | [match("tasks: ([0-9]+) total \\| ([0-9]+) passed").captures[].string]) as $counts
-        | if ($counts | length) != 2 then "NO-SUMMARY"
-          elif ($counts[0] != $counts[1]) then "TASKS-REMAINING"
-          elif ($latest | test("0 in_progress") and test("0 pending") and test("0 blocked")) | not then "TASKS-ACTIVE"
-          elif ($latest | test("verifier: PASS")) | not then "VERIFIER-NOT-PASS"
-          else "EVIDENCE-OK" end
+      else
+        ($blocks | last | split("\n") | map(select(startswith("verdict:")))) as $verdict_lines
+        | if ($verdict_lines | any(startswith("verdict: complete (proven)"))) then "EVIDENCE-OK"
+          elif ($verdict_lines | length) > 0 then "VERDICT-LINE:" + ($verdict_lines | last)
+          else "NO-VERDICT-LINE"
+          end
       end' "$transcript_path" 2>/dev/null)
 
-if [ "$evidence_verdict" != "EVIDENCE-OK" ]; then
-    case "$evidence_verdict" in
+if [ "$evidence_check" != "EVIDENCE-OK" ]; then
+    case "$evidence_check" in
         NO-EVIDENCE|"") block "Condition not met: no G2G EVIDENCE block from a real \`g2g-evidence.sh $spec_path --full\` run appears in this transcript." ;;
-        NO-SUMMARY)     block "Condition not met: the latest evidence block has no parsable tasks summary line." ;;
-        TASKS-REMAINING) block "Condition not met: the latest evidence block reports tasks still unpassed." ;;
-        TASKS-ACTIVE)   block "Condition not met: tasks remain in_progress, pending, or blocked." ;;
-        VERIFIER-NOT-PASS) block "Condition not met: the latest evidence block does not report verifier: PASS." ;;
-        *)              block "Condition not met: evidence check returned $evidence_verdict." ;;
+        NO-VERDICT-LINE) block "Condition not met: the latest evidence block has no verdict line (a pre-0.5.0 g2g-evidence.sh run) -- the orchestrator's next turn re-runs g2g-evidence.sh and self-heals." ;;
+        VERDICT-LINE:*) block "Condition not met: ${evidence_check#VERDICT-LINE:}" ;;
+        *)              block "Condition not met: evidence check returned $evidence_check." ;;
     esac
 fi
 

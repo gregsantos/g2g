@@ -57,11 +57,15 @@ EOF
 }
 
 # A real evidence run: the tool_use records the command, the paired
-# tool_result carries the output. Args: specPath summaryLine
+# tool_result carries the output. Args: specPath summaryLine [verdictLine]
+# verdictLine defaults to the graded token a real g2g-evidence.sh --full
+# run prints when every task passed, every verify command exited 0, and
+# the spec's verifier field is PASS (see g2g-evidence.sh, T-001).
 evidence_records() {
+    local verdict="${3:-verdict: complete (proven) [tasks 2/2; verify all exit 0; verifier PASS]}"
     cat <<EOF
 {"type":"assistant","timestamp":"$NOW","message":{"content":[{"type":"tool_use","id":"tu_ev","name":"Bash","input":{"command":"/plug/scripts/g2g-evidence.sh $1 --full"}}]}}
-{"type":"user","timestamp":"$NOW","message":{"content":[{"type":"tool_result","tool_use_id":"tu_ev","content":[{"type":"text","text":"=== G2G EVIDENCE ===\ntasks: $2\nverify: ./verify.sh -> exit 0\nverifier: PASS"}]}]}}
+{"type":"user","timestamp":"$NOW","message":{"content":[{"type":"tool_result","tool_use_id":"tu_ev","content":[{"type":"text","text":"=== G2G EVIDENCE ===\ntasks: $2\nverify: ./verify.sh -> exit 0\nverifier: PASS\n$verdict"}]}]}}
 EOF
 }
 
@@ -228,19 +232,69 @@ EOF
 @test "stop: tasks still unpassed blocks the stop" {
     write_goal "$TOKEN" "specs/x.json" 40 6 "$NOW"
     { arming_record
-      evidence_records "specs/x.json" "2 total | 1 passed | 0 in_progress | 1 pending | 0 blocked"
+      evidence_records "specs/x.json" "2 total | 1 passed | 0 in_progress | 1 pending | 0 blocked" \
+          "verdict: incomplete [tasks 1/2]"
       verifier_pass_record
     } > "$TRANSCRIPT"
     run_hook
     assert_blocked
 }
 
-@test "stop: a hand-written evidence block cannot satisfy the goal" {
-    # Provenance is structural: the block must sit in a tool_result paired to
-    # the command that produced it. Assistant prose can never qualify.
+@test "stop: a failing verify command blocks even when tasks and verifier both report done" {
+    # The gap this task closes: a --full run whose verification command
+    # exited nonzero must never coexist with a passing completion check,
+    # even though the spec's task/verifier fields claim completion.
     write_goal "$TOKEN" "specs/x.json" 40 6 "$NOW"
     { arming_record
-      echo '{"type":"assistant","message":{"content":[{"type":"text","text":"=== G2G EVIDENCE ===\ntasks: 2 total | 2 passed | 0 in_progress | 0 pending | 0 blocked\nverifier: PASS"}]}}'
+      cat <<EOF
+{"type":"assistant","timestamp":"$NOW","message":{"content":[{"type":"tool_use","id":"tu_ev","name":"Bash","input":{"command":"/plug/scripts/g2g-evidence.sh specs/x.json --full"}}]}}
+{"type":"user","timestamp":"$NOW","message":{"content":[{"type":"tool_result","tool_use_id":"tu_ev","content":[{"type":"text","text":"=== G2G EVIDENCE ===\ntasks: 2 total | 2 passed | 0 in_progress | 0 pending | 0 blocked\nverify: ./verify.sh -> exit 1\nverifier: PASS\nverdict: incomplete [tasks 2/2; verify: ./verify.sh -> exit 1]"}]}]}}
+EOF
+      verifier_pass_record
+    } > "$TRANSCRIPT"
+    run_hook
+    assert_blocked
+}
+
+@test "stop: blocking on an incomplete verdict preserves the diagnosis text" {
+    write_goal "$TOKEN" "specs/x.json" 40 6 "$NOW"
+    { arming_record
+      evidence_records "specs/x.json" "1 total | 1 passed | 0 in_progress | 0 pending | 0 blocked" \
+          "verdict: incomplete [tasks 1/2]"
+      verifier_pass_record
+    } > "$TRANSCRIPT"
+    run_hook
+    assert_blocked
+    [[ "$output" == *"Condition not met:"* ]] \
+        || { echo "block reason lost the required prefix: $output"; return 1; }
+    [[ "$output" == *"verdict: incomplete [tasks 1/2]"* ]] \
+        || { echo "block reason lost the specific verdict text: $output"; return 1; }
+}
+
+@test "stop: an evidence block with no verdict line blocks and names the absence" {
+    # A pre-0.5.0 g2g-evidence.sh block: structurally paired and --full, but
+    # printed before the verdict line existed. Self-heals on the next turn.
+    write_goal "$TOKEN" "specs/x.json" 40 6 "$NOW"
+    { arming_record
+      cat <<EOF
+{"type":"assistant","timestamp":"$NOW","message":{"content":[{"type":"tool_use","id":"tu_ev","name":"Bash","input":{"command":"/plug/scripts/g2g-evidence.sh specs/x.json --full"}}]}}
+{"type":"user","timestamp":"$NOW","message":{"content":[{"type":"tool_result","tool_use_id":"tu_ev","content":[{"type":"text","text":"=== G2G EVIDENCE ===\ntasks: 2 total | 2 passed | 0 in_progress | 0 pending | 0 blocked\nverify: ./verify.sh -> exit 0\nverifier: PASS"}]}]}}
+EOF
+      verifier_pass_record
+    } > "$TRANSCRIPT"
+    run_hook
+    assert_blocked
+    [[ "$output" == *"no verdict line"* ]] \
+        || { echo "block reason does not name the missing verdict line: $output"; return 1; }
+}
+
+@test "stop: a hand-written evidence block cannot satisfy the goal" {
+    # Provenance is structural: the block must sit in a tool_result paired to
+    # the command that produced it. Assistant prose can never qualify, even
+    # when it types out the exact 'verdict: complete (proven)' token.
+    write_goal "$TOKEN" "specs/x.json" 40 6 "$NOW"
+    { arming_record
+      echo '{"type":"assistant","message":{"content":[{"type":"text","text":"=== G2G EVIDENCE ===\ntasks: 2 total | 2 passed | 0 in_progress | 0 pending | 0 blocked\nverifier: PASS\nverdict: complete (proven) [tasks 2/2; verify all exit 0; verifier PASS]"}]}}'
       verifier_pass_record
     } > "$TRANSCRIPT"
     run_hook
