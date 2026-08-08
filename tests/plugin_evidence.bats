@@ -71,6 +71,34 @@ setup() {
     [[ "$status" -eq 2 ]]
 }
 
+@test "evidence: exit 2 when tasks is missing, null, or not an array" {
+    jq -n '{context: {verificationCommands: ["true"]}}' > "$BATS_TEST_TMPDIR/notasks.json"
+    run "$EVIDENCE" "$BATS_TEST_TMPDIR/notasks.json"
+    [[ "$status" -eq 2 ]]
+    [[ "$output" != *"=== G2G EVIDENCE ==="* ]]
+    jq -n '{tasks: null, context: {verificationCommands: ["true"]}}' > "$BATS_TEST_TMPDIR/nulltasks.json"
+    run "$EVIDENCE" "$BATS_TEST_TMPDIR/nulltasks.json"
+    [[ "$status" -eq 2 ]]
+    jq -n '{tasks: "oops", context: {verificationCommands: ["true"]}}' > "$BATS_TEST_TMPDIR/strtasks.json"
+    run "$EVIDENCE" "$BATS_TEST_TMPDIR/strtasks.json"
+    [[ "$status" -eq 2 ]]
+}
+
+@test "evidence: exit 2 when a task entry is not an object" {
+    jq -n '{tasks: ["T-001"], context: {verificationCommands: ["true"]}}' > "$BATS_TEST_TMPDIR/badtask.json"
+    run "$EVIDENCE" "$BATS_TEST_TMPDIR/badtask.json"
+    [[ "$status" -eq 2 ]]
+    [[ "$output" != *"=== G2G EVIDENCE ==="* ]]
+}
+
+@test "evidence: null task title and status render without crashing" {
+    make_spec "$SPEC" '[{"id":"T-001","title":null,"status":null,"passes":false}]'
+    run "$EVIDENCE" "$SPEC"
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == *"T-001 [] "* ]]
+    [[ "$output" == *"verdict: incomplete [tasks 0/1]"* ]]
+}
+
 @test "evidence: exit 3 when verificationCommands missing or empty" {
     jq '.context.verificationCommands = []' "$SPEC" > "$BATS_TEST_TMPDIR/empty.json"
     run "$EVIDENCE" "$BATS_TEST_TMPDIR/empty.json"
