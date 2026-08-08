@@ -10,10 +10,10 @@
 |----------|-------|
 | Critical | 0 |
 | High | 2 |
-| Medium | 25 |
+| Medium | 26 |
 | Low | 32 |
 | Info | 0 |
-| **Total** | **59** |
+| **Total** | **60** |
 
 ## High (2)
 
@@ -37,7 +37,7 @@ Deferred design follow-up from the third Codex adversarial review round on PR #4
 
 **References:** plugin/scripts/g2g-evidence.sh, plugin/scripts/g2g-stop.sh, CHANGELOG.md (0.5.0 'Hardened'), F-038
 
-## Medium (25)
+## Medium (26)
 
 ### F-002 [medium] Every review is a full five-category sweep — no incremental mode
 
@@ -265,6 +265,16 @@ The experimental workflow-backed build engine (/g2g:build-wf, plugin/workflows/g
 
 **References:** plugin/commands/build-wf.md, plugin/workflows/g2g-build.js, CHANGELOG.md (0.3.1 'Verified live')
 
+### F-060 [medium] macOS default bash silently skips failing '[[ ]]' asserts mid-test — local bats green over-reports
+
+**Location:** `Makefile` · **category:** test-coverage · **confidence:** high · **effort:** medium · **status:** OPEN
+
+bash 3.2 (macOS system bash — the only bash on a stock Mac, and what bats resolves via env) has an errexit defect: a failing bare '[[ ]]' compound command does NOT trigger set -e unless it is the last command ('/bin/bash -ec "[[ 1 -eq 2 ]]; echo survived"' prints survived and exits 0; reproduced 2026-08-08 with bats-core 1.14.0). The bats suite asserts almost exclusively with mid-test '[[ ]]' lines, so on such a machine only each test's LAST command is enforced and every earlier assert is decorative — during the F-019 fix, deliberately-red tests reported ok locally. Runtime plugin scripts are unaffected (audited: every bare '[[ ]]' in plugin/scripts/*.sh and tests/smoke.sh carries an explicit handler). CI runs ubuntu bash where '[[ ]]' trips errexit correctly, so PR-gated runs stay sound; the exposure is local 'make test'/'make check' green — including g2g builds' own verificationCommands ('make check') — overstating what was verified. 0.5.1 added a defect-detecting warning to the make test target as a stopgap.
+
+**Suggestion:** Pick one decisive fix: (a) make the suite bash-3.2-proof mechanically — restyle mid-test asserts from bare '[[ ... ]]' to forms 3.2's errexit honors (plain '[ ... ]' for comparisons; 'case' or 'grep -q' for pattern matches), one test file per PR to keep review tractable; or (b) require a modern bash for local testing and escalate the 0.5.1 warning to a hard failure once 'brew install bash' is standard on dev machines — do NOT hard-fail before that, since make check is this repo's build verificationCommand and a hard gate would break every local g2g build. Either way, add an enforcement canary: a bats file with a deliberately failing mid-test '[[ ]]' that the harness requires to report 'not ok', so assert enforcement itself stays pinned.
+
+**References:** tests/plugin_evidence.bats, tests/plugin_stop.bats, .github/workflows/ci.yml, F-019
+
 ## Low (32)
 
 ### F-006 [low] Fresh builders lose repo-specific lessons between tasks and sessions
@@ -349,9 +359,9 @@ In --full mode the evidence script runs each context.verificationCommands entry 
 
 ### F-019 [low] Malformed spec (missing .tasks or task fields) crashes with undocumented exit 5
 
-**Location:** `plugin/scripts/g2g-evidence.sh` · **category:** bug · **confidence:** medium · **effort:** small · **status:** OPEN
+**Location:** `plugin/scripts/g2g-evidence.sh` · **category:** bug · **confidence:** medium · **effort:** small · **status:** 6
 
-The script's documented/frozen exit codes are 0 (ok), 2 (invalid spec), 3 (no verificationCommands). But the task-counting jq expressions on lines 19-22 use unguarded iteration .tasks[]; when .tasks is absent/null, jq raises Cannot iterate over null and, under set -euo pipefail, the script dies with exit 5 and a cryptic jq stderr instead of a clean exit 2. Verified: a spec {"context":{"verificationCommands":["true"]}} yields script exit=5. The same class of crash occurs on lines 28/33 when a task has a null .title or .status. /g2g:build is shielded (Phase 1 step 4 validates a non-empty tasks array before running the script), but /g2g:status runs the script over every specs/*.json with no such pre-validation, so a hand-written or partial spec makes /g2g:status fail opaquely rather than reporting the spec as invalid.
+The script's documented/frozen exit codes are 0 (ok), 2 (invalid spec), 3 (no verificationCommands). But the task-counting jq expressions on lines 19-22 use unguarded iteration .tasks[]; when .tasks is absent/null, jq raises Cannot iterate over null and, under set -euo pipefail, the script dies with exit 5 and a cryptic jq stderr instead of a clean exit 2. Verified: a spec {"context":{"verificationCommands":["true"]}} yields script exit=5. The same class of crash occurs on lines 28/33 when a task has a null .title or .status. /g2g:build is shielded (Phase 1 step 4 validates a non-empty tasks array before running the script), but /g2g:status runs the script over every specs/*.json with no such pre-validation, so a hand-written or partial spec makes /g2g:status fail opaquely rather than reporting the spec as invalid. [addressed-2026-08-08 by PR #6: b3313b1 gates .tasks as an array of task objects right after JSON validity — malformed shapes exit 2 with a clear message; pinned by tests/plugin_evidence.bats 'exit 2 when tasks is missing, null, or not an array' and 'exit 2 when a task entry is not an object', with the graceful null title/status path pinned by 'null task title and status render without crashing'.]
 
 **Suggestion:** Guard the jq access: check .tasks | type == "array" up front and fail 2 if not (matching the invalid-spec contract), and/or use .tasks[]? with null-safe concatenation (e.g. (.title // ""), (.status // "unknown")). Add a test alongside the existing exit-code tests pinning exit 2 for a tasks-less spec.
 
@@ -539,4 +549,4 @@ Phase 3 step 3 (lines 209-218) checks the tree each turn and, if a builder crash
 
 ---
 
-**Open vs addressed:** 43 open · 16 addressed/stale/rejected (of 59 total)
+**Open vs addressed:** 43 open · 17 addressed/stale/rejected (of 60 total)
