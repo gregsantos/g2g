@@ -4,20 +4,28 @@
 
 ### Fixed
 - `g2g-evidence.sh` exits 2 (invalid spec) with a clear message when
-  `.tasks` is missing, null, not an array, or contains a non-object
-  entry. Previously the unguarded jq iteration died with an
-  undocumented exit 5 and a cryptic stderr, so `/g2g:status` failed
-  opaquely on a hand-written or partial spec (F-019). Null task
-  `title`/`status` values were already rendered gracefully and are now
-  pinned by a test.
+  `.tasks` is missing, null, not an array, contains a non-object
+  entry, or contains a task whose `id`/`title`/`status` is neither a
+  string nor null (those fields are string-concatenated into the
+  block). Previously the unguarded jq iteration died with an
+  undocumented exit 5 and a cryptic stderr — for field-level cases
+  after the header had already printed — so `/g2g:status` failed
+  opaquely on a hand-written or partial spec (F-019; field-type gate
+  added after Codex adversarial review). Null `title`/`status` were
+  already rendered gracefully and are now pinned by a test.
 
 ### Added
-- `make test` warns when the local bash swallows failing `[[ ]]`
-  asserts mid-test (macOS system bash 3.2 errexit defect): on such a
-  bash only each test's final assert is enforced, so a local green
-  over-reports. CI (ubuntu) is unaffected and remains authoritative.
-  Deliberately a warning, not a failure — `make check` is this repo's
-  build verificationCommand (F-060).
+- `make test` now resolves a bash whose errexit actually enforces
+  failing `[[ ]]` asserts mid-test — macOS system bash 3.2 silently
+  swallows them, so under it only each test's final assert counts and
+  a bats green over-reports (F-060). Candidates: `G2G_BATS_BASH`,
+  `bash` on PATH, then Homebrew/MacPorts locations. Enforcement is
+  proven end-to-end each run by `tests/canary/enforcement.bats`, a
+  deliberately failing mid-test assert that must report `not ok`. No
+  enforcing bash is a hard failure with a named remedy (`brew install
+  bash`) — a green that cannot enforce its asserts must never feed
+  `make check`, this repo's build verificationCommand and completion
+  evidence. CI (ubuntu) was never affected.
 
 ## 0.5.0 (2026-08-07)
 

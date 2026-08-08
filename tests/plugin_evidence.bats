@@ -91,6 +91,19 @@ setup() {
     [[ "$output" != *"=== G2G EVIDENCE ==="* ]]
 }
 
+@test "evidence: exit 2 when a task field that renders into the block is not a string or null" {
+    jq -n '{tasks: [{"id": [], "title": "x", "status": "pending", "passes": false}], context: {verificationCommands: ["true"]}}' > "$BATS_TEST_TMPDIR/arrid.json"
+    run "$EVIDENCE" "$BATS_TEST_TMPDIR/arrid.json"
+    [[ "$status" -eq 2 ]]
+    [[ "$output" != *"=== G2G EVIDENCE ==="* ]]
+    jq -n '{tasks: [{"id": "T-001", "title": {"x": 1}, "status": "pending", "passes": false}], context: {verificationCommands: ["true"]}}' > "$BATS_TEST_TMPDIR/objtitle.json"
+    run "$EVIDENCE" "$BATS_TEST_TMPDIR/objtitle.json"
+    [[ "$status" -eq 2 ]]
+    jq -n '{tasks: [{"id": "T-001", "title": "x", "status": 7, "passes": false}], context: {verificationCommands: ["true"]}}' > "$BATS_TEST_TMPDIR/numstatus.json"
+    run "$EVIDENCE" "$BATS_TEST_TMPDIR/numstatus.json"
+    [[ "$status" -eq 2 ]]
+}
+
 @test "evidence: null task title and status render without crashing" {
     make_spec "$SPEC" '[{"id":"T-001","title":null,"status":null,"passes":false}]'
     run "$EVIDENCE" "$SPEC"
