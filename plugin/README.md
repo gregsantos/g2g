@@ -234,7 +234,10 @@ This repo tracks `specs/`, `review-output/`, and
   block with exactly one machine-stable `verdict:` line naming its
   grade: `complete (proven)` only from a real `--full` run in which
   every verification command exited 0 on an all-passed spec with
-  `verifier: PASS`; `complete (assumed)` when the claim rests on spec
+  `verifier: PASS`, with the repository head, tracked-file state, and
+  the spec's completion facts unchanged across the run (a verification
+  command that mutates state forfeits the grade); `complete (assumed)`
+  when the claim rests on spec
   bookkeeping alone (status mode, which never runs verification
   commands and so can never earn `(proven)`); `incomplete` otherwise,
   naming the first failing fact. The Stop hook's completion check keys

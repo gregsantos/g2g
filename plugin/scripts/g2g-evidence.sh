@@ -63,6 +63,7 @@ VERIFY_ALL_OK=1
 VERIFY_EXECUTED=0
 FIRST_FAIL_CMD=""
 FIRST_FAIL_CODE=""
+VERIFIER_PRE=$(jq -r '(.verifier.verdict // "PENDING") | tostring' "$SPEC" 2>/dev/null || echo "unreadable")
 if [[ "$MODE" == "--full" ]]; then
     while IFS= read -r cmd; do
         code=0
@@ -75,6 +76,34 @@ if [[ "$MODE" == "--full" ]]; then
             FIRST_FAIL_CODE="$code"
         fi
     done < <(jq -r '.context.verificationCommands[]' "$SPEC")
+fi
+
+# 'proven' must describe the state that was verified. Verification commands
+# are arbitrary shell: one may rewrite tracked files, move HEAD, or edit the
+# spec's own completion facts while still exiting 0 — and this script read
+# those facts BEFORE running anything. Any drift across the run forfeits
+# 'proven'; the verdict names it instead of blessing the post-run state.
+STATE_DRIFT=""
+if [[ "$MODE" == "--full" ]]; then
+    HEAD_AFTER=$(git rev-parse --short HEAD 2>/dev/null || true)
+    if [[ "$HEAD_AFTER" != "$HEAD_SHA" ]]; then
+        STATE_DRIFT="head ${HEAD_SHA:-none} -> ${HEAD_AFTER:-none}"
+    elif [[ -n "$HEAD_SHA" ]]; then
+        DIRTY_AFTER=$(git status --porcelain --untracked-files=no 2>/dev/null | wc -l | tr -d '[:space:]')
+        if [[ "$DIRTY_AFTER" != "$DIRTY" ]]; then
+            STATE_DRIFT="tracked-dirty $DIRTY -> $DIRTY_AFTER"
+        fi
+    fi
+    if [[ -z "$STATE_DRIFT" ]]; then
+        TOTAL_AFTER=$(jq '.tasks | length' "$SPEC" 2>/dev/null || echo "unreadable")
+        PASSED_AFTER=$(jq '[.tasks[] | select(.passes == true)] | length' "$SPEC" 2>/dev/null || echo "unreadable")
+        VERIFIER_AFTER=$(jq -r '(.verifier.verdict // "PENDING") | tostring' "$SPEC" 2>/dev/null || echo "unreadable")
+        if [[ "$TOTAL_AFTER" != "$TOTAL" || "$PASSED_AFTER" != "$PASSED" ]]; then
+            STATE_DRIFT="task counts"
+        elif [[ "$VERIFIER_AFTER" != "$VERIFIER_PRE" ]]; then
+            STATE_DRIFT="verifier field"
+        fi
+    fi
 fi
 
 VERIFIER_VERDICT=$(jq -r '(.verifier.verdict // "PENDING") | tostring | gsub("[[:cntrl:]]"; " ")' "$SPEC")
@@ -100,6 +129,8 @@ if [[ "$MODE" == "--full" ]]; then
         # (invisible to set -e inside process substitution) must not
         # leave a clean-looking loop counted as full verification.
         echo "verdict: incomplete [tasks $PASSED/$TOTAL; verify: executed $VERIFY_EXECUTED/$VERIFY_COUNT commands]"
+    elif [[ -n "$STATE_DRIFT" ]]; then
+        echo "verdict: incomplete [tasks $PASSED/$TOTAL; state changed during verify: $STATE_DRIFT]"
     elif [[ "$VERIFIER_VERDICT" != "PASS" ]]; then
         echo "verdict: incomplete [tasks $PASSED/$TOTAL; verify all exit 0; verifier $VERIFIER_VERDICT]"
     else

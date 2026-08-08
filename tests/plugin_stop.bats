@@ -390,6 +390,35 @@ EOF
         || { echo "block reason should treat the lookalike path as unpaired: $output"; return 1; }
 }
 
+@test "stop: a defensively quoted evidence invocation still pairs" {
+    # Quoting the script and spec paths is shell-safe and legitimate (and
+    # required if either path contains spaces); classifying such a run as
+    # NO-EVIDENCE would block an honest build until its caps.
+    write_goal "$TOKEN" "specs/x.json" 40 6 "$NOW"
+    { arming_record
+      cat <<EOF
+{"type":"assistant","timestamp":"$NOW","message":{"content":[{"type":"tool_use","id":"tu_ev","name":"Bash","input":{"command":"bash \\"$REPO_DIR/plugin/scripts/g2g-evidence.sh\\" \\"specs/x.json\\" --full"}}]}}
+{"type":"user","timestamp":"$NOW","message":{"content":[{"type":"tool_result","tool_use_id":"tu_ev","content":[{"type":"text","text":"=== G2G EVIDENCE ===\ntasks: 2 total | 2 passed | 0 in_progress | 0 pending | 0 blocked\nverify: ./verify.sh -> exit 0\nverifier: PASS\nverdict: complete (proven) [tasks 2/2; verify all exit 0; verifier PASS]"}]}]}}
+EOF
+      verifier_pass_record
+    } > "$TRANSCRIPT"
+    run_hook
+    assert_allowed
+}
+
+@test "stop: mismatched quotes around the invocation do not pair" {
+    write_goal "$TOKEN" "specs/x.json" 40 6 "$NOW"
+    { arming_record
+      cat <<EOF
+{"type":"assistant","timestamp":"$NOW","message":{"content":[{"type":"tool_use","id":"tu_ev","name":"Bash","input":{"command":"\\"$REPO_DIR/plugin/scripts/g2g-evidence.sh' specs/x.json --full"}}]}}
+{"type":"user","timestamp":"$NOW","message":{"content":[{"type":"tool_result","tool_use_id":"tu_ev","content":[{"type":"text","text":"verdict: complete (proven) [tasks 2/2; verify all exit 0; verifier PASS]"}]}]}}
+EOF
+      verifier_pass_record
+    } > "$TRANSCRIPT"
+    run_hook
+    assert_blocked
+}
+
 @test "stop: evidence without --full cannot satisfy the goal" {
     write_goal "$TOKEN" "specs/x.json" 40 6 "$NOW"
     cat > "$TRANSCRIPT" <<EOF

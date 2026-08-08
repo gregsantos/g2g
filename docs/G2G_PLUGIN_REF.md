@@ -270,7 +270,9 @@ PR. That data is why the default is now **25**. Sizing guidance:
 - **Graded completion evidence:** `g2g-evidence.sh` grades every run
   with exactly one `verdict:` line: `complete (proven)` (a real
   `--full` run where every verification command exited 0, all tasks
-  passed, and `verifier: PASS`), `complete (assumed)` (status mode's
+  passed, `verifier: PASS`, and the repo head, tracked-file state, and
+  spec completion facts did not change while the commands ran),
+  `complete (assumed)` (status mode's
   spec-bookkeeping claim alone — verification commands never ran, so
   this grade can never be `(proven)`), or `incomplete` (naming the
   first failing fact). The Stop hook's completion check requires the

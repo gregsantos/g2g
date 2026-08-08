@@ -43,7 +43,18 @@ always-present task-counts line rather than from verification results.
   --full` invocation, anchored start to end — a second review round
   showed end-only anchoring was bypassable via a forging prefix plus a
   commented-out invocation, so chained prefixes, comments, and
-  lookalike scripts at other paths now all fail to pair.
+  lookalike scripts at other paths now all fail to pair. The script and
+  spec paths may be wrapped in matching single or double quotes
+  (defensive quoting is legitimate and required for paths with spaces);
+  mismatched quotes do not pair.
+- `g2g-evidence.sh` forfeits `(proven)` when the repository head, the
+  tracked-file state, or the spec's own completion facts changed while
+  the verification commands ran — a command that rewrites state while
+  exiting 0 can no longer have its post-run state blessed by the run
+  that mutated it. The verdict names the drift. (A third review round;
+  the wider design follow-up — binding the token to the final rebased
+  HEAD with a hook-side comparison — is deferred and tracked for the
+  review backlog.)
 - Rewrote two `A && B || C` guards in `g2g-stop.sh` as explicit
   conditionals (shellcheck SC2015, flagged by CI).
 

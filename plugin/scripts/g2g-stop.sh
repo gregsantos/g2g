@@ -234,8 +234,14 @@ fi
 evidence_script="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/g2g-evidence.sh"
 evidence_check=$(jq -rs --arg spec "$spec_path" --arg script "$evidence_script" '
     def regex_escape: gsub("(?<c>[\\\\^$.|?*+()\\[\\]{}])"; "\\" + .c);
-    ($spec | regex_escape) as $spec_re
-    | ($script | regex_escape) as $script_re
+    # Each path may be bare or wrapped in MATCHING single or double quotes
+    # (single quotes spelled \u0027 because this jq program lives inside
+    # a single-quoted shell string) — defensive quoting is shell-safe and
+    # required for paths with spaces; rejecting it would block an honest
+    # build until its caps.
+    def quotable: "(?:\"" + . + "\"|\u0027" + . + "\u0027|" + . + ")";
+    ($spec | regex_escape | quotable) as $spec_re
+    | ($script | regex_escape | quotable) as $script_re
     | [ .[] | select(.type=="assistant") | .message.content[]?
       | select(type=="object" and .type=="tool_use")
       | select((.input.command? // "")

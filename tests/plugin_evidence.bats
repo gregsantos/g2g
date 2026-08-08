@@ -284,6 +284,47 @@ verdict: incomplete [tasks 1/2]
     [[ "$verdict_line" == verdict:\ incomplete* ]]
 }
 
+@test "evidence --full: a verification command that mutates the spec forfeits proven" {
+    # 'proven' must describe the state that was verified: a command that
+    # rewrites the spec's own completion facts while exiting 0 (here,
+    # flipping the verifier verdict) must not have its post-run state
+    # blessed by this run's verdict.
+    MUT="$BATS_TEST_TMPDIR/mutating.json"
+    jq -n --arg cmd "sed -i.bak s/PENDING/PASS/ $MUT" '{
+        context: { verificationCommands: ["true", $cmd] },
+        tasks: [{"id":"T-001","title":"First","status":"complete","passes":true}],
+        verifier: {"verdict":"PENDING"}
+    }' > "$MUT"
+    run "$EVIDENCE" "$MUT" --full
+    [[ "$status" -eq 0 ]]
+    [[ "$output" != *"complete (proven)"* ]]
+    [[ "$output" == *"verdict: incomplete"* ]]
+    [[ "$output" == *"changed during verify"* ]] \
+        || { echo "verdict does not name the state drift: $output"; return 1; }
+}
+
+@test "evidence --full: a verification command that dirties the tracked tree forfeits proven" {
+    REPO="$BATS_TEST_TMPDIR/drift-repo"
+    mkdir -p "$REPO"
+    cd "$REPO" || return 1
+    git init -q -b main
+    echo x > tracked.txt
+    git add tracked.txt
+    git -c user.email=t@t -c user.name=t commit -qm init
+    SPEC3="$REPO/spec.json"
+    jq -n --arg cmd "echo mutated > $REPO/tracked.txt" '{
+        context: { verificationCommands: [$cmd] },
+        tasks: [{"id":"T-001","title":"First","status":"complete","passes":true}],
+        verifier: {"verdict":"PASS"}
+    }' > "$SPEC3"
+    run "$EVIDENCE" "$SPEC3" --full
+    [[ "$status" -eq 0 ]]
+    [[ "$output" != *"complete (proven)"* ]]
+    [[ "$output" == *"verdict: incomplete"* ]]
+    [[ "$output" == *"changed during verify"* ]] \
+        || { echo "verdict does not name the state drift: $output"; return 1; }
+}
+
 @test "evidence: head line binds the block to a commit and tracked-dirty count" {
     REPO="$BATS_TEST_TMPDIR/repo"
     mkdir -p "$REPO"

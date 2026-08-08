@@ -184,9 +184,10 @@ command (confirmed by spike). Instead:
    the hook reads: the evidence check keys on the `verdict: complete
    (proven)` line — a single machine-stable token `g2g-evidence.sh`
    prints only from a real `--full` run in which every verification
-   command exited 0 on an all-passed spec with verifier PASS, so a
-   failing verification command can never coexist with a passing
-   completion check; a paired block carrying more than one verdict line
+   command exited 0 on an all-passed spec with verifier PASS and the
+   repo/spec state did not change while the commands ran, so a failing
+   or state-mutating verification command can never coexist with a
+   passing completion check; a paired block carrying more than one verdict line
    is treated as forged and blocks — and it pairs that block to the
    actual command that produced it, accepting only a command that is
    exactly the plugin's own evidence-script invocation ending at
