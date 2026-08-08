@@ -172,22 +172,32 @@ command (confirmed by spike). Instead:
      the files for a human;
    - the build is genuinely complete: the most recent G2G EVIDENCE block
      that the hook can pair by tool-use id to a real
-     `g2g-evidence.sh <spec-path> --full` invocation reports all tasks
-     passed with zero in_progress/pending/blocked and `verifier: PASS`,
+     `g2g-evidence.sh <spec-path> --full` invocation — the tool call's
+     command must BE that invocation of the plugin's own evidence
+     script, start to end, nothing chained before or after it — carries
+     exactly one verdict line, reading `verdict: complete (proven)`,
      AND a `VERIFIER REPORT` with `verdict: PASS` arrived from a
      dispatched `g2g:g2g-verifier` subagent after the goal was armed.
 
    Otherwise it blocks and names the missing element. Two properties are
    worth knowing because they constrain how you must work, not just how
-   the hook reads: the evidence check keys on the always-present counts
-   line (`g2g-evidence.sh` omits per-task listings above 12 tasks, so the
-   summary line is the only completion signal guaranteed at any spec
-   size), and it pairs that block to the actual command that produced it
-   — so an evidence block you type out yourself, or one produced by a run
-   without `--full`, does not count. The verifier clause exists because
-   the evidence block's `verifier: PASS` line is read from the spec JSON,
-   which YOU maintain: completion must not be reachable by spec edits
-   alone.
+   the hook reads: the evidence check keys on the `verdict: complete
+   (proven)` line — a single machine-stable token `g2g-evidence.sh`
+   prints only from a real `--full` run in which every verification
+   command exited 0 on an all-passed spec with verifier PASS and the
+   repo/spec state did not change while the commands ran, so a failing
+   or state-mutating verification command can never coexist with a
+   passing completion check; a paired block carrying more than one verdict line
+   is treated as forged and blocks — and it pairs that block to the
+   actual command that produced it, accepting only a command that is
+   exactly the plugin's own evidence-script invocation ending at
+   `--full` — so an evidence block you type out yourself, one produced
+   by a run without `--full`, one produced by a compound command
+   wrapping the script, or one from a copy of the script at any other
+   path does not count. The verifier
+   clause exists because the evidence block's `verifier: PASS` line is
+   read from the spec JSON, which YOU maintain: completion must not be
+   reachable by spec edits alone.
 
 3. Immediately READ `.g2g-goal` back with the Read tool and print its
    contents verbatim. What BINDS this session to the goal is step 2's
@@ -273,10 +283,16 @@ condition is MET block the stop.
 9. End the turn by running
    `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-evidence.sh <spec>` — with
    `--full` ONLY when the status table would show all tasks passed
-   (a completion claim). Print its output verbatim, as the real output of
-   running the script — never hand-write this block. The Stop hook pairs
-   the evidence block to the tool call that produced it, so a typed block
-   is not merely disallowed by convention: it cannot satisfy the goal.
+   (a completion claim). Run the script as the ENTIRE command of the tool
+   call — the plugin's own script path, the spec path, and the mode flag,
+   nothing chained before or after: the Stop hook pairs only a command
+   that is exactly that invocation, so a compound command, a comment, or
+   a copy of the script elsewhere never counts as evidence. Print its
+   output verbatim, as the
+   real output of running the script — never hand-write this block. The
+   Stop hook pairs the evidence block to the tool call that produced it,
+   so a typed block is not merely disallowed by convention: it cannot
+   satisfy the goal.
 
 ## OWNERSHIP LOST — non-mutating terminal path
 Reached only from a heartbeat refresh (Phase 2 step 1, Phase 3 step 1)

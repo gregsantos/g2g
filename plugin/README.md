@@ -230,6 +230,25 @@ This repo tracks `specs/`, `review-output/`, and
 - **PR-gated, branch-first, never merges** — every writing command
   refuses the default branch; only `g2g/*` branches are ever pushed, and
   only at PR time.
+- **Graded completion evidence** — every `g2g-evidence.sh` run ends its
+  block with exactly one machine-stable `verdict:` line naming its
+  grade: `complete (proven)` only from a real `--full` run in which
+  every verification command exited 0 on an all-passed spec with
+  `verifier: PASS`, with the repository head, tracked-file state, and
+  the spec's completion facts unchanged across the run (a verification
+  command that mutates state forfeits the grade); `complete (assumed)`
+  when the claim rests on spec
+  bookkeeping alone (status mode, which never runs verification
+  commands and so can never earn `(proven)`); `incomplete` otherwise,
+  naming the first failing fact. The Stop hook's completion check keys
+  on this token: it requires the transcript's evidence block — the one
+  it can pair by tool-use id to a command that is exactly the plugin's
+  own evidence-script `--full` invocation, start to end, nothing
+  chained before or after it — to carry exactly one verdict line,
+  reading `verdict: complete (proven)`; a block with more than one
+  verdict line is treated as forged. A failing verification
+  command in that run makes the token unreachable, so it can never
+  coexist with a passing completion check.
 - **Caps everywhere** — every goal carries turn and wall-clock caps as
   data the Stop hook enforces itself; headless spawns add a dollar cap.
   There is no unlimited mode. The wall-clock cap is computed from the

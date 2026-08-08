@@ -267,6 +267,27 @@ PR. That data is why the default is now **25**. Sizing guidance:
 - **PR-gated:** only `g2g/*` branches are ever pushed; one push at PR
   time plus the single documented reconciliation follow-up; nothing
   merges itself; writing commands refuse the default branch.
+- **Graded completion evidence:** `g2g-evidence.sh` grades every run
+  with exactly one `verdict:` line: `complete (proven)` (a real
+  `--full` run where every verification command exited 0, all tasks
+  passed, `verifier: PASS`, and the repo head, tracked-file state, and
+  spec completion facts did not change while the commands ran),
+  `complete (assumed)` (status mode's
+  spec-bookkeeping claim alone — verification commands never ran, so
+  this grade can never be `(proven)`), or `incomplete` (naming the
+  first failing fact). The Stop hook's completion check requires the
+  paired `--full` evidence block to carry exactly one verdict line,
+  reading `verdict: complete (proven)`, instead of re-deriving
+  completion from the task counts and
+  `in_progress`/`pending`/`blocked` substrings — so a failing
+  verification command in that `--full` run now blocks completion
+  outright; it can no longer coexist with an all-tasks-passed,
+  verifier-PASS spec. Pairing accepts only a command that is exactly
+  the plugin's own evidence-script invocation ending at `--full` —
+  anchored start to end, so chained prefixes, shell comments, and
+  lookalike scripts at other paths all fail to pair — and a block with
+  multiple verdict lines is treated as forged, so neither a compound
+  command nor spec-injected text can fabricate the token.
 - **Caps on every spawn:** `--max-turns` and `--max-budget-usd`, always;
   inner build caps route gracefully to partial PRs.
 - **No orphans:** no `nohup`/`disown`/`setsid` anywhere; every tick has

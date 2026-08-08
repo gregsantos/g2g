@@ -1,5 +1,136 @@
 # Changelog
 
+## 0.5.0 (2026-08-07)
+
+Closes the failed-verify gap in completion evidence: a `--full` run
+whose verification command failed could previously still read as
+complete, because the Stop hook derived completion from the
+always-present task-counts line rather than from verification results.
+
+### Added
+- `g2g-evidence.sh` now ends every block with exactly one graded,
+  machine-stable `verdict:` line: `complete (proven)` only from a real
+  `--full` run where every verification command exited 0 on an
+  all-passed spec with `verifier: PASS`; `complete (assumed)` when the
+  claim rests on spec bookkeeping alone (status mode never runs
+  verification commands, so it can never earn `(proven)`); `incomplete`
+  otherwise, naming the first failing fact (F-045, F-043).
+- Pinned the F-043 12-task boundary: no per-task omission line at
+  exactly 12 tasks, alongside the existing 13-task omission test.
+
+### Changed
+- `g2g-stop.sh`'s completion check now keys on the paired `--full`
+  evidence block containing a line beginning `verdict: complete
+  (proven)`, instead of re-deriving completion from the counts line and
+  the `in_progress`/`pending`/`blocked` substrings. This closes the
+  failed-verify gap: a failing verification command can no longer
+  coexist with a passing completion check (F-045).
+- `build.md` Phase 2 and `CLAUDE.md`'s evidence-output invariant updated
+  to describe the verdict line instead of the summary line.
+
+### Hardened (post-review, same release)
+- `g2g-evidence.sh` validates `context.verificationCommands` as an array
+  of non-empty single-line strings (exit 2 otherwise) — a malformed
+  value previously skipped the verify loop silently and could earn
+  `(proven)` without running anything — and `(proven)` additionally
+  requires every declared command to have actually executed in this run.
+- `g2g-evidence.sh` strips control characters from spec-controlled text
+  (task ids/titles, verifier verdict) so it can never fabricate a
+  verdict-shaped line inside the block.
+- `g2g-stop.sh` accepts only a paired block with exactly one verdict
+  line (conflicting verdicts are treated as forged), and pairs only a
+  command that is exactly its own sibling `g2g-evidence.sh <spec>
+  --full` invocation, anchored start to end — a second review round
+  showed end-only anchoring was bypassable via a forging prefix plus a
+  commented-out invocation, so chained prefixes, comments, and
+  lookalike scripts at other paths now all fail to pair. The script and
+  spec paths may be wrapped in matching single or double quotes
+  (defensive quoting is legitimate and required for paths with spaces);
+  mismatched quotes do not pair.
+- `g2g-evidence.sh` forfeits `(proven)` when the repository head, the
+  tracked-file state, or the spec's own completion facts changed while
+  the verification commands ran — a command that rewrites state while
+  exiting 0 can no longer have its post-run state blessed by the run
+  that mutated it. The verdict names the drift. (A third review round;
+  the wider design follow-up — binding the token to the final rebased
+  HEAD with a hook-side comparison — is deferred and tracked for the
+  review backlog.)
+- Rewrote two `A && B || C` guards in `g2g-stop.sh` as explicit
+  conditionals (shellcheck SC2015, flagged by CI).
+
+### Verified
+- `make check` passing, including the new 12-task boundary and
+  verdict-grade tests.
+
+## 0.4.1 (2026-08-03)
+
+Escalates the Stop hook's block reason after repeated blocks. Real use
+surfaced a gap: an unsatisfiable goal (missing spec, wedged build, or
+one armed by hand for testing) made the hook repeat the same demand
+until Claude Code's own consecutive-block cap overrode it.
+
+### Changed
+- The hook now counts its own prior blocks and, after three with no
+  terminal state, keeps the specific diagnosis and adds the legitimate
+  exits: finish Phase 5 (push, then release-terminal), or state the
+  goal is unreachable and delete `.g2g-goal`.
+- The count reads `stop_hook_summary` records, which the harness
+  writes, so an assistant turn quoting an earlier reason cannot inflate
+  it, and keying on `hookErrors` keeps other Stop hooks a session may
+  have registered out of the count.
+- `stop_hook_active` remains deliberately not honored as an allow
+  signal — blocking is the mechanism that keeps an autonomous build
+  running; the loop is already bounded externally by
+  `CLAUDE_CODE_STOP_HOOK_BLOCK_CAP`.
+
+### Verified
+- `make check` 112/112; validated against a real transcript carrying 11
+  blocks.
+
+## 0.4.0 (2026-07-29)
+
+Replaces the LLM-evaluated Stop hook with a deterministic script. The
+prior hook asked one small model to do two jobs — a cheap precondition
+check (did this session arm a goal?) and an expensive completion
+check — and its safe-default branch inverted in a real session: the
+evaluator reached the correct finding ("no goal was armed") and blocked
+anyway.
+
+### Changed
+- `plugin/scripts/g2g-stop.sh` decides mechanically: arming and
+  terminal state collapse to a `.g2g-goal` file test; provenance
+  becomes a structural check that the evidence block sits in a
+  tool_result paired by tool_use_id to a tool_use that actually ran
+  `g2g-evidence.sh --full`, which a model cannot forge. Caps come from
+  the goal file, and the wall-clock cap is computed by the hook itself.
+- `.g2g-goal` is now JSON; `build-wf.md`'s duplicate completion prose is
+  deleted in favor of deferring to `build.md`, so one schema and one
+  hook serve both build paths.
+- `/g2g:init` writes `extraKnownMarketplaces` + `enabledPlugins`
+  declarations instead of copying `hooks.json`, and offers to remove
+  legacy copied hooks — a vendored hook is one no plugin update can
+  patch.
+- The smoke gate now checks the protocol (terminal state reached,
+  goal/lock/mutex cleaned up, branch pushed, nothing abandoned
+  in_progress) instead of asserting `verifier.verdict == PASS`, which
+  conflated "the plugin worked" with "the throwaway build wrote good
+  code"; `SMOKE_REQUIRE_COMPLETE=1` restores the strict check. The
+  sandbox `TURN_CAP` rises to 8 so the verifier → fix → re-verify loop
+  is reachable; `tests/smoke.sh --assert-only <dir>` re-checks a
+  preserved run with no API spend.
+
+### Fixed
+- The README's claim that plugin hooks "do not fire at all" under
+  `--setting-sources project` was wrong — the plugin was not being
+  loaded, since `enabledPlugins` lives in user settings, which that
+  flag excludes.
+
+### Verified
+- `make check` 108/108; the hook replayed against a real smoke-build
+  transcript; two live headless builds, in one of which the hook
+  correctly caught an interrupted verifier dispatch and forced the
+  build to a clean terminal state instead of stopping mid-flight.
+
 ## 0.3.1 (2026-07-27)
 
 First live run of `/g2g:build-wf` (controlled sandbox test) caught two
