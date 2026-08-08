@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.5.1 (2026-08-08)
+
+### Fixed
+- `g2g-evidence.sh` exits 2 (invalid spec) with a clear message when
+  `.tasks` is missing, null, not an array, or contains a non-object
+  entry. Previously the unguarded jq iteration died with an
+  undocumented exit 5 and a cryptic stderr, so `/g2g:status` failed
+  opaquely on a hand-written or partial spec (F-019). Null task
+  `title`/`status` values were already rendered gracefully and are now
+  pinned by a test.
+
+### Added
+- `make test` warns when the local bash swallows failing `[[ ]]`
+  asserts mid-test (macOS system bash 3.2 errexit defect): on such a
+  bash only each test's final assert is enforced, so a local green
+  over-reports. CI (ubuntu) is unaffected and remains authoritative.
+  Deliberately a warning, not a failure — `make check` is this repo's
+  build verificationCommand (F-060).
+
 ## 0.5.0 (2026-08-07)
 
 Closes the failed-verify gap in completion evidence: a `--full` run
