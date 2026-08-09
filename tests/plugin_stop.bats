@@ -15,6 +15,18 @@ setup() {
     HOOK="$REPO_DIR/plugin/scripts/g2g-stop.sh"
     WORK="$BATS_TEST_TMPDIR/work"
     mkdir -p "$WORK"
+    # A real git work tree, so the hook's head-binding check (T-001) has a
+    # genuine short HEAD sha and tracked-dirty count to compare fixtures
+    # against -- exactly the state g2g-evidence.sh would have stamped.
+    git -C "$WORK" init -q
+    git -C "$WORK" config user.email "g2g-test@example.com"
+    git -C "$WORK" config user.name "g2g test"
+    echo "seed" > "$WORK/seed.txt"
+    git -C "$WORK" add seed.txt
+    git -C "$WORK" commit -q -m "seed"
+    WORK_HEAD_SHA="$(git -C "$WORK" rev-parse --short HEAD)"
+    WORK_HEAD_DIRTY="$(git -C "$WORK" status --porcelain --untracked-files=no | wc -l | tr -d '[:space:]')"
+    WORK_HEAD_LINE="head: $WORK_HEAD_SHA (tracked-dirty: $WORK_HEAD_DIRTY)"
     TRANSCRIPT="$BATS_TEST_TMPDIR/transcript.jsonl"
     TOKEN="g2g-test-12345"
     NOW="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -57,17 +69,26 @@ EOF
 }
 
 # A real evidence run: the tool_use records the command, the paired
-# tool_result carries the output. Args: specPath summaryLine [verdictLine]
+# tool_result carries the output. Args: specPath summaryLine [verdictLine] [headLine]
 # verdictLine defaults to the graded token a real g2g-evidence.sh --full
 # run prints when every task passed, every verify command exited 0, and
 # the spec's verifier field is PASS (see g2g-evidence.sh, T-001).
+# headLine defaults to WORK_HEAD_LINE (this test repo's real, current HEAD
+# and tracked-dirty state, per T-001's head-binding check) so a proven block
+# is honest by default; pass "" for no head line at all, or an arbitrary
+# string to simulate a tree that has since moved.
 # The command uses the hook's own sibling evidence script — the only
 # path the hook pairs, so a lookalike script elsewhere cannot vouch.
 evidence_records() {
     local verdict="${3:-verdict: complete (proven) [tasks 2/2; verify all exit 0; verifier PASS]}"
+    local head_line="${4-$WORK_HEAD_LINE}"
+    local head_segment=""
+    if [[ -n "$head_line" ]]; then
+        head_segment="\n$head_line"
+    fi
     cat <<EOF
 {"type":"assistant","timestamp":"$NOW","message":{"content":[{"type":"tool_use","id":"tu_ev","name":"Bash","input":{"command":"$REPO_DIR/plugin/scripts/g2g-evidence.sh $1 --full"}}]}}
-{"type":"user","timestamp":"$NOW","message":{"content":[{"type":"tool_result","tool_use_id":"tu_ev","content":[{"type":"text","text":"=== G2G EVIDENCE ===\ntasks: $2\nverify: ./verify.sh -> exit 0\nverifier: PASS\n$verdict"}]}]}}
+{"type":"user","timestamp":"$NOW","message":{"content":[{"type":"tool_result","tool_use_id":"tu_ev","content":[{"type":"text","text":"=== G2G EVIDENCE ===\ntasks: $2$head_segment\nverify: ./verify.sh -> exit 0\nverifier: PASS\n$verdict"}]}]}}
 EOF
 }
 
@@ -211,6 +232,75 @@ EOF
     complete_transcript
     run_hook
     assert_allowed
+}
+
+# --- head binding (T-001 / F-059) -------------------------------------------
+#
+# build.md's final --full evidence run can happen before the rebase-and-push
+# that produces the PR's actual shipped tree, so a proven verdict alone only
+# proves a token was earned for SOME tree. These pin the hook comparing the
+# paired block's head line against the repository state at stop time.
+
+@test "stop: a proven block whose head line matches the current tree allows the stop" {
+    write_goal "$TOKEN" "specs/x.json" 40 6 "$NOW"
+    { arming_record
+      evidence_records "specs/x.json" "2 total | 2 passed | 0 in_progress | 0 pending | 0 blocked"
+      verifier_pass_record
+    } > "$TRANSCRIPT"
+    run_hook
+    assert_allowed
+}
+
+@test "stop: a proven block with a stale head sha blocks the stop" {
+    write_goal "$TOKEN" "specs/x.json" 40 6 "$NOW"
+    { arming_record
+      evidence_records "specs/x.json" "2 total | 2 passed | 0 in_progress | 0 pending | 0 blocked" \
+          "verdict: complete (proven) [tasks 2/2; verify all exit 0; verifier PASS]" \
+          "head: deadbee (tracked-dirty: $WORK_HEAD_DIRTY)"
+      verifier_pass_record
+    } > "$TRANSCRIPT"
+    run_hook
+    assert_blocked
+    [[ "$output" == *"stale"* ]] \
+        || { echo "block reason does not name the stale head: $output"; return 1; }
+    [[ "$output" == *"deadbee"* && "$output" == *"$WORK_HEAD_SHA"* ]] \
+        || { echo "block reason does not name what moved: $output"; return 1; }
+    [[ "$output" == *"g2g-evidence.sh specs/x.json --full"* ]] \
+        || { echo "block reason does not name the --full re-run remedy: $output"; return 1; }
+}
+
+@test "stop: a proven block with a stale tracked-dirty count blocks the stop" {
+    write_goal "$TOKEN" "specs/x.json" 40 6 "$NOW"
+    { arming_record
+      evidence_records "specs/x.json" "2 total | 2 passed | 0 in_progress | 0 pending | 0 blocked" \
+          "verdict: complete (proven) [tasks 2/2; verify all exit 0; verifier PASS]" \
+          "head: $WORK_HEAD_SHA (tracked-dirty: 999)"
+      verifier_pass_record
+    } > "$TRANSCRIPT"
+    run_hook
+    assert_blocked
+    [[ "$output" == *"stale"* ]] \
+        || { echo "block reason does not name the stale dirty count: $output"; return 1; }
+    [[ "$output" == *"tracked-dirty 999"* ]] \
+        || { echo "block reason does not name what moved: $output"; return 1; }
+    [[ "$output" == *"g2g-evidence.sh specs/x.json --full"* ]] \
+        || { echo "block reason does not name the --full re-run remedy: $output"; return 1; }
+}
+
+@test "stop: a proven block carrying no head line blocks the stop" {
+    write_goal "$TOKEN" "specs/x.json" 40 6 "$NOW"
+    { arming_record
+      evidence_records "specs/x.json" "2 total | 2 passed | 0 in_progress | 0 pending | 0 blocked" \
+          "verdict: complete (proven) [tasks 2/2; verify all exit 0; verifier PASS]" \
+          ""
+      verifier_pass_record
+    } > "$TRANSCRIPT"
+    run_hook
+    assert_blocked
+    [[ "$output" == *"no head line"* ]] \
+        || { echo "block reason does not name the missing head line: $output"; return 1; }
+    [[ "$output" == *"g2g-evidence.sh specs/x.json --full"* ]] \
+        || { echo "block reason does not name the --full re-run remedy: $output"; return 1; }
 }
 
 @test "stop: armed with no evidence blocks and names what is missing" {
@@ -398,7 +488,7 @@ EOF
     { arming_record
       cat <<EOF
 {"type":"assistant","timestamp":"$NOW","message":{"content":[{"type":"tool_use","id":"tu_ev","name":"Bash","input":{"command":"bash \\"$REPO_DIR/plugin/scripts/g2g-evidence.sh\\" \\"specs/x.json\\" --full"}}]}}
-{"type":"user","timestamp":"$NOW","message":{"content":[{"type":"tool_result","tool_use_id":"tu_ev","content":[{"type":"text","text":"=== G2G EVIDENCE ===\ntasks: 2 total | 2 passed | 0 in_progress | 0 pending | 0 blocked\nverify: ./verify.sh -> exit 0\nverifier: PASS\nverdict: complete (proven) [tasks 2/2; verify all exit 0; verifier PASS]"}]}]}}
+{"type":"user","timestamp":"$NOW","message":{"content":[{"type":"tool_result","tool_use_id":"tu_ev","content":[{"type":"text","text":"=== G2G EVIDENCE ===\ntasks: 2 total | 2 passed | 0 in_progress | 0 pending | 0 blocked\n$WORK_HEAD_LINE\nverify: ./verify.sh -> exit 0\nverifier: PASS\nverdict: complete (proven) [tasks 2/2; verify all exit 0; verifier PASS]"}]}]}}
 EOF
       verifier_pass_record
     } > "$TRANSCRIPT"
