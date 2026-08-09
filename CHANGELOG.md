@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.6.0 (2026-08-09)
+## 0.6.0 (2026-08-08)
 
 Closes the head-binding gap in completion evidence: a build could rebase
 or otherwise move HEAD after the final `--full` evidence run, so the
