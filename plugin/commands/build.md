@@ -21,7 +21,7 @@ helper and branch on its documented exit codes — 0 ok, 2 caller error
 7 malformed-state, 8 operational-error. On 6/7/8 the helper changed
 nothing and the lock state needs a human: NEVER proceed as if you held
 the lock. `.g2g-goal` and `.g2g-goal.lock` are ephemeral — neither must
-ever be committed, and every terminal state (Phase 4 steps 5–6, Phase 5)
+ever be committed, and every terminal state (Phase 4 steps 5 and 7, Phase 5)
 removes the pair via `g2g-lock.sh release-terminal <owner-token>` so the
 Stop hook lets the session end. The helper deletes the pair only while
 line 2 of the lock still holds this build's owner token; exit 5 there
@@ -177,7 +177,13 @@ command (confirmed by spike). Instead:
      script, start to end, nothing chained before or after it — carries
      exactly one verdict line, reading `verdict: complete (proven)`,
      AND a `VERIFIER REPORT` with `verdict: PASS` arrived from a
-     dispatched `g2g:g2g-verifier` subagent after the goal was armed.
+     dispatched `g2g:g2g-verifier` subagent after the goal was armed,
+     AND the paired block's `head:` line — short HEAD plus
+     tracked-dirty count, derived exactly as the evidence script derives
+     them — still matches the repository's state at stop time; a stale
+     or missing head line blocks with the drift and the
+     `g2g-evidence.sh <spec-path> --full` re-run remedy instead of
+     letting a moved tree stop on a token that no longer certifies it.
 
    Otherwise it blocks and names the missing element. Two properties are
    worth knowing because they constrain how you must work, not just how
@@ -356,9 +362,10 @@ finish line and burn the whole remaining budget before surfacing partial work.
    finding for this round is resolved, re-verify from step 1. Never argue
    with the verifier; fix or surface.
 4. verdict PASS: write {"verifier": {"verdict": "PASS", "date": <today>,
-   "summary": <one line>}} into the spec; commit; run the evidence script
-   with --full; print it.
-5. Rebase onto the default branch. Conflicts: STOP — run
+   "summary": <one line>}} into the spec; commit.
+5. Rebase onto the default branch, BEFORE the final evidence run — the
+   tree the evidence step certifies must be the tree that ships, not a
+   pre-rebase snapshot the push will move past. Conflicts: STOP — run
    `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-lock.sh release-terminal <owner-token>`
    (the goal's condition can never be satisfied from here, and removing
    the goal/lock pair is what lets the Stop hook allow the session to
@@ -370,7 +377,14 @@ finish line and burn the whole remaining budget before surfacing partial work.
    PR title and body must contain no attribution lines (no 'Generated
    with Claude Code', no Co-Authored-By trailers). Mention the release
    outcome in your final message.
-6. Clean rebase: push ONCE (`git push -u origin <branch>`), then
+6. Clean rebase: run
+   `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-evidence.sh <spec>` with --full;
+   print it verbatim, as the real output of running the script — never
+   hand-write this block. Running it here, after the rebase, is what
+   lets the resulting proven token certify the rebased HEAD that is
+   about to be pushed, rather than a commit the rebase has since moved
+   past.
+7. Push ONCE (`git push -u origin <branch>`), then
    `gh pr create` — title "g2g: <project>", body = evidence block +
    task table + verifier summary. The PR title and body must contain no
    attribution lines (no 'Generated with Claude Code', no Co-Authored-By
@@ -405,7 +419,7 @@ finish line and burn the whole remaining budget before surfacing partial work.
    on the failure path too.
 3. Run `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-lock.sh release-terminal
    <owner-token>` — on BOTH the success and failure outcomes of step 2,
-   mirroring Phase 4 step 6's push-then-release order. This is what
+   mirroring Phase 4 step 7's push-then-release order. This is what
    lets the Stop hook allow the session to end, so it must happen
    regardless of whether the push or PR creation succeeded; exit 5:
    the pair is no longer yours — delete nothing and say so; any other
