@@ -12,8 +12,16 @@
   `G2G_IMPROVE_API_KEY` (improve-scoped) → inherited
   `ANTHROPIC_API_KEY` (native CLI behavior, now documented) →
   logged-in Claude Code account. The key value is only ever passed as
-  a quoted variable expansion and is never printed; README gains a
-  "Billing" section under Running headless.
+  a quoted variable expansion and is never printed. Documented across
+  the surfaces an operator actually reads: README gains a "Billing"
+  section under Running headless (linked from the improve-flywheel
+  section), the operator runbook's "Run an improve tick" covers it,
+  `/g2g:init`'s next-steps card names the optional setup, and the
+  nightly routine template warns that cloud/scheduled environments
+  (routines, managed agents, CI) have no logged-in account and need
+  the key as an environment secret. Entirely optional and purely
+  environmental — no key is ever written to any file the plugin
+  manages.
 
 ## 0.6.0 (2026-08-08)
 

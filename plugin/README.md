@@ -112,6 +112,8 @@ The spec-writing guidance ships as a plugin skill
 
 > Operator runbook — running, watching, recovering, and tuning the
 > flywheel: [docs/G2G_PLUGIN_REF.md](../docs/G2G_PLUGIN_REF.md).
+> Ticks bill to your logged-in account unless you opt in to a
+> Console key — see [Billing](#billing-which-credentials-a-headless-run-uses).
 
 `/g2g:review` writes `review-output/findings.json` (the tracked
 backlog; schema in `plugin/skills/reviewing-codebase/`) and a
@@ -305,6 +307,8 @@ A spawned `claude -p` inherits credentials from its environment, and in headless
 1. **`G2G_IMPROVE_API_KEY`** set in the launching environment → the tick alone is spawned with `ANTHROPIC_API_KEY="$G2G_IMPROVE_API_KEY"` and bills to that Console key. Improve-scoped by design: your interactive sessions and other commands stay on whatever they were using. Export it once (e.g. from a keychain: `export G2G_IMPROVE_API_KEY=$(security find-generic-password -s g2g-console-key -w)`) and it applies in every repo that uses the plugin.
 2. **`ANTHROPIC_API_KEY`** already exported → inherited as-is; the tick (and any other headless child of that shell) bills to it. The right choice when one default Console key should cover everything.
 3. **Neither** → the tick uses the logged-in Claude Code account (subscription), today's default.
+
+All of this is optional — with no variables set, nothing changes. The place it stops being optional is an environment with no logged-in account at all: a scheduled cloud routine, a managed agent, or CI must provide `G2G_IMPROVE_API_KEY` (or `ANTHROPIC_API_KEY`) as an environment secret, or the spawned run has no credentials.
 
 Never commit a key: keep it in your shell environment, OS keychain, or `~/.claude` user settings — not in `.claude/g2g.json`, tracked settings, or specs. `--max-budget-usd` caps the tick identically in every mode; what changes is who gets billed.
 

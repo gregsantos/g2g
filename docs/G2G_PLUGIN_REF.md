@@ -113,6 +113,19 @@ claude -p "/g2g:improve --wait" \
 carries its own full toolset and its own caps from
 `defaultBudgets.improveTurns`/`improveUsd`.)
 
+**Billing (optional).** By default a tick bills to whatever the
+launching environment is logged in as — your Claude Code account. Two
+optional env vars change that, resolved in this order and reported as
+a `billing:` line at every launch: `G2G_IMPROVE_API_KEY` scopes a
+Console API key to improve ticks alone (interactive sessions stay on
+your subscription); a plain exported `ANTHROPIC_API_KEY` bills the
+tick — and every other headless child of that shell — to that key. In
+cloud environments with no logged-in account (a scheduled routine, a
+managed agent, CI), set one of them as the environment's secret or
+the spawn has no credentials at all. Keys live in env/keychain only —
+never in `.claude/g2g.json` or anything tracked. Full precedence and
+setup: README "Billing: which credentials a headless run uses".
+
 What the launcher does, in order:
 
 1. **Busy checks** — skips rather than stacks: a RUNNING tick, a
