@@ -12,6 +12,17 @@ fail() { echo "g2g-evidence: $2" >&2; exit "$1"; }
 [[ -n "$SPEC" && -f "$SPEC" ]] || fail 2 "spec not found: ${SPEC:-<missing>}"
 jq empty "$SPEC" 2>/dev/null || fail 2 "spec is not valid JSON: $SPEC"
 
+# The task counts and per-task lines below iterate .tasks unguarded and
+# string-concatenate .id/.title/.status; a missing/null/non-array tasks
+# value, a non-object entry, or a non-string field (null is legal — jq
+# treats it as identity for +) is a malformed spec, and without this
+# gate jq's runtime error would kill the script mid-block with an
+# undocumented exit 5 under set -e (F-019).
+jq -e '.tasks | type == "array" and all(.[]?;
+        type == "object" and
+        ([.id, .title, .status] | all(. == null or type == "string")))' "$SPEC" >/dev/null \
+    || fail 2 "tasks must be an array of task objects with string (or null) id/title/status: $SPEC"
+
 # verificationCommands must be an array of non-empty single-line strings.
 # A malformed value is an invalid spec (exit 2), not an empty one: a bare
 # length check passes a string, and jq's failed iteration inside process
