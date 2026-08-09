@@ -26,7 +26,10 @@ Run after any change to shell scripts, templates, command/agent
 markdown, or tests:
 
 - All: `make check` (lint + manifest validation + bats)
-- Tests: `make test` (requires bats-core: `brew install bats-core`)
+- Tests: `make test` (requires bats-core and a bash >= 4:
+  `brew install bats-core bash` — macOS system bash 3.2 silently
+  swallows failing mid-test `[[ ]]` asserts, so the target refuses to
+  run without an enforcing bash; F-060)
 - Lint: `make lint` (requires shellcheck: `brew install shellcheck`)
 - Behavioral: `make smoke` — real headless build against a throwaway
   sandbox; costs API dollars and minutes. Run as the merge gate for
@@ -59,7 +62,7 @@ g2g/
 ├── specs/                            # Spec JSONs — must stay git-tracked
 ├── review-output/                    # Findings backlog — must stay git-tracked
 ├── docs/G2G_PLUGIN_REF.md            # Operator runbook
-├── tests/                            # bats: evidence script + templates
+├── tests/                            # bats suites + enforcement canary (canary/)
 └── .claude/                          # This repo's own g2g.json + settings.json
 ```
 
@@ -101,6 +104,13 @@ g2g/
 - **Templates are pinned by tests.** `tests/templates.bats` asserts the
   exact `defaultBudgets` values, the five `reviewFocus` categories, and
   `improve.enabled: false` in every `plugin/templates/*.json`.
+- **The test harness proves its own enforcement.** The Makefile `test`
+  target resolves a bash whose errexit actually fails mid-test `[[ ]]`
+  asserts and requires `tests/canary/enforcement.bats` — a
+  deliberately failing assert — to report `not ok` before trusting the
+  suite. Never simplify the target back to bare `bats tests/`, and
+  never "fix" the canary so it passes: a green it can't refute is the
+  exact failure mode it exists to catch (F-060).
 - **Safety invariants — never weaken:** branch-first and PR-gated (no
   writes to the default branch, nothing merges itself, one push at PR
   time); caps on every autonomous run (turns, hours, dollars — no
@@ -110,7 +120,10 @@ g2g/
   injection boundary; see the trust caveat in plugin/README.md); no
   detached processes
   (nohup/disown/setsid) — every spawned tick keeps a pid sidecar and
-  stays killable.
+  stays killable; credentials are environmental only — no API key is
+  ever written to g2g.json, templates, settings, specs, or anything
+  tracked (improve billing rides `G2G_IMPROVE_API_KEY`; see README
+  "Billing").
 - **`.g2g-goal`, `.g2g-goal.lock`, and `.g2g-goal.mutex/` are
   ephemeral** — gitignored runtime files; the goal is written by
   `/g2g:build`, the lock/mutex only ever by `g2g-lock.sh`. All are

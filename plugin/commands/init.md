@@ -152,11 +152,17 @@ silently.
      (`gh auth status`), or no `origin` remote (`git remote get-url
      origin`). These block PR-time steps later but not initialization.
 
-5. **Next-steps card.** Finish by printing these four, one line each:
+5. **Next-steps card.** Finish by printing these five, one line each:
    - `/g2g:go "<task>"` — quick one-off task.
    - `/g2g:dev "<feature>"` — generate a spec, then build a feature.
    - `/g2g:review` — build the tracked findings backlog.
    - `/g2g:improve` — bounded autopilot: review → fix-spec → build → PR.
+   - Optional billing: improve ticks bill to your logged-in account by
+     default; to bill ticks alone to a Console API key — or to run
+     them where no account is logged in (cloud routine, managed
+     agent, CI) — export `G2G_IMPROVE_API_KEY` in the launching
+     environment (see README "Billing"). Purely environmental: never
+     written to any file this command manages.
 
 6. **Scope statement.** State plainly which of the three permitted
    files (`.claude/g2g.json`, `.claude/settings.json`, greenfield

@@ -52,6 +52,17 @@ You are a scheduled G2G improvement tick running in a fresh clone.
      --max-turns 50 --max-budget-usd 25 --model "$CYCLE_MODEL"`
      (always the quoted variable expansion of the validated value,
      never raw config text substituted into the command)
+   - billing, same rule as improve.md's launcher: when
+     `G2G_IMPROVE_API_KEY` is set and non-empty in the routine's
+     environment, prefix the command above with
+     `ANTHROPIC_API_KEY="$G2G_IMPROVE_API_KEY" ` (quoted variable
+     expansion only; never print the value) and note the billing mode
+     in the report; with no key variables set, the run uses the
+     environment's logged-in credentials. Cloud/scheduled environments
+     (routines, managed agents, CI) typically have NO logged-in
+     account: configure `G2G_IMPROVE_API_KEY` (or `ANTHROPIC_API_KEY`)
+     as an environment secret there, or the spawn has no credentials
+     and fails at the first model call.
    (the cycle's instructions come from the clone's own plugin dir — no
    inlined drift; this step runs in the foreground and blocks until
    the cycle exits, so no pid/log sidecar is needed)
