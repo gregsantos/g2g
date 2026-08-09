@@ -287,7 +287,16 @@ PR. That data is why the default is now **25**. Sizing guidance:
   anchored start to end, so chained prefixes, shell comments, and
   lookalike scripts at other paths all fail to pair — and a block with
   multiple verdict lines is treated as forged, so neither a compound
-  command nor spec-injected text can fabricate the token.
+  command nor spec-injected text can fabricate the token. For a
+  proven-armed session, the hook also re-derives the short HEAD and
+  tracked-dirty state exactly as the evidence script derives them and
+  compares that against the paired block's `head:` line; any mismatch
+  or missing head line blocks the stop, naming the drift and the
+  `g2g-evidence.sh <spec> --full` re-run remedy (F-059). This is why
+  Phase 4 rebases onto the default branch before running the final
+  `--full` evidence — the proven token must certify the tree that is
+  actually pushed, not a pre-rebase snapshot the rebase has since moved
+  past.
 - **Caps on every spawn:** `--max-turns` and `--max-budget-usd`, always;
   inner build caps route gracefully to partial PRs.
 - **No orphans:** no `nohup`/`disown`/`setsid` anywhere; every tick has

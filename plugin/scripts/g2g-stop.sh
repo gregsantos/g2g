@@ -232,7 +232,7 @@ fi
 # text or a compound command injected a verdict, and a conflicted block
 # never satisfies the goal.
 evidence_script="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/g2g-evidence.sh"
-evidence_check=$(jq -rs --arg spec "$spec_path" --arg script "$evidence_script" '
+evidence_result=$(jq -rs --arg spec "$spec_path" --arg script "$evidence_script" '
     def regex_escape: gsub("(?<c>[\\\\^$.|?*+()\\[\\]{}])"; "\\" + .c);
     # Each path may be bare or wrapped in MATCHING single or double quotes
     # (single quotes spelled \u0027 because this jq program lives inside
@@ -254,16 +254,25 @@ evidence_check=$(jq -rs --arg spec "$spec_path" --arg script "$evidence_script" 
         | [.content] | flatten
         | map(if type=="object" then (.text // "") else tostring end)
         | join("\n") ] as $blocks
-    | if ($blocks | length) == 0 then "NO-EVIDENCE"
+    | if ($blocks | length) == 0 then "NO-EVIDENCE", ""
       else
-        ($blocks | last | split("\n") | map(select(startswith("verdict:")))) as $verdict_lines
-        | if ($verdict_lines | length) > 1 then "MULTIPLE-VERDICT-LINES:" + ($verdict_lines | join(" || "))
-          elif ($verdict_lines | length) == 1
-               and ($verdict_lines[0] | startswith("verdict: complete (proven)")) then "EVIDENCE-OK"
-          elif ($verdict_lines | length) == 1 then "VERDICT-LINE:" + $verdict_lines[0]
-          else "NO-VERDICT-LINE"
-          end
+        ($blocks | last) as $block
+        # The head line the paired block certified (F-059, hook side): the
+        # first line of the LAST paired block starting with "head:", emitted
+        # alongside the check so a proven verdict can still be bound to a
+        # tree below. Empty when the block carries no head line at all (a
+        # pre-head-binding g2g-evidence.sh run, or a forged/edited block).
+        | ($block | split("\n") | map(select(startswith("head:"))) | (.[0] // "")) as $head_line
+        | ($block | split("\n") | map(select(startswith("verdict:")))) as $verdict_lines
+        | (if ($verdict_lines | length) > 1 then "MULTIPLE-VERDICT-LINES:" + ($verdict_lines | join(" || "))
+           elif ($verdict_lines | length) == 1
+                and ($verdict_lines[0] | startswith("verdict: complete (proven)")) then "EVIDENCE-OK"
+           elif ($verdict_lines | length) == 1 then "VERDICT-LINE:" + $verdict_lines[0]
+           else "NO-VERDICT-LINE"
+           end), $head_line
       end' "$transcript_path" 2>/dev/null)
+evidence_check=$(printf '%s\n' "$evidence_result" | sed -n '1p')
+evidence_head_line=$(printf '%s\n' "$evidence_result" | sed -n '2p')
 
 if [ "$evidence_check" != "EVIDENCE-OK" ]; then
     case "$evidence_check" in
@@ -273,6 +282,43 @@ if [ "$evidence_check" != "EVIDENCE-OK" ]; then
         VERDICT-LINE:*) block "Condition not met: ${evidence_check#VERDICT-LINE:}" ;;
         *)              block "Condition not met: evidence check returned $evidence_check." ;;
     esac
+fi
+
+# ---------------------------------------------------------------------------
+# Head binding (F-059, hook side). build.md's final --full evidence run can
+# happen BEFORE the rebase-and-push that produces the PR's actual shipped
+# tree, so an EVIDENCE-OK verdict alone only proves a token was earned for
+# SOME tree, not that it still describes this one. Recompute the repository
+# state the same way g2g-evidence.sh derives its "head:" line and compare —
+# any drift (different sha, different tracked-dirty count, or a block with no
+# head line to compare at all) means the proven token no longer certifies
+# what is about to ship, so it can no longer satisfy the goal on its own.
+# ---------------------------------------------------------------------------
+
+extract_head_sha() { printf '%s' "$1" | sed -n 's/^head: \([^ ]*\).*/\1/p'; }
+extract_head_dirty() { printf '%s' "$1" | sed -n 's/^head: .*(tracked-dirty: \([0-9]*\)).*/\1/p'; }
+
+current_head_sha=$(git -C "$project_dir" rev-parse --short HEAD 2>/dev/null || true)
+if [ -n "$current_head_sha" ]; then
+    current_head_dirty=$(git -C "$project_dir" status --porcelain --untracked-files=no 2>/dev/null | wc -l | tr -d '[:space:]')
+    current_head_line="head: $current_head_sha (tracked-dirty: $current_head_dirty)"
+else
+    current_head_sha="none"
+    current_head_dirty=""
+    current_head_line="head: none"
+fi
+
+if [ -z "$evidence_head_line" ]; then
+    block "Condition not met: the proven evidence block carries no head line to bind it to a tree -- re-run \`g2g-evidence.sh $spec_path --full\` so the token certifies this tree."
+elif [ "$evidence_head_line" != "$current_head_line" ]; then
+    recorded_sha=$(extract_head_sha "$evidence_head_line")
+    recorded_dirty=$(extract_head_dirty "$evidence_head_line")
+    if [ "$recorded_sha" != "$current_head_sha" ]; then
+        head_drift="head $recorded_sha -> $current_head_sha"
+    else
+        head_drift="tracked-dirty $recorded_dirty -> $current_head_dirty"
+    fi
+    block "Condition not met: the proven evidence head is stale ($head_drift) -- the tree moved since g2g-evidence.sh ran, so the token no longer certifies what is about to ship; re-run \`g2g-evidence.sh $spec_path --full\` against this tree."
 fi
 
 # The verifier's own report must come from a real subagent dispatch after arming.
