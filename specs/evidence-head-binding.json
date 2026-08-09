@@ -28,10 +28,10 @@
         "make check passes"
       ],
       "dependsOn": [],
-      "status": "in_progress",
-      "passes": false,
+      "status": "complete",
+      "passes": true,
       "effort": "medium",
-      "notes": "",
+      "notes": "Commit 2151921. g2g-stop.sh evidence-check jq now also extracts the paired block's head: line; new completion sub-check between EVIDENCE-OK and the verifier-dispatch check recomputes short HEAD + tracked-dirty exactly as g2g-evidence.sh and blocks on mismatch/missing head line, naming the drift and the --full re-run remedy. All new conditionals [ ]/case (bash-3.2-safe). plugin_stop.bats: setup() git-inits $WORK with a seed commit, exposes WORK_HEAD_LINE; evidence_records() gained optional headLine arg so all proven fixtures stay honest; 4 new tests. make check green: 143 tests, 40/40 stop tests.",
       "attempts": 0
     },
     {
