@@ -29,9 +29,9 @@ The --from-findings path copies finding titles/descriptions/suggestions into spe
 
 ### F-059 [high] 'proven' evidence token is not bound to the final shipped tree
 
-**Location:** `plugin/commands/build.md:360` · **category:** architecture · **confidence:** high · **effort:** medium · **status:** OPEN
+**Location:** `plugin/commands/build.md:360` · **category:** architecture · **confidence:** high · **effort:** medium · **status:** 7
 
-Deferred design follow-up from the third Codex adversarial review round on PR #4, summarized in CHANGELOG 0.5.0 'Hardened'. build.md Phase 4 runs the final g2g-evidence.sh <spec> --full (step 4) BEFORE rebasing onto the default branch (step 5) and pushing (step 6), so the PR's final HEAD can differ from the tree the 'verdict: complete (proven)' token certified — and g2g-stop.sh trusts the stale token: it never compares the token's head line against current repository state. The narrow mitigation shipped in 0.5.0 (505f750: g2g-evidence.sh forfeits 'proven' when the head, tracked-file state, or spec completion facts change DURING the verification run) does not cover this post-run window. Reachable only after a verifier PASS, so real but not urgent.
+Deferred design follow-up from the third Codex adversarial review round on PR #4, summarized in CHANGELOG 0.5.0 'Hardened'. build.md Phase 4 runs the final g2g-evidence.sh <spec> --full (step 4) BEFORE rebasing onto the default branch (step 5) and pushing (step 6), so the PR's final HEAD can differ from the tree the 'verdict: complete (proven)' token certified — and g2g-stop.sh trusts the stale token: it never compares the token's head line against current repository state. The narrow mitigation shipped in 0.5.0 (505f750: g2g-evidence.sh forfeits 'proven' when the head, tracked-file state, or spec completion facts change DURING the verification run) does not cover this post-run window. Reachable only after a verifier PASS, so real but not urgent. [addressed-2026-08-08 by PR #7 (g2g build 'Evidence Head Binding', verifier PASS, make smoke protocol gate PASS): 2151921 — g2g-stop.sh extracts the paired block's head: line and blocks a proven-armed stop on any mismatch with current short HEAD/tracked-dirty (or a missing line), naming the drift and the --full re-run remedy; pinned by 4 new tests in tests/plugin_stop.bats. f2304fe — build.md Phase 4 rebases onto the default branch BEFORE the final --full evidence, so 'proven' certifies the rebased HEAD that ships; cross-references renumbered. 29d850d — docs + version 0.6.0.]
 
 **Suggestion:** Bind the token to the final rebased HEAD and have g2g-stop.sh compare the token's head against the repository state, and/or reorder Phase 4 so the rebase happens before the final verification (re-running evidence after the rebase). Scope note: this touches build.md Phase 4 ordering plus the frozen output contracts of BOTH scripts (tests/plugin_evidence.bats, tests/plugin_stop.bats pin them; g2g-stop.sh keys on the verdict line) — route it through /g2g:spec → /g2g:build (the graded-completion-gate treatment), not the improve flywheel.
 
@@ -549,4 +549,4 @@ Phase 3 step 3 (lines 209-218) checks the tree each turn and, if a builder crash
 
 ---
 
-**Open vs addressed:** 42 open · 18 addressed/stale/rejected (of 60 total)
+**Open vs addressed:** 41 open · 19 addressed/stale/rejected (of 60 total)
