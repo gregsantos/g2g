@@ -47,10 +47,10 @@
       "dependsOn": [
         "T-001"
       ],
-      "status": "in_progress",
-      "passes": false,
+      "status": "complete",
+      "passes": true,
       "effort": "medium",
-      "notes": "",
+      "notes": "Commit f2304fe. Phase 4 reordered: step 4 verifier-write+commit; step 5 rebase (conflict path unchanged in substance); step 6 --full evidence, certifying rebased HEAD; step 7 push/PR/release-terminal. Cross-references updated (intro terminal-state list -> 'steps 5 and 7'; Phase 5 step 3 -> 'Phase 4 step 7'). Phase 2 step 2's hook-condition enumeration extended with the head-line-matching requirement from T-001. Only build.md touched. make check green twice (143 tests).",
       "attempts": 0
     },
     {
