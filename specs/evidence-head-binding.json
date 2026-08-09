@@ -68,10 +68,10 @@
         "T-001",
         "T-002"
       ],
-      "status": "in_progress",
-      "passes": false,
+      "status": "complete",
+      "passes": true,
       "effort": "small",
-      "notes": "",
+      "notes": "Commit 29d850d. CHANGELOG 0.6.0 section (2026-08-09) describing rebase-before-evidence and hook-side head comparison, citing F-059; plugin.json 0.6.0; CLAUDE.md evidence bullet names head-line comparison; README + G2G_PLUGIN_REF 'Graded completion evidence' bullets updated to the new Phase 4 order. Docs/version only. make check green (143 tests).",
       "attempts": 0
     }
   ]
