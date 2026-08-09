@@ -77,8 +77,11 @@ g2g/
 - **The evidence script's output is frozen.** `tests/plugin_evidence.bats`
   pins `g2g-evidence.sh`'s header, footer, summary line, and exit codes
   (0 ok / 2 invalid spec / 3 no verificationCommands); `g2g-stop.sh` keys
-  its completion check on the verdict line. Change output format only
-  with the tests, `g2g-stop.sh`, and build.md updated together.
+  its completion check on the verdict line and, for a proven-armed
+  session, also compares the paired block's `head:` line against
+  current repository state before allowing the stop (F-059). Change
+  output format only with the tests, `g2g-stop.sh`, and build.md
+  updated together.
 - **The Stop hook is deterministic — never make it a prompt again.**
   `plugin/scripts/g2g-stop.sh` is the sole implementation of goal
   enforcement; `hooks.json` only registers it. `tests/plugin_stop.bats`

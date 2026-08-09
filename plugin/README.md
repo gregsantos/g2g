@@ -248,7 +248,15 @@ This repo tracks `specs/`, `review-output/`, and
   reading `verdict: complete (proven)`; a block with more than one
   verdict line is treated as forged. A failing verification
   command in that run makes the token unreachable, so it can never
-  coexist with a passing completion check.
+  coexist with a passing completion check. For a proven-armed session,
+  the hook additionally re-derives the short HEAD and tracked-dirty
+  state exactly as the evidence script derives them and compares that
+  against the paired block's `head:` line; any mismatch or missing
+  head line blocks the stop, naming the drift and the
+  `g2g-evidence.sh <spec> --full` re-run remedy (F-059) — this is what
+  lets Phase 4 rebase onto the default branch before running the final
+  evidence, so the proven token certifies the tree that is actually
+  pushed rather than a pre-rebase snapshot.
 - **Caps everywhere** — every goal carries turn and wall-clock caps as
   data the Stop hook enforces itself; headless spawns add a dollar cap.
   There is no unlimited mode. The wall-clock cap is computed from the

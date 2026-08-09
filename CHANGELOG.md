@@ -1,5 +1,31 @@
 # Changelog
 
+## 0.6.0 (2026-08-09)
+
+Closes the head-binding gap in completion evidence: a build could rebase
+or otherwise move HEAD after the final `--full` evidence run, so the
+`(proven)` token certified a commit the push had since moved past
+(F-059).
+
+### Changed
+- `build.md` Phase 4 reorders steps 5-6: the branch now rebases onto the
+  default branch BEFORE the final `--full` evidence run, not after, so
+  the evidence step's `(proven)` verdict certifies the rebased tree that
+  is actually pushed rather than a pre-rebase snapshot. Step 7 (push +
+  `gh pr create` + release-terminal) is unchanged apart from following
+  the reordered steps.
+- `g2g-stop.sh`'s completion check, for a proven-armed session, now also
+  extracts the paired evidence block's `head:` line — short HEAD plus
+  tracked-dirty count, derived exactly as `g2g-evidence.sh` derives them
+  — and compares it against current repository state; any mismatch or
+  missing head line blocks the stop, naming the drift and the
+  `g2g-evidence.sh <spec> --full` re-run remedy. This closes the window
+  where a session could stop successfully on an evidence block whose
+  certified HEAD no longer matches the tree actually on disk (F-059).
+- `CLAUDE.md`'s evidence-output convention bullet and `plugin/README.md`
+  / `docs/G2G_PLUGIN_REF.md`'s completion-evidence guardrail sections
+  now name the head-line comparison alongside the verdict-line keying.
+
 ## 0.5.1 (2026-08-08)
 
 ### Fixed
