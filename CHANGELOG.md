@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.6.1 (2026-08-09)
+
+### Added
+- Improve-scoped Console-key billing: when `G2G_IMPROVE_API_KEY` is
+  set in the launching environment, `/g2g:improve` (and the nightly
+  routine) spawn the headless tick with
+  `ANTHROPIC_API_KEY="$G2G_IMPROVE_API_KEY"`, so the tick alone bills
+  to that key while interactive sessions stay on the logged-in
+  account. Precedence, reported as a `billing:` line at every launch:
+  `G2G_IMPROVE_API_KEY` (improve-scoped) → inherited
+  `ANTHROPIC_API_KEY` (native CLI behavior, now documented) →
+  logged-in Claude Code account. The key value is only ever passed as
+  a quoted variable expansion and is never printed; README gains a
+  "Billing" section under Running headless.
+
 ## 0.6.0 (2026-08-08)
 
 Closes the head-binding gap in completion evidence: a build could rebase

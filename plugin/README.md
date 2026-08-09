@@ -298,6 +298,16 @@ claude -p "/g2g:build specs/feature.json" \
 - `--max-budget-usd` is what backs the "headless spawns add a dollar cap" guardrail above — the recorded end-to-end spike runs predate this flag being added to the invocation and ran without it; include it for any new headless spawn.
 - `--plugin-dir` is what loads the plugin, and with it the Stop hook. It is **not** optional: `--setting-sources project` excludes your personal settings, so a plugin enabled only in `~/.claude/settings.json` is not loaded at all in that session — no `/g2g:*` commands and no hook. The alternative to passing `--plugin-dir` is declaring the plugin in the repo's own `.claude/settings.json`, which `/g2g:init` sets up (see [New repo quickstart](#new-repo-quickstart)). Either is sufficient; this file's invocation uses `--plugin-dir`.
 
+### Billing: which credentials a headless run uses
+
+A spawned `claude -p` inherits credentials from its environment, and in headless mode an API key always wins over the stored login. `/g2g:improve` (and the nightly routine) resolve this explicitly, in precedence order, and report the chosen mode at launch:
+
+1. **`G2G_IMPROVE_API_KEY`** set in the launching environment → the tick alone is spawned with `ANTHROPIC_API_KEY="$G2G_IMPROVE_API_KEY"` and bills to that Console key. Improve-scoped by design: your interactive sessions and other commands stay on whatever they were using. Export it once (e.g. from a keychain: `export G2G_IMPROVE_API_KEY=$(security find-generic-password -s g2g-console-key -w)`) and it applies in every repo that uses the plugin.
+2. **`ANTHROPIC_API_KEY`** already exported → inherited as-is; the tick (and any other headless child of that shell) bills to it. The right choice when one default Console key should cover everything.
+3. **Neither** → the tick uses the logged-in Claude Code account (subscription), today's default.
+
+Never commit a key: keep it in your shell environment, OS keychain, or `~/.claude` user settings — not in `.claude/g2g.json`, tracked settings, or specs. `--max-budget-usd` caps the tick identically in every mode; what changes is who gets billed.
+
   Earlier versions of this README claimed the plugin's own Stop hook "does not fire at all" under `--setting-sources project` and told you to copy the hook into each repo. That was wrong — the symptom was the plugin not being *loaded*, not the hook not firing — and the advice was actively harmful: a copied hook cannot be patched, so a repo onboarded before 0.4.0 keeps running the hook it was given no matter what the plugin ships later. Verified against CC 2.1.220 with a project-scoped marketplace install, no `--plugin-dir`: the plugin's own command hook fires with `${CLAUDE_PLUGIN_ROOT}` interpolated. `/g2g:init` now removes legacy copies rather than creating them.
 
 The hook is **session-scoped**: it enforces only goals armed by the same session, which it establishes by finding the goal's `ownerToken` inside one of that session's own tool-call inputs. Sessions that never armed a goal — ordinary interactive sessions, or a session running concurrently while another build has a live `.g2g-goal` — stop immediately, so an armed goal can never conscript a bystander into completing it.

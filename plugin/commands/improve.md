@@ -123,7 +123,21 @@ fallback.
    background runs are the incident class this design exists to
    prevent; the child must stay harness-visible and killable). Pid and
    log are SIDECARS in `$RUNDIR`, next to the worktree, never inside
-   it:
+   it.
+   BILLING — resolve which credentials the tick will use, and say so
+   before spawning. If `G2G_IMPROVE_API_KEY` is set and non-empty in
+   the launching environment, prefix the spawn command with the env
+   assignment `ANTHROPIC_API_KEY="$G2G_IMPROVE_API_KEY" ` immediately
+   before `claude` — always the quoted variable expansion, never the
+   value substituted into the command text, and never print or log
+   the value itself — and report `billing: G2G_IMPROVE_API_KEY
+   (Console key, improve-scoped)`. Otherwise, if `ANTHROPIC_API_KEY`
+   is already present in the environment, add no prefix — the
+   spawned CLI inherits and uses it (headless mode always prefers an
+   API key over the stored login) — and report `billing: inherited
+   ANTHROPIC_API_KEY`. Otherwise add no prefix and report `billing:
+   logged-in Claude Code account`. This override applies only to this
+   spawn; it never alters the launching session's own credentials.
    `cd "$WT" && claude -p "<SPAWN_PROMPT>"
    --plugin-dir "${CLAUDE_PLUGIN_ROOT}" --setting-sources project
    --permission-mode acceptEdits
@@ -138,7 +152,8 @@ fallback.
    into the command (`inherit` and pattern misses never reach this
    point; step 1 fails the launch on them).
 5. Without `--wait`: report the worktree path, branch, PID, log path
-   (`$RUNDIR/tick.log`), and caps, plus how to watch it
+   (`$RUNDIR/tick.log`), caps, and the billing line from step 4, plus
+   how to watch it
    (`tail -f "$RUNDIR/tick.log"`, `/g2g:status`) and how to kill it
    (`kill <pid>`). The spawned
    tick is a plain `&` child and SURVIVES the end of the session that
