@@ -166,8 +166,19 @@ fallback.
    durable trace and the ledger would quietly regain the success bias
    it exists to eliminate. Reconciliation (improve-cycle.md Phase I-5)
    pairs launch records with terminal records by `tickId` and folds
-   unpaired-and-dead ones as `killed-or-crashed`. A failed journal
-   append is reported but never blocks the launch.
+   unpaired-and-dead ones as `killed-or-crashed`. Launch-record
+   persistence is MANDATORY — verify the append actually landed (the
+   write exited 0 and `tail -n 1` of the journal shows this `tickId`).
+   If it did not: the tick must not run unjournaled, because the
+   launch record exists precisely for the tick that dies before its
+   own Cleanup — an unjournaled tick killed by the outer cap would
+   vanish, restoring the success bias the ledger exists to eliminate.
+   Terminate the just-spawned child now (`kill <pid from tick.pid>`,
+   then wait for it to exit), PRESERVE the worktree and `$RUNDIR`
+   sidecars untouched for inspection, and abort the launch with the
+   journal-write error reported verbatim (a full disk or unwritable
+   git common dir is the concrete case). Never proceed past this
+   point with a spawned tick and no durable launch record.
 5. Without `--wait`: report the worktree path, branch, PID, log path
    (`$RUNDIR/tick.log`), caps, and the billing line from step 4, plus
    how to watch it

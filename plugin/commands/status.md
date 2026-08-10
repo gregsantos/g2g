@@ -43,10 +43,25 @@ Report G2G state, read-only (change nothing):
    that honestly instead of guessing its contents. Then check the tick
    journal
    `"$(git rev-parse --path-format=absolute --git-common-dir)/g2g-ticks.jsonl"`
-   (read-only): report how many of its entries have a `tickId` not yet
-   present in `review-output/ticks.json` — these are completed ticks
-   (usually no-PR ones) awaiting reconciliation by the next
-   PR-producing improve cycle. A missing journal means no ticks have
-   run on this machine; say so rather than guessing.
+   (read-only). The journal holds up to TWO records per tick — a
+   `launched` record (with `pid`) and a terminal record — so count
+   TICKS, never raw lines: group records by `tickId`, drop every
+   `tickId` already present in `review-output/ticks.json`, and
+   classify each remaining tick with the same rules reconciliation
+   uses (improve-cycle.md Phase I-5 step 2a):
+   - a terminal record exists → completed, awaiting reconciliation;
+   - launch record only, its `pid` alive per `kill -0` → RUNNING now
+     (not awaiting anything — do not count it as unreconciled);
+   - launch record only, pid dead or missing → killed-or-crashed,
+     awaiting reconciliation.
+   Report the completed-awaiting and killed-or-crashed-awaiting counts
+   (and any RUNNING ticks alongside step 5's worktree view). When
+   `ticks.json` is absent, phrase the two sources consistently: absent
+   ledger plus a journal with unreconciled ticks means "no improve
+   cycle has RECONCILED yet — N ticks recorded in the journal await
+   the first PR-producing cycle", never "no improve cycles have
+   completed yet" beside a nonzero journal count. A missing journal
+   means no ticks have run on this machine; say so rather than
+   guessing.
 Summarize in a short table. No recommendations unless something is stuck
 (blocked tasks, draft partial PRs, conflicts).
