@@ -33,5 +33,12 @@ Report G2G state, read-only (change nothing):
    RUNNING (pid sidecar present, process alive via `kill -0`), CRASHED
    (pid sidecar present, process dead — needs human inspection), or
    FINISHED (no pid sidecar; removable if clean).
+6. Tick ledger: if `review-output/ticks.json` exists and parses as a
+   JSON array, summarize its last 5 entries (most recently appended
+   last) — for each: `date`, `outcome`, `pr`, `turns`, and `findings`
+   count (length of that entry's `findings` array). If the file is
+   absent, report "no review-output/ticks.json (no improve cycles have
+   completed yet)". If it exists but fails to parse as JSON or is not
+   an array, report that honestly instead of guessing its contents.
 Summarize in a short table. No recommendations unless something is stuck
 (blocked tasks, draft partial PRs, conflicts).

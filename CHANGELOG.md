@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.6.2 (2026-08-09)
+
+### Added
+- Per-tick ledger (fixes F-008): `/g2g:improve-cycle`'s Phase I-5
+  backlog reconciliation now appends one entry
+  (`{date, findings, outcome, pr, turns}`) to the tracked
+  `review-output/ticks.json` inside the same reconciliation commit
+  that marks findings `addressed` — still a single sanctioned
+  post-PR push. Terminal paths with no PR (empty cycle, abort,
+  no-PR partial) print the would-be entry in the final report
+  instead of writing or pushing anything. `/g2g:status` gained a
+  read-only step summarizing the ledger's last 5 entries when the
+  file exists and parses, reporting absence or a parse failure
+  honestly otherwise. Documented in the README's improve/flywheel
+  section.
+
 ## 0.6.1 (2026-08-09)
 
 ### Added

@@ -138,6 +138,20 @@ auto-deleted. The backlog update marking findings `addressed` is
 committed and pushed into the same open PR as a single documented
 follow-up commit — the one exception to single-push.
 
+Every completed cycle also appends one entry to the tracked per-tick
+ledger `review-output/ticks.json` (a JSON array, created on first use)
+inside that SAME reconciliation commit — never a separate commit or
+push. Each entry: `{"date": "<YYYY-MM-DD>", "findings": [<finding ids
+addressed that tick>], "outcome": "<build.md's terminal state, e.g.
+complete|partial>", "pr": <PR number>, "turns": <the tick's turn
+count>}`. Terminal paths with no PR (an empty cycle, an abort, or a
+partial stop before any PR was created) print the would-be entry in
+the cycle's final report instead of writing or pushing anything — the
+worktree is discarded and no push is sanctioned on that path.
+`/g2g:status` summarizes the ledger's last 5 entries when the file
+exists and parses, and reports absence or a parse failure honestly
+rather than guessing.
+
 Triggers: locally, `/loop /g2g:improve` (each tick is
 fire-and-forget within the live session; the loop cadence should
 exceed a cycle's duration); in the cloud, schedule

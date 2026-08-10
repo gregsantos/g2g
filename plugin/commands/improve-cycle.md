@@ -100,13 +100,32 @@ partial PR on terminal stops, never merge, no attribution lines.
    for every finding cited by tasks that were COMPLETED (status complete
    / passes true) (task descriptions carry "fixes F-xxx" per the
    fix-spec rules).
-2. Commit: `chore: mark findings addressed by PR #<number>`.
-3. Push that ONE commit to the same, already-open PR branch
+2. Append the tick ledger entry to the tracked `review-output/ticks.json`.
+   Read the file if it exists; if it parses as a JSON array, use it as
+   the base, otherwise (absent, or present but unparsable — report the
+   parse failure rather than silently discarding history) start from a
+   new empty JSON array `[]`. Append exactly one entry object:
+   `{"date": "<today, YYYY-MM-DD>", "findings": [<ids marked addressed
+   in step 1>], "outcome": "<build.md's terminal state, e.g.
+   complete|partial>", "pr": <PR number>, "turns": <turns build.md's
+   final report used>}`, then write the array back to
+   `review-output/ticks.json`.
+3. Commit both files together in ONE commit:
+   `git add review-output && git commit -m "chore: mark findings addressed by PR #<number>"`
+   — the ticks.json ledger entry rides inside this SAME reconciliation
+   commit, never a separate one.
+4. Push that ONE commit to the same, already-open PR branch
    (`git push`). This is the improve cycle's single sanctioned post-PR
-   push — the backlog update must land inside the PR that it
-   references. Nothing else is ever pushed after it.
-If no PR exists (gh unavailable, partial stop), skip all three steps
-and say so — the findings stay open for the next cycle.
+   push — the backlog update (including the new ledger entry) must
+   land inside the PR that it references. Nothing else is ever pushed
+   after it.
+If no PR exists (gh unavailable, partial stop), skip all four steps —
+write nothing to `review-output/findings.json` or `ticks.json`, and
+push nothing. The findings stay open for the next cycle. Instead,
+compute the same ledger entry shape (`date`, `findings` selected this
+cycle if any, `outcome`, `pr: null`, `turns`) and print it in the
+Cleanup final report per that section's instructions — the worktree is
+discarded on this path, so nothing is durably written or pushed.
 
 ## Cleanup — every terminal path (success, empty, abort, partial)
 1. Delete `"$RUNDIR/selected.json"` if present. For `.g2g-goal` /
@@ -143,4 +162,11 @@ and say so — the findings stay open for the next cycle.
    which findings were addressed/stale-marked, and that the worktree
    can be removed with `git worktree remove <path>` and the now-empty
    run root with `rm -rf "$RUNDIR"` once the PR is merged or the work
-   inspected.
+   inspected. On every terminal path that has NO PR (empty cycle,
+   abort, or a partial stop that never reached a created PR), also
+   print the would-be `review-output/ticks.json` entry — same shape as
+   Phase I-5 step 2 (`date`, `findings`, `outcome`, `pr: null`,
+   `turns`), best-effort filled from whatever this cycle actually did
+   — in this final report instead of writing or pushing it anywhere:
+   the worktree is discarded and no push is sanctioned on a no-PR
+   path.
