@@ -69,4 +69,12 @@ You are a scheduled G2G improvement tick running in a fresh clone.
 4. If neither is possible, STOP and report "g2g plugin unavailable in
    routine environment" — do not improvise the cycle.
 5. Report: the PR URL (or the honest failure/empty-cycle outcome), the
-   caps used, and which findings were addressed.
+   caps used, which findings were selected, and which were addressed.
+   Include the tick's would-be ledger entry (the JSON shape from
+   improve-cycle.md's Cleanup) verbatim in this report: the machine-
+   local tick journal lives in the clone's git common dir and is
+   DESTROYED with the clone, so for a no-PR routine tick this report
+   is the only durable record — PR-producing ticks are still recorded
+   in the tracked `review-output/ticks.json` via reconciliation, but a
+   fresh-clone environment cannot carry journal entries forward across
+   runs.

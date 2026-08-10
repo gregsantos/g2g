@@ -100,13 +100,74 @@ partial PR on terminal stops, never merge, no attribution lines.
    for every finding cited by tasks that were COMPLETED (status complete
    / passes true) (task descriptions carry "fixes F-xxx" per the
    fix-spec rules).
-2. Commit: `chore: mark findings addressed by PR #<number>`.
-3. Push that ONE commit to the same, already-open PR branch
+2. Reconcile the tick ledger into the tracked
+   `review-output/ticks.json`. The ledger entry shape (used both here
+   and in the journal below) is:
+   `{"tickId": "<this run's RUNDIR basename, else
+   improve-<launch ISO 8601 timestamp>>", "date": "<today,
+   YYYY-MM-DD>", "outcome": "<build.md's terminal state, e.g.
+   complete|partial>", "reason": "<one line: why the tick ended in
+   that state>", "pr": <PR number or null>, "turns": <turns build.md's
+   final report used>, "selected": [<finding ids selected in Phase
+   I-2, possibly none addressed>], "addressed": [<ids marked addressed
+   in step 1 — subset of selected>]}`. `selected` and `addressed` are
+   recorded SEPARATELY on purpose: a tick that selected three findings
+   and addressed one is a data point budget tuning needs, and an
+   entry listing only successes would hide it.
+   Read `review-output/ticks.json`. If it is absent, start from a new
+   empty JSON array `[]`. If it exists and parses as a JSON array, use
+   it as the base. If it exists but does NOT parse as a JSON array
+   (malformed JSON, or valid JSON of another type), this is a BLOCKING
+   ledger error: leave the file byte-for-byte unchanged, skip steps 2a
+   and 2b entirely, and report that the tracked ledger needs human
+   recovery — never substitute an empty or reconstructed array for a
+   malformed tracked file, because the committed history it held (which
+   may include ticks from other machines whose journals this machine
+   has never seen) would be overwritten by a partial local view. This
+   tick's entry is not lost: the Cleanup journal append still records
+   it, and reconciliation resumes on the first tick after a human
+   repairs the ledger. On this branch, step 3's commit carries the
+   `findings.json` update alone. Otherwise:
+   a. Fold in prior unreconciled ticks: read the machine-local journal
+      `"$(git rev-parse --path-format=absolute --git-common-dir)/g2g-ticks.jsonl"`
+      (one JSON entry per line; the common git dir belongs to the main
+      checkout, is shared by every worktree, survives worktree
+      removal, and is never tracked). The journal holds two record
+      kinds per tick: a `launched` record written by the launcher at
+      spawn (carrying extra `rundir`/`pid` fields) and a terminal
+      record written by Cleanup. Group lines by `tickId`, then for
+      each `tickId` not already present in the array, in journal
+      order:
+      - a terminal record exists → append it (drop `rundir`/`pid` if
+        present; ticks.json entries keep the eight-field shape);
+      - ONLY a `launched` record exists → check its `pid` with
+        `kill -0`: alive means the tick is still running — skip it;
+        dead or missing means the tick was killed by the outer
+        cap/budget, crashed, or was manually killed before its Cleanup
+        could write a terminal record — append
+        `{"tickId", "date" (the launch record's), "outcome":
+        "killed-or-crashed", "reason": "launched but no terminal
+        record — outer cap kill, crash, or manual kill", "pr": null,
+        "turns": null, "selected": [], "addressed": []}`.
+      A missing journal file or an unparsable journal line is reported
+      and skipped, never fatal.
+   b. Append this tick's own entry (shape above), then write the
+      array back to `review-output/ticks.json`.
+3. Commit both files together in ONE commit:
+   `git add review-output && git commit -m "chore: mark findings addressed by PR #<number>"`
+   — the ticks.json ledger entries ride inside this SAME reconciliation
+   commit, never a separate one.
+4. Push that ONE commit to the same, already-open PR branch
    (`git push`). This is the improve cycle's single sanctioned post-PR
-   push — the backlog update must land inside the PR that it
-   references. Nothing else is ever pushed after it.
-If no PR exists (gh unavailable, partial stop), skip all three steps
-and say so — the findings stay open for the next cycle.
+   push — the backlog update (including the new ledger entries) must
+   land inside the PR that it references. Nothing else is ever pushed
+   after it.
+If no PR exists (gh unavailable, partial stop), skip all four steps —
+write nothing to `review-output/findings.json` or `ticks.json`, and
+push nothing. The findings stay open for the next cycle. The tick is
+still durably recorded: the Cleanup section's journal append runs on
+every terminal path, and the next PR-producing tick's step 2a folds it
+into the tracked ledger.
 
 ## Cleanup — every terminal path (success, empty, abort, partial)
 1. Delete `"$RUNDIR/selected.json"` if present. For `.g2g-goal` /
@@ -136,11 +197,29 @@ and say so — the findings stay open for the next cycle.
      a foreign live lock: that would disarm another build's goal.
    - Any exit 6/7/8 from the helper: fail closed — delete nothing,
      report the helper's output.
-2. Remove the pid sidecar `"$RUNDIR/tick.pid"` LAST, if present
+2. Journal this tick — EVERY terminal path (success, empty, abort,
+   partial), no exceptions: append exactly one JSON line, the ledger
+   entry shape from Phase I-5 step 2 (`tickId`, `date`, `outcome`,
+   `reason`, `pr` — null when none, `turns`, `selected`, `addressed`),
+   best-effort filled from whatever this cycle actually did, to
+   `"$(git rev-parse --path-format=absolute --git-common-dir)/g2g-ticks.jsonl"`.
+   The common git dir is the main checkout's, shared across worktrees
+   and never tracked, so this write is durable without touching the
+   tracked tree or adding any push. This journal is what keeps the
+   ledger honest: without it, only PR-producing ticks would ever be
+   durably recorded and the tracked ledger would be a success-biased
+   sample — the failed and empty ticks are exactly the ones budget
+   tuning needs to see. A PR tick's entry is also already in
+   `ticks.json` (Phase I-5 step 2b); the matching `tickId` is what
+   stops the next reconciliation from double-counting it. If the
+   append itself fails (unwritable common dir), print the entry in the
+   final message and say the journal write failed.
+3. Remove the pid sidecar `"$RUNDIR/tick.pid"` LAST, if present
    (foreground and routine runs have none) — its absence tells the
    launcher's next tick this cycle ended.
-3. Final message: what happened (PR URL, partial, empty, or abort),
-   which findings were addressed/stale-marked, and that the worktree
-   can be removed with `git worktree remove <path>` and the now-empty
-   run root with `rm -rf "$RUNDIR"` once the PR is merged or the work
-   inspected.
+4. Final message: what happened (PR URL, partial, empty, or abort),
+   which findings were selected and which were addressed/stale-marked,
+   the journaled ledger entry (echo the JSON line from step 2), and
+   that the worktree can be removed with `git worktree remove <path>`
+   and the now-empty run root with `rm -rf "$RUNDIR"` once the PR is
+   merged or the work inspected.

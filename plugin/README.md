@@ -138,6 +138,44 @@ auto-deleted. The backlog update marking findings `addressed` is
 committed and pushed into the same open PR as a single documented
 follow-up commit — the one exception to single-push.
 
+Every tick — including empty cycles, aborts, no-PR partials, and
+ticks killed by the outer cap — is durably recorded on the launching
+machine. Two writers cover the two failure geometries: the LAUNCHER
+appends a `launched` record (with pid and run root) at spawn time,
+from outside the capped child process — so a tick the outer
+`--max-turns`/`--max-budget-usd` guillotine kills before its own
+Cleanup runs still leaves a trace, and reconciliation folds
+launched-but-dead ticks as `killed-or-crashed`; the tick's Cleanup
+appends the terminal record on every terminal path. Both write
+JSON-line entries to a machine-local journal in the main checkout's
+git common dir (`$(git rev-parse --git-common-dir)/g2g-ticks.jsonl` —
+shared across worktrees, survives worktree removal, never tracked).
+One honest limitation: an ephemeral fresh-clone environment (a
+scheduled cloud routine, CI) destroys its journal with the clone, so
+no-PR ticks there are recorded only in the routine's own run report —
+the nightly routine template prints the would-be entry verbatim for
+exactly this reason.
+Each entry: `{"tickId": "<run id>", "date": "<YYYY-MM-DD>",
+"outcome": "<terminal state>", "reason": "<why it ended that way>",
+"pr": <PR number or null>, "turns": <the tick's turn count>,
+"selected": [<finding ids selected>], "addressed": [<ids actually
+marked addressed — subset of selected>]}`. `selected` and `addressed`
+are separate fields so failed and partial work stays visible — a
+ledger of successes only would systematically hide the costly ticks
+budget tuning needs to see. Each PR-producing cycle then reconciles
+the journal into the tracked ledger `review-output/ticks.json` (a JSON
+array, created on first use) inside its SAME single reconciliation
+commit — never a separate commit or push: it folds in every journal
+entry whose `tickId` the tracked ledger lacks, then appends its own
+entry. A tracked ledger that exists but no longer parses as a JSON
+array is never overwritten — reconciliation skips the ledger, reports
+it as needing human recovery, and resumes once repaired (journal
+entries wait; committed history from other machines is never replaced
+by a partial local view). `/g2g:status` summarizes the tracked
+ledger's last 5 entries plus the count of journal entries still
+awaiting reconciliation, and reports absence or a parse failure
+honestly rather than guessing.
+
 Triggers: locally, `/loop /g2g:improve` (each tick is
 fire-and-forget within the live session; the loop cadence should
 exceed a cycle's duration); in the cloud, schedule
@@ -176,6 +214,107 @@ consumed ~$7.8 in the first live run under an earlier $10 default,
 which landed only a partial PR; large repos should still raise
 `improveUsd` and/or narrow `reviewFocus`/`sourceDirs` — a
 budget-exhausted cycle lands a graceful partial draft PR.
+
+### The hill-climbing loop (documented, not yet wired)
+
+The eval harness described in `plugin/evals/README.md` (case shape,
+area tags, dev/sealed split, the committed score ledger
+`plugin/evals/results.json` and its baseline convention) is the
+missing piece a prompt-improvement loop needs: once it exists, a
+candidate change to builder/verifier prompt or skill text can be
+proposed and judged **entirely through the machinery documented
+above** — no new orchestration, no self-merging, nothing that bypasses
+a cap.
+
+The loop, expressed as an ordinary improve fix-spec:
+
+1. A candidate prompt/skill change is proposed as a normal
+   `/g2g:improve` fix-spec, same as any other backlog finding.
+2. Its acceptance criterion is **"tagged eval score >= committed
+   baseline (`plugin/evals/results.json`) across >= 3 runs"** — the
+   eval run *is* the spec's verification command, so
+   `g2g-evidence.sh` grades it exactly like any other build, and the
+   `g2g-verifier` subagent gates the PR exactly like any other build.
+   Score recording is **two-phase**, because the evidence chain
+   demands it: `g2g-evidence.sh --full` certifies completion only if
+   the repo's tracked state did not change while the verification
+   commands ran, so an eval run that appended to the tracked
+   `results.json` mid-verification would register as state drift and
+   block the proven verdict — by design, not accident. During the
+   candidate build the harness therefore runs **read-only against the
+   tracked tree**: per-run scores go to an untracked sidecar (the
+   run's `$RUNDIR`, or the git-common-dir journal pattern the tick
+   ledger uses), where the verifier and the human can read them.
+3. The human reviewing the PR performs the final selection: merge,
+   request changes, or close. Nothing merges itself; the guardrails in
+   [Guardrails](#guardrails) (PR-gated, caps everywhere, opt-in
+   `improve.enabled`) apply unchanged — this is a build whose
+   verification command happens to be an eval, not a new code path.
+   **Accepting a candidate is what writes the ledger**: at the merge
+   gate the human appends the measured entry (per-run `scores`, the
+   candidate `commit` it measured, `harness`, `model`) to
+   `plugin/evals/results.json` in a separate, explicitly authorized
+   append-only commit — never inside the candidate's own diff. This
+   append-only recording of a measurement is the ONE sanctioned
+   exception to optimizer/metric separation below; everything else
+   under `plugin/evals/` stays human-initiated and out of any
+   candidate diff.
+
+This is **inert today**: the eval harness that would actually run
+cases and produce a score is early access and not wired into this
+repo (`plugin/evals/README.md`), so no fix-spec can satisfy the
+acceptance criterion above until it lands. There is also a
+generational boundary to respect once it does: a merged prompt
+improvement changes files on disk, but a tick already in flight has
+already loaded its prompts for that run — the improvement only takes
+effect for ticks started after the plugin version bump that ships it
+(see `plugin/.claude-plugin/plugin.json`'s `version` field), never
+retroactively for the run that produced it.
+
+Four rules govern how a candidate is judged, distilled from
+karpathy/autoresearch's recon on prompt hill-climbing:
+
+- **Regression floor first, objective second.** The suite's primary
+  job is catching regressions, not chasing gains. A claimed
+  improvement must exceed the *observed spread* across the required
+  >= 3 runs — noise between runs at the same prompt is not a signal.
+  Score every candidate into exactly one of three verdicts —
+  **accept**, **reject**, or **retest with more runs** (when the gain
+  is within the observed spread and neither clearly holds nor clearly
+  fails) — never a bare greedy "score went up, accept."
+- **The simplicity asymmetry.** Equal score with less prose is an
+  accept. An epsilon gain that adds substantial prose is a reject.
+  Prompt hill-climbing's dominant failure mode is monotonic bloat —
+  every accepted change adding a caveat, a reminder, an extra
+  paragraph — so a tie-breaker that favors brevity is load-bearing,
+  not optional politeness.
+- **Optimizer/metric separation.** A single candidate never changes
+  both `plugin/evals/` and command/skill prose in the same fix-spec —
+  changing the ruler and the thing it measures together is how a loop
+  learns to satisfy its own grader instead of actually improving.
+  Eval-suite changes (new cases, reworded graders, dev/sealed
+  reclassification) are always human-initiated, never proposed by the
+  loop itself. The single exception is the merge-gate score recording
+  from step 3 above: an **append-only** `results.json` entry that
+  records a measurement (never edits or removes prior entries, never
+  touches cases or graders), made by the human in its own commit
+  referencing the measured candidate commit.
+- **Target-surface split.** The human-edited layer —
+  `plugin/commands/build.md`, `plugin/commands/improve-cycle.md`, the
+  Stop hook (`plugin/scripts/g2g-stop.sh`), and the evidence/lock
+  scripts (`plugin/scripts/g2g-evidence.sh`,
+  `plugin/scripts/g2g-lock.sh`) — is out of the loop's target surface
+  entirely; per CLAUDE.md these are frozen contracts and orchestration
+  prose, not tunable parameters. The loop's candidates target only the
+  narrower builder/verifier prompt and skill surface (agent
+  definitions in `plugin/agents/`, skill text in `plugin/skills/`).
+  Sealed holdout cases (`plugin/evals/README.md`'s dev/sealed split)
+  live **outside the repository** in an operator-owned store and are
+  run only by the human at the merge gate. Location is the boundary,
+  not prose: anything committed under `plugin/evals/` is readable by
+  every builder, so an in-repo case can never be sealed — a candidate
+  could read the exact prompt and grader it will be judged on, which
+  is precisely the overfitting the holdout exists to catch.
 
 ## Config
 

@@ -33,5 +33,35 @@ Report G2G state, read-only (change nothing):
    RUNNING (pid sidecar present, process alive via `kill -0`), CRASHED
    (pid sidecar present, process dead — needs human inspection), or
    FINISHED (no pid sidecar; removable if clean).
+6. Tick ledger: if `review-output/ticks.json` exists and parses as a
+   JSON array, summarize its last 5 entries (most recently appended
+   last) — for each: `date`, `outcome`, `pr`, `turns`, and the
+   selected/addressed counts (lengths of that entry's `selected` and
+   `addressed` arrays). If the file is absent, report "no
+   review-output/ticks.json (no improve cycles have completed yet)".
+   If it exists but fails to parse as JSON or is not an array, report
+   that honestly instead of guessing its contents. Then check the tick
+   journal
+   `"$(git rev-parse --path-format=absolute --git-common-dir)/g2g-ticks.jsonl"`
+   (read-only). The journal holds up to TWO records per tick — a
+   `launched` record (with `pid`) and a terminal record — so count
+   TICKS, never raw lines: group records by `tickId`, drop every
+   `tickId` already present in `review-output/ticks.json`, and
+   classify each remaining tick with the same rules reconciliation
+   uses (improve-cycle.md Phase I-5 step 2a):
+   - a terminal record exists → completed, awaiting reconciliation;
+   - launch record only, its `pid` alive per `kill -0` → RUNNING now
+     (not awaiting anything — do not count it as unreconciled);
+   - launch record only, pid dead or missing → killed-or-crashed,
+     awaiting reconciliation.
+   Report the completed-awaiting and killed-or-crashed-awaiting counts
+   (and any RUNNING ticks alongside step 5's worktree view). When
+   `ticks.json` is absent, phrase the two sources consistently: absent
+   ledger plus a journal with unreconciled ticks means "no improve
+   cycle has RECONCILED yet — N ticks recorded in the journal await
+   the first PR-producing cycle", never "no improve cycles have
+   completed yet" beside a nonzero journal count. A missing journal
+   means no ticks have run on this machine; say so rather than
+   guessing.
 Summarize in a short table. No recommendations unless something is stuck
 (blocked tasks, draft partial PRs, conflicts).

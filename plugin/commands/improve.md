@@ -151,6 +151,34 @@ fallback.
    quoted variable expansion, never a raw substitution of config text
    into the command (`inherit` and pattern misses never reach this
    point; step 1 fails the launch on them).
+   LAUNCH RECORD — immediately after the spawn, from the launching
+   session (which runs OUTSIDE the capped child), append one JSON line
+   to the tick journal
+   `"$(git rev-parse --path-format=absolute --git-common-dir)/g2g-ticks.jsonl"`:
+   `{"tickId": "$ID", "date": "<today, YYYY-MM-DD>", "outcome":
+   "launched", "reason": "tick spawned; terminal record pending",
+   "pr": null, "turns": null, "selected": [], "addressed": [],
+   "rundir": "$RUNDIR", "pid": <the pid just written to tick.pid>}`.
+   This exists because the tick's own Cleanup is the terminal-record
+   writer and the outer `--max-turns`/`--max-budget-usd` kill strikes
+   BEFORE Cleanup can run: without a launch record written from
+   outside the capped process, a capped or crashed tick would leave no
+   durable trace and the ledger would quietly regain the success bias
+   it exists to eliminate. Reconciliation (improve-cycle.md Phase I-5)
+   pairs launch records with terminal records by `tickId` and folds
+   unpaired-and-dead ones as `killed-or-crashed`. Launch-record
+   persistence is MANDATORY — verify the append actually landed (the
+   write exited 0 and `tail -n 1` of the journal shows this `tickId`).
+   If it did not: the tick must not run unjournaled, because the
+   launch record exists precisely for the tick that dies before its
+   own Cleanup — an unjournaled tick killed by the outer cap would
+   vanish, restoring the success bias the ledger exists to eliminate.
+   Terminate the just-spawned child now (`kill <pid from tick.pid>`,
+   then wait for it to exit), PRESERVE the worktree and `$RUNDIR`
+   sidecars untouched for inspection, and abort the launch with the
+   journal-write error reported verbatim (a full disk or unwritable
+   git common dir is the concrete case). Never proceed past this
+   point with a spawned tick and no durable launch record.
 5. Without `--wait`: report the worktree path, branch, PID, log path
    (`$RUNDIR/tick.log`), caps, and the billing line from step 4, plus
    how to watch it
