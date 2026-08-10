@@ -32,10 +32,10 @@
         "make check passes"
       ],
       "dependsOn": [],
-      "status": "in_progress",
-      "passes": false,
+      "status": "complete",
+      "passes": true,
       "effort": "small",
-      "notes": "",
+      "notes": "Ledger append in Phase I-5 reconciliation commit; no-PR paths print would-be entry; status.md step 6 summarizes last 5; README schema doc; version 0.6.1->0.6.2 + CHANGELOG",
       "attempts": 0
     },
     {
