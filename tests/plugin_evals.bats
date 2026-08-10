@@ -83,11 +83,41 @@ case_dirs() {
 @test "evals: README.md documents the external sealed-holdout convention" {
     # Sealed cases live OUTSIDE the repository (an in-repo case is
     # readable by any builder, so prose cannot seal it). The README
-    # must state that convention, and no committed case may claim to
-    # be sealed.
+    # must state that convention.
     grep -qi "outside this repository" "$EVALS_DIR/README.md"
-    run grep -E '^\|.*\*\*sealed\*\*' "$EVALS_DIR/README.md"
-    [[ "$status" -ne 0 ]]
+}
+
+@test "evals: every committed case's Set column is dev" {
+    # Semantic check on the Cases table: for each committed case
+    # directory, find its table row and assert the Set cell is 'dev'
+    # after normalizing whitespace, case, and Markdown emphasis — a
+    # plain '| case | area | sealed |' row must fail, not just the
+    # bold '**sealed**' form.
+    while IFS= read -r dir; do
+        name=$(basename "$dir")
+        row=$(grep -E "^\|[[:space:]]*\`?${name}\`?[[:space:]]*\|" "$EVALS_DIR/README.md") || {
+            echo "no Cases table row for: $name"
+            return 1
+        }
+        set_cell=$(printf '%s\n' "$row" | awk -F'|' '{print $(NF-1)}' \
+            | tr -d ' *_' | tr '[:upper:]' '[:lower:]')
+        [[ "$set_cell" == "dev" ]] || {
+            echo "case $name has Set column '$set_cell', expected 'dev'"
+            return 1
+        }
+    done < <(case_dirs)
+}
+
+@test "evals: every case prompt references a concrete shipped command or skill path" {
+    # The behavioral contract must come from the shipped file, not an
+    # embedded copy — so every prompt must name the file it exercises.
+    while IFS= read -r dir; do
+        run grep -Eq 'plugin/(commands|skills)/[A-Za-z0-9/_-]+(\.md|/SKILL\.md)' "$dir/prompt.md"
+        [[ "$status" -eq 0 ]] || {
+            echo "prompt.md cites no shipped plugin/commands or plugin/skills path: $dir"
+            return 1
+        }
+    done < <(case_dirs)
 }
 
 @test "evals: results.json exists and parses as a JSON array" {

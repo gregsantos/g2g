@@ -151,6 +151,23 @@ fallback.
    quoted variable expansion, never a raw substitution of config text
    into the command (`inherit` and pattern misses never reach this
    point; step 1 fails the launch on them).
+   LAUNCH RECORD — immediately after the spawn, from the launching
+   session (which runs OUTSIDE the capped child), append one JSON line
+   to the tick journal
+   `"$(git rev-parse --path-format=absolute --git-common-dir)/g2g-ticks.jsonl"`:
+   `{"tickId": "$ID", "date": "<today, YYYY-MM-DD>", "outcome":
+   "launched", "reason": "tick spawned; terminal record pending",
+   "pr": null, "turns": null, "selected": [], "addressed": [],
+   "rundir": "$RUNDIR", "pid": <the pid just written to tick.pid>}`.
+   This exists because the tick's own Cleanup is the terminal-record
+   writer and the outer `--max-turns`/`--max-budget-usd` kill strikes
+   BEFORE Cleanup can run: without a launch record written from
+   outside the capped process, a capped or crashed tick would leave no
+   durable trace and the ledger would quietly regain the success bias
+   it exists to eliminate. Reconciliation (improve-cycle.md Phase I-5)
+   pairs launch records with terminal records by `tickId` and folds
+   unpaired-and-dead ones as `killed-or-crashed`. A failed journal
+   append is reported but never blocks the launch.
 5. Without `--wait`: report the worktree path, branch, PID, log path
    (`$RUNDIR/tick.log`), caps, and the billing line from step 4, plus
    how to watch it

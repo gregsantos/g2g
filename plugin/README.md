@@ -138,11 +138,23 @@ auto-deleted. The backlog update marking findings `addressed` is
 committed and pushed into the same open PR as a single documented
 follow-up commit — the one exception to single-push.
 
-Every tick — including empty cycles, aborts, and no-PR partials — is
-durably recorded. At Cleanup, every terminal path appends one
-JSON-line entry to a machine-local journal in the main checkout's git
-common dir (`$(git rev-parse --git-common-dir)/g2g-ticks.jsonl` —
+Every tick — including empty cycles, aborts, no-PR partials, and
+ticks killed by the outer cap — is durably recorded on the launching
+machine. Two writers cover the two failure geometries: the LAUNCHER
+appends a `launched` record (with pid and run root) at spawn time,
+from outside the capped child process — so a tick the outer
+`--max-turns`/`--max-budget-usd` guillotine kills before its own
+Cleanup runs still leaves a trace, and reconciliation folds
+launched-but-dead ticks as `killed-or-crashed`; the tick's Cleanup
+appends the terminal record on every terminal path. Both write
+JSON-line entries to a machine-local journal in the main checkout's
+git common dir (`$(git rev-parse --git-common-dir)/g2g-ticks.jsonl` —
 shared across worktrees, survives worktree removal, never tracked).
+One honest limitation: an ephemeral fresh-clone environment (a
+scheduled cloud routine, CI) destroys its journal with the clone, so
+no-PR ticks there are recorded only in the routine's own run report —
+the nightly routine template prints the would-be entry verbatim for
+exactly this reason.
 Each entry: `{"tickId": "<run id>", "date": "<YYYY-MM-DD>",
 "outcome": "<terminal state>", "reason": "<why it ended that way>",
 "pr": <PR number or null>, "turns": <the tick's turn count>,

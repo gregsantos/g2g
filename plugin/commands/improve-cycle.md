@@ -132,12 +132,25 @@ partial PR on terminal stops, never merge, no attribution lines.
       `"$(git rev-parse --path-format=absolute --git-common-dir)/g2g-ticks.jsonl"`
       (one JSON entry per line; the common git dir belongs to the main
       checkout, is shared by every worktree, survives worktree
-      removal, and is never tracked). Append, in journal order, every
-      journal entry whose `tickId` is not already present in the
-      array — these are earlier ticks that ended with no PR and had no
-      sanctioned way to write the tracked ledger. A missing journal
-      file or an unparsable journal line is reported and skipped,
-      never fatal.
+      removal, and is never tracked). The journal holds two record
+      kinds per tick: a `launched` record written by the launcher at
+      spawn (carrying extra `rundir`/`pid` fields) and a terminal
+      record written by Cleanup. Group lines by `tickId`, then for
+      each `tickId` not already present in the array, in journal
+      order:
+      - a terminal record exists → append it (drop `rundir`/`pid` if
+        present; ticks.json entries keep the eight-field shape);
+      - ONLY a `launched` record exists → check its `pid` with
+        `kill -0`: alive means the tick is still running — skip it;
+        dead or missing means the tick was killed by the outer
+        cap/budget, crashed, or was manually killed before its Cleanup
+        could write a terminal record — append
+        `{"tickId", "date" (the launch record's), "outcome":
+        "killed-or-crashed", "reason": "launched but no terminal
+        record — outer cap kill, crash, or manual kill", "pr": null,
+        "turns": null, "selected": [], "addressed": []}`.
+      A missing journal file or an unparsable journal line is reported
+      and skipped, never fatal.
    b. Append this tick's own entry (shape above), then write the
       array back to `review-output/ticks.json`.
 3. Commit both files together in ONE commit:
