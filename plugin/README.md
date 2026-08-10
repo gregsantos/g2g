@@ -300,6 +300,37 @@ claude -p "/g2g:build specs/feature.json" \
 - `--max-budget-usd` is what backs the "headless spawns add a dollar cap" guardrail above — the recorded end-to-end spike runs predate this flag being added to the invocation and ran without it; include it for any new headless spawn.
 - `--plugin-dir` is what loads the plugin, and with it the Stop hook. It is **not** optional: `--setting-sources project` excludes your personal settings, so a plugin enabled only in `~/.claude/settings.json` is not loaded at all in that session — no `/g2g:*` commands and no hook. The alternative to passing `--plugin-dir` is declaring the plugin in the repo's own `.claude/settings.json`, which `/g2g:init` sets up (see [New repo quickstart](#new-repo-quickstart)). Either is sufficient; this file's invocation uses `--plugin-dir`.
 
+### Cloud sandbox / managed agent / CI: what a fresh clone needs
+
+Nothing g2g-specific has to be added for `/g2g:build`, `/g2g:spec`, or
+`/g2g:go` to run in an environment with no browser login. Those commands
+run *inside* the session — builders and verifiers are in-session
+subagents that ride the session's own credentials — so authenticating
+the session authenticates everything they do. Only `/g2g:improve`
+spawns a separate `claude -p` child, which is why it alone carries
+explicit key resolution (next section).
+
+For a fresh clone in a cloud sandbox, managed agent, or CI runner:
+
+1. **Credentials** — provide `ANTHROPIC_API_KEY` as an environment
+   secret before launching the session. Headless mode prefers an API
+   key over the stored login, so no browser flow is needed and the
+   whole run bills to that key.
+2. **Plugin loading** — either the repo's own `.claude/settings.json`
+   declares the marketplace and enables the plugin (what
+   `/g2g:init` sets up), or the invocation passes `--plugin-dir`.
+   Remember that `--setting-sources project` excludes user settings, so
+   a plugin enabled only in `~/.claude/settings.json` does not load.
+3. **A spec** — `/g2g:build` requires a tracked spec with
+   `context.verificationCommands` and refuses to run without one.
+   `.claude/g2g.json` is optional; budgets and models fall back to
+   defaults when it is absent.
+4. **Invocation** — use the proven shape above, unchanged.
+
+`G2G_IMPROVE_API_KEY` stays optional in these environments: set it only
+when improve ticks should bill to a *separate* Console key; otherwise
+improve inherits the same `ANTHROPIC_API_KEY` as everything else.
+
 ### Billing: which credentials a headless run uses
 
 A spawned `claude -p` inherits credentials from its environment, and in headless mode an API key always wins over the stored login. `/g2g:improve` (and the nightly routine) resolve this explicitly, in precedence order, and report the chosen mode at launch:
