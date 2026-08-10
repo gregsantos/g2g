@@ -191,6 +191,82 @@ which landed only a partial PR; large repos should still raise
 `improveUsd` and/or narrow `reviewFocus`/`sourceDirs` — a
 budget-exhausted cycle lands a graceful partial draft PR.
 
+### The hill-climbing loop (documented, not yet wired)
+
+The eval harness described in `plugin/evals/README.md` (case shape,
+area tags, dev/sealed split, the committed score ledger
+`plugin/evals/results.json` and its baseline convention) is the
+missing piece a prompt-improvement loop needs: once it exists, a
+candidate change to builder/verifier prompt or skill text can be
+proposed and judged **entirely through the machinery documented
+above** — no new orchestration, no self-merging, nothing that bypasses
+a cap.
+
+The loop, expressed as an ordinary improve fix-spec:
+
+1. A candidate prompt/skill change is proposed as a normal
+   `/g2g:improve` fix-spec, same as any other backlog finding.
+2. Its acceptance criterion is **"tagged eval score >= committed
+   baseline (`plugin/evals/results.json`) across >= 3 runs"** — the
+   eval run *is* the spec's verification command, so
+   `g2g-evidence.sh` grades it exactly like any other build, and the
+   `g2g-verifier` subagent gates the PR exactly like any other build.
+3. The human reviewing the PR performs the final selection: merge,
+   request changes, or close. Nothing merges itself; the guardrails in
+   [Guardrails](#guardrails) (PR-gated, caps everywhere, opt-in
+   `improve.enabled`) apply unchanged — this is a build whose
+   verification command happens to be an eval, not a new code path.
+
+This is **inert today**: the eval harness that would actually run
+cases and produce a score is early access and not wired into this
+repo (`plugin/evals/README.md`), so no fix-spec can satisfy the
+acceptance criterion above until it lands. There is also a
+generational boundary to respect once it does: a merged prompt
+improvement changes files on disk, but a tick already in flight has
+already loaded its prompts for that run — the improvement only takes
+effect for ticks started after the plugin version bump that ships it
+(see `plugin/.claude-plugin/plugin.json`'s `version` field), never
+retroactively for the run that produced it.
+
+Four rules govern how a candidate is judged, distilled from
+karpathy/autoresearch's recon on prompt hill-climbing:
+
+- **Regression floor first, objective second.** The suite's primary
+  job is catching regressions, not chasing gains. A claimed
+  improvement must exceed the *observed spread* across the required
+  >= 3 runs — noise between runs at the same prompt is not a signal.
+  Score every candidate into exactly one of three verdicts —
+  **accept**, **reject**, or **retest with more runs** (when the gain
+  is within the observed spread and neither clearly holds nor clearly
+  fails) — never a bare greedy "score went up, accept."
+- **The simplicity asymmetry.** Equal score with less prose is an
+  accept. An epsilon gain that adds substantial prose is a reject.
+  Prompt hill-climbing's dominant failure mode is monotonic bloat —
+  every accepted change adding a caveat, a reminder, an extra
+  paragraph — so a tie-breaker that favors brevity is load-bearing,
+  not optional politeness.
+- **Optimizer/metric separation.** A single candidate never changes
+  both `plugin/evals/` and command/skill prose in the same fix-spec —
+  changing the ruler and the thing it measures together is how a loop
+  learns to satisfy its own grader instead of actually improving.
+  Eval-suite changes (new cases, reworded graders, dev/sealed
+  reclassification) are always human-initiated, never proposed by the
+  loop itself.
+- **Target-surface split.** The human-edited layer —
+  `plugin/commands/build.md`, `plugin/commands/improve-cycle.md`, the
+  Stop hook (`plugin/scripts/g2g-stop.sh`), and the evidence/lock
+  scripts (`plugin/scripts/g2g-evidence.sh`,
+  `plugin/scripts/g2g-lock.sh`) — is out of the loop's target surface
+  entirely; per CLAUDE.md these are frozen contracts and orchestration
+  prose, not tunable parameters. The loop's candidates target only the
+  narrower builder/verifier prompt and skill surface (agent
+  definitions in `plugin/agents/`, skill text in `plugin/skills/`).
+  Sealed holdout cases (`plugin/evals/README.md`'s dev/sealed split)
+  are run only by the human at the merge gate, never by the automated
+  loop — the same boundary that already governs the improve flywheel
+  generally, so a candidate cannot tune itself against the exact cases
+  that would catch overfitting.
+
 ## Config
 
 Optional `.claude/g2g.json` in the host repo (see [`.claude/g2g.json`](../.claude/g2g.json) here for an example). Field status below — `verificationCommands`, `defaultBudgets`, `reviewFocus`, `sourceDirs`, and `models` are all live:

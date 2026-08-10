@@ -325,3 +325,55 @@ PR. That data is why the default is now **25**. Sizing guidance:
   `.claude/g2g.json` sets `"improve": { "enabled": true }`, and
   enabling it is always a human edit.
 
+## 10. The hill-climbing loop (operator view)
+
+Full rationale and the four judging rules live in the [plugin
+README](../plugin/README.md#the-hill-climbing-loop-documented-not-yet-wired);
+this is the condensed operator version — when to run it, what to
+check before merging.
+
+**Status: inert.** Nothing below fires until the entitlement-gated
+eval harness referenced in `plugin/evals/README.md` is available. Do
+not attempt to hand-run this loop early — there is no way to produce
+a real score without the harness, and a fabricated one defeats the
+whole point.
+
+**When it's available, to propose a prompt/skill change:**
+
+1. Write it as an ordinary improve fix-spec (same path as any other
+   backlog finding) with acceptance criterion: tagged eval score is
+   `>=` the committed baseline in `plugin/evals/results.json`, sampled
+   across `>= 3` runs.
+2. Run it through `/g2g:improve` like any other tick — the eval run
+   *is* the verification command, so it goes through the normal
+   `g2g-evidence.sh` grading and `g2g-verifier` gate. No separate
+   invocation, no new flag.
+3. Review the resulting PR yourself. You are the final selection step
+   — nothing here merges itself.
+
+**Before merging, check:**
+
+- The candidate touches only `plugin/agents/` or `plugin/skills/`
+  prompt/skill text — never `plugin/commands/build.md`,
+  `plugin/commands/improve-cycle.md`, `plugin/scripts/g2g-stop.sh`,
+  `plugin/scripts/g2g-evidence.sh`, or `plugin/scripts/g2g-lock.sh` in
+  the same PR. Those are the human-edited layer; changes there go
+  through the normal PR process, not this loop.
+- The candidate does not also touch `plugin/evals/` (new cases,
+  reworded graders, a dev/sealed reclassification). Changing the
+  ruler and the thing it measures in one PR is a same-fix-spec
+  violation — reject and split it.
+- The score gain, if any, exceeds the observed spread across the
+  `>= 3` runs recorded for that PR. Within-spread deltas are not a
+  gain — retest with more runs rather than accepting on noise.
+- If the score is flat or within spread but the diff adds prose
+  (extra caveats, reminders, paragraphs), reject: prompt
+  hill-climbing's dominant failure mode is monotonic bloat, so ties
+  favor the shorter prompt.
+- Run the sealed holdout cases yourself (`plugin/evals/README.md`'s
+  dev/sealed split) before merging — the loop never sees them, so a
+  clean dev-set score alone is not sufficient evidence.
+- After merging, remember the generational boundary: the improvement
+  applies to ticks started after the plugin version bump that ships
+  it, never to the run that produced the PR.
+
