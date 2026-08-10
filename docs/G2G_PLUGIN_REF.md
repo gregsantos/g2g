@@ -350,6 +350,16 @@ whole point.
    invocation, no new flag.
 3. Review the resulting PR yourself. You are the final selection step
    — nothing here merges itself.
+4. Score recording is two-phase: the candidate's eval runs are
+   read-only against the tracked tree (per-run scores land in an
+   untracked sidecar the verifier and you can read — a tracked
+   `results.json` write mid-verification would register as state
+   drift and block the evidence verdict). If you accept the
+   candidate, YOU append the measured entry (per-run `scores`,
+   `commit`, `harness`, `model`) to `plugin/evals/results.json` in a
+   separate append-only commit. That commit is the one sanctioned
+   exception to optimizer/metric separation; it never edits prior
+   entries and never touches cases or graders.
 
 **Before merging, check:**
 

@@ -102,8 +102,14 @@ how many hold", then a numbered list.
 ## Score ledger (`results.json`)
 
 `plugin/evals/results.json` is the committed score ledger — a sibling
-of the tick ledger, seeded as an empty JSON array (`[]`). Once the
-eval harness lands, each run that scores a case appends an entry:
+of the tick ledger, seeded as an empty JSON array (`[]`). Nothing
+appends to it during a run: a candidate build's eval runs are
+read-only against the tracked tree (a tracked write mid-verification
+would register as state drift in `g2g-evidence.sh` and block the
+proven verdict), with per-run scores landing in an untracked sidecar.
+An entry is appended by a **human at the merge gate**, in its own
+append-only commit referencing the measured candidate commit — see
+the hill-climbing loop in the top-level plugin README. Each entry:
 
 ```json
 {

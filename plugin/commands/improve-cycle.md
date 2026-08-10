@@ -114,10 +114,20 @@ partial PR on terminal stops, never merge, no attribution lines.
    recorded SEPARATELY on purpose: a tick that selected three findings
    and addressed one is a data point budget tuning needs, and an
    entry listing only successes would hide it.
-   Read `review-output/ticks.json` if it exists; if it parses as a
-   JSON array, use it as the base, otherwise (absent, or present but
-   unparsable — report the parse failure rather than silently
-   discarding history) start from a new empty JSON array `[]`. Then:
+   Read `review-output/ticks.json`. If it is absent, start from a new
+   empty JSON array `[]`. If it exists and parses as a JSON array, use
+   it as the base. If it exists but does NOT parse as a JSON array
+   (malformed JSON, or valid JSON of another type), this is a BLOCKING
+   ledger error: leave the file byte-for-byte unchanged, skip steps 2a
+   and 2b entirely, and report that the tracked ledger needs human
+   recovery — never substitute an empty or reconstructed array for a
+   malformed tracked file, because the committed history it held (which
+   may include ticks from other machines whose journals this machine
+   has never seen) would be overwritten by a partial local view. This
+   tick's entry is not lost: the Cleanup journal append still records
+   it, and reconciliation resumes on the first tick after a human
+   repairs the ledger. On this branch, step 3's commit carries the
+   `findings.json` update alone. Otherwise:
    a. Fold in prior unreconciled ticks: read the machine-local journal
       `"$(git rev-parse --path-format=absolute --git-common-dir)/g2g-ticks.jsonl"`
       (one JSON entry per line; the common git dir belongs to the main

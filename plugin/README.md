@@ -155,9 +155,14 @@ the journal into the tracked ledger `review-output/ticks.json` (a JSON
 array, created on first use) inside its SAME single reconciliation
 commit — never a separate commit or push: it folds in every journal
 entry whose `tickId` the tracked ledger lacks, then appends its own
-entry. `/g2g:status` summarizes the tracked ledger's last 5 entries
-plus the count of journal entries still awaiting reconciliation, and
-reports absence or a parse failure honestly rather than guessing.
+entry. A tracked ledger that exists but no longer parses as a JSON
+array is never overwritten — reconciliation skips the ledger, reports
+it as needing human recovery, and resumes once repaired (journal
+entries wait; committed history from other machines is never replaced
+by a partial local view). `/g2g:status` summarizes the tracked
+ledger's last 5 entries plus the count of journal entries still
+awaiting reconciliation, and reports absence or a parse failure
+honestly rather than guessing.
 
 Triggers: locally, `/loop /g2g:improve` (each tick is
 fire-and-forget within the live session; the loop cadence should
@@ -218,11 +223,30 @@ The loop, expressed as an ordinary improve fix-spec:
    eval run *is* the spec's verification command, so
    `g2g-evidence.sh` grades it exactly like any other build, and the
    `g2g-verifier` subagent gates the PR exactly like any other build.
+   Score recording is **two-phase**, because the evidence chain
+   demands it: `g2g-evidence.sh --full` certifies completion only if
+   the repo's tracked state did not change while the verification
+   commands ran, so an eval run that appended to the tracked
+   `results.json` mid-verification would register as state drift and
+   block the proven verdict — by design, not accident. During the
+   candidate build the harness therefore runs **read-only against the
+   tracked tree**: per-run scores go to an untracked sidecar (the
+   run's `$RUNDIR`, or the git-common-dir journal pattern the tick
+   ledger uses), where the verifier and the human can read them.
 3. The human reviewing the PR performs the final selection: merge,
    request changes, or close. Nothing merges itself; the guardrails in
    [Guardrails](#guardrails) (PR-gated, caps everywhere, opt-in
    `improve.enabled`) apply unchanged — this is a build whose
    verification command happens to be an eval, not a new code path.
+   **Accepting a candidate is what writes the ledger**: at the merge
+   gate the human appends the measured entry (per-run `scores`, the
+   candidate `commit` it measured, `harness`, `model`) to
+   `plugin/evals/results.json` in a separate, explicitly authorized
+   append-only commit — never inside the candidate's own diff. This
+   append-only recording of a measurement is the ONE sanctioned
+   exception to optimizer/metric separation below; everything else
+   under `plugin/evals/` stays human-initiated and out of any
+   candidate diff.
 
 This is **inert today**: the eval harness that would actually run
 cases and produce a score is early access and not wired into this
@@ -258,7 +282,11 @@ karpathy/autoresearch's recon on prompt hill-climbing:
   learns to satisfy its own grader instead of actually improving.
   Eval-suite changes (new cases, reworded graders, dev/sealed
   reclassification) are always human-initiated, never proposed by the
-  loop itself.
+  loop itself. The single exception is the merge-gate score recording
+  from step 3 above: an **append-only** `results.json` entry that
+  records a measurement (never edits or removes prior entries, never
+  touches cases or graders), made by the human in its own commit
+  referencing the measured candidate commit.
 - **Target-surface split.** The human-edited layer —
   `plugin/commands/build.md`, `plugin/commands/improve-cycle.md`, the
   Stop hook (`plugin/scripts/g2g-stop.sh`), and the evidence/lock
