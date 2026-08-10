@@ -85,3 +85,30 @@ case_dirs() {
     [[ "$status" -eq 0 ]]
     [[ "$output" -ge 1 ]]
 }
+
+@test "evals: results.json exists and parses as a JSON array" {
+    [[ -f "$EVALS_DIR/results.json" ]]
+    run jq -e 'type == "array"' "$EVALS_DIR/results.json"
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "true" ]]
+}
+
+@test "evals: results.json entries (if any) have exactly the five schema fields with correct types" {
+    # Passes vacuously on the empty seed array ([] has no entries to check).
+    run jq -e '
+        all(.[];
+            (keys | sort) == ["case", "date", "model", "runs", "score"]
+            and (.date | type) == "string"
+            and (.date | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}"))
+            and (.case | type) == "string"
+            and (.score | type) == "number"
+            and (.score >= 0 and .score <= 1)
+            and (.runs | type) == "number"
+            and (.runs == (.runs | floor))
+            and (.runs > 0)
+            and (.model | type) == "string"
+        )
+    ' "$EVALS_DIR/results.json"
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == "true" ]]
+}

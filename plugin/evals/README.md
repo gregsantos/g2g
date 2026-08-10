@@ -73,6 +73,66 @@ binary pass/fail. Follow the existing cases' pattern: "Score 1.0 only
 if ALL of the following hold ...; otherwise score proportionally to
 how many hold", then a numbered list.
 
+## Score ledger (`results.json`)
+
+`plugin/evals/results.json` is the committed score ledger — a sibling
+of the tick ledger, seeded as an empty JSON array (`[]`). Once the
+eval harness lands, each run that scores a case appends an entry:
+
+```json
+{
+  "date": "2026-08-09",
+  "case": "spec-generation",
+  "score": 0.85,
+  "runs": 3,
+  "model": "claude-sonnet-5"
+}
+```
+
+Schema (all five fields required on every entry):
+
+| Field | Type | Meaning |
+|-------|------|---------|
+| `date` | string, ISO 8601 | when the run was scored |
+| `case` | string | matches a `plugin/evals/<area>-<slug>` directory name |
+| `score` | number in `[0, 1]` | the grader's proportional score for the run |
+| `runs` | positive integer | how many samples were averaged into `score` |
+| `model` | string | the model under test |
+
+Nothing writes to this file automatically today — the harness that
+would populate it is early access and not wired into this repo (see
+above). This file only pins the *shape* future entries must have.
+
+### Baseline convention
+
+A case's baseline is the score of its **most recent committed entry**
+for that case (the last entry with that `case` value, by append
+order / `date`). No entry for a case means no baseline yet — the
+first score committed for that case simply establishes it; there is
+nothing to regress against until then.
+
+### Budget normalization
+
+Scores are comparable only when `model` and `runs` are held constant
+— a 5-run average at `claude-opus` and a 1-run sample at
+`claude-haiku` are not the same measurement, which is why both are
+schema fields rather than run-harness metadata dropped on the floor.
+Whenever the model under test or the harness itself changes, the
+baseline must be **re-established**, not carried across: commit a
+fresh entry under the new `model` (or a new harness generation) and
+treat it as the new starting point, rather than diffing it against an
+older entry measured under different conditions.
+
+### Future CI use
+
+Once the eval harness is available, CI can pass its `--threshold`
+flag with the case's baseline `score` from the most recent entry as
+the regression floor — failing the run if the new score drops below
+it. That wiring does not exist yet: **no Makefile target, CI
+workflow, or `make check` step invokes the eval harness today**, and
+this ledger's only job right now is to exist with the right shape so
+baseline and trend have somewhere to live once it does.
+
 ## Adding a case
 
 1. Pick the area and prefix the directory name accordingly
