@@ -820,6 +820,30 @@
       "suggestion": "Add a spec-reconciliation convention to the protocol: any commit on a g2g/* branch after the verifier PASS that changes behavior a criterion describes must amend that criterion and append an amendment note (superseding commits cited) to the task notes in the same change, leaving the verifier field as the record of the original PASS. Candidate enforcement, in increasing strength: document the rule in build.md/CLAUDE.md; have /g2g:status flag specs whose branch has commits after the verifier date; have the improve cycle refuse to mark findings addressed via a PR whose spec trails its branch head.",
       "effort": "small",
       "addressed": null
+    },
+    {
+      "id": "F-062",
+      "category": "architecture",
+      "severity": "medium",
+      "confidence": "high",
+      "file": "plugin/README.md",
+      "title": "Hill-climb flow cannot install the eval as the spec verification command",
+      "description": "The documented (inert) hill-climbing loop says an improve fix-spec makes the eval run the spec verification command, but spec generation derives context.verificationCommands from .claude/g2g.json or repo test commands — an acceptance criterion cannot override it, so a spec generated through the improve path would gate on the ordinary suite, not the three-run eval. Latent until the eval harness lands; surfaced by Codex adversarial review round 5 on PR #11.",
+      "suggestion": "Resolve as part of the future /g2g:climb command: either an eval-specific spec flow that sets verificationCommands to the eval invocation explicitly, or a safe improve-cycle verification override plus score-artifact handoff; add coverage that generated hill-climb specs carry the eval command and fail when score evidence is absent.",
+      "effort": "medium",
+      "addressed": null
+    },
+    {
+      "id": "F-063",
+      "category": "code-quality",
+      "severity": "medium",
+      "confidence": "high",
+      "file": "plugin/routines/improve-nightly.md",
+      "title": "Routine fallback loses cap-killed ticks before Cleanup",
+      "description": "The nightly routine fallback starts the capped improve-cycle child directly without the launcher-side launched record; a turn/budget kill before Cleanup leaves no terminal record, and the fresh clone destroys its journal, so expensive failed scheduled ticks stay invisible and the ledger regains success bias in that environment. Local launcher path is covered. Surfaced by Codex adversarial review round 5 on PR #11.",
+      "suggestion": "Replicate the launcher protocol in the routine: emit a launch record into the routine durable output before starting the capped child, retain its exit status, and synthesize a killed-or-crashed ledger entry in the step-5 report when the child exits without printing a terminal entry; or drop the direct fallback and require /g2g:improve --wait.",
+      "effort": "small",
+      "addressed": null
     }
   ]
 }
