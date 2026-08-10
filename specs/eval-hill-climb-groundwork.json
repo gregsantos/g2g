@@ -74,10 +74,10 @@
       "dependsOn": [
         "T-002"
       ],
-      "status": "in_progress",
-      "passes": false,
+      "status": "complete",
+      "passes": true,
       "effort": "small",
-      "notes": "",
+      "notes": "results.json seeded []; README score-ledger section: schema, most-recent-entry baseline, pinned model/runs comparability, future CI --threshold; 2 new bats tests (153 total); no eval execution wired",
       "attempts": 0
     },
     {
