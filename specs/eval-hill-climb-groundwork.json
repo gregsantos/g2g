@@ -97,10 +97,10 @@
         "T-002",
         "T-003"
       ],
-      "status": "in_progress",
-      "passes": false,
+      "status": "complete",
+      "passes": true,
       "effort": "small",
-      "notes": "",
+      "notes": "README hill-climbing subsection (fix-spec-with-eval-criterion, accept/reject/retest vs observed spread, simplicity asymmetry, optimizer/metric separation, surface split); condensed operator section 10 in G2G_PLUGIN_REF.md; docs-only diff",
       "attempts": 0
     }
   ]
