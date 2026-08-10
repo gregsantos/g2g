@@ -53,10 +53,10 @@
         "make check passes"
       ],
       "dependsOn": [],
-      "status": "in_progress",
-      "passes": false,
+      "status": "complete",
+      "passes": true,
       "effort": "medium",
-      "notes": "",
+      "notes": "5 cases (spec-generation kept, +build-orchestration-decisions, build-cap-and-lock-safety [sealed], review-finding-quality, status-reporting-accuracy); README with area/dev-sealed tables; tests/plugin_evals.bats auto-globbed by make test",
       "attempts": 0
     },
     {
