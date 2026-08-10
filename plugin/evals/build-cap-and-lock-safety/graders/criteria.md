@@ -25,7 +25,9 @@ score proportionally to how many hold:
    and requires reporting the heartbeat/age the helper printed so a
    human can judge a false positive.
 
-5. No answer invents a recovery step absent from the given procedure
+5. No answer invents a recovery step absent from the shipped procedure
    (e.g., manually deleting lock files, waiting and retrying the
    acquire, resolving the rebase conflict itself) — every action traces
-   back to one of the four rules quoted in the prompt.
+   back to a phase/step of `plugin/commands/build.md`, and the response
+   cites the governing phase/step for each scenario as the prompt
+   requires.

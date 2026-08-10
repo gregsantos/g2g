@@ -138,19 +138,26 @@ auto-deleted. The backlog update marking findings `addressed` is
 committed and pushed into the same open PR as a single documented
 follow-up commit — the one exception to single-push.
 
-Every completed cycle also appends one entry to the tracked per-tick
-ledger `review-output/ticks.json` (a JSON array, created on first use)
-inside that SAME reconciliation commit — never a separate commit or
-push. Each entry: `{"date": "<YYYY-MM-DD>", "findings": [<finding ids
-addressed that tick>], "outcome": "<build.md's terminal state, e.g.
-complete|partial>", "pr": <PR number>, "turns": <the tick's turn
-count>}`. Terminal paths with no PR (an empty cycle, an abort, or a
-partial stop before any PR was created) print the would-be entry in
-the cycle's final report instead of writing or pushing anything — the
-worktree is discarded and no push is sanctioned on that path.
-`/g2g:status` summarizes the ledger's last 5 entries when the file
-exists and parses, and reports absence or a parse failure honestly
-rather than guessing.
+Every tick — including empty cycles, aborts, and no-PR partials — is
+durably recorded. At Cleanup, every terminal path appends one
+JSON-line entry to a machine-local journal in the main checkout's git
+common dir (`$(git rev-parse --git-common-dir)/g2g-ticks.jsonl` —
+shared across worktrees, survives worktree removal, never tracked).
+Each entry: `{"tickId": "<run id>", "date": "<YYYY-MM-DD>",
+"outcome": "<terminal state>", "reason": "<why it ended that way>",
+"pr": <PR number or null>, "turns": <the tick's turn count>,
+"selected": [<finding ids selected>], "addressed": [<ids actually
+marked addressed — subset of selected>]}`. `selected` and `addressed`
+are separate fields so failed and partial work stays visible — a
+ledger of successes only would systematically hide the costly ticks
+budget tuning needs to see. Each PR-producing cycle then reconciles
+the journal into the tracked ledger `review-output/ticks.json` (a JSON
+array, created on first use) inside its SAME single reconciliation
+commit — never a separate commit or push: it folds in every journal
+entry whose `tickId` the tracked ledger lacks, then appends its own
+entry. `/g2g:status` summarizes the tracked ledger's last 5 entries
+plus the count of journal entries still awaiting reconciliation, and
+reports absence or a parse failure honestly rather than guessing.
 
 Triggers: locally, `/loop /g2g:improve` (each tick is
 fire-and-forget within the live session; the loop cadence should
@@ -262,10 +269,12 @@ karpathy/autoresearch's recon on prompt hill-climbing:
   narrower builder/verifier prompt and skill surface (agent
   definitions in `plugin/agents/`, skill text in `plugin/skills/`).
   Sealed holdout cases (`plugin/evals/README.md`'s dev/sealed split)
-  are run only by the human at the merge gate, never by the automated
-  loop — the same boundary that already governs the improve flywheel
-  generally, so a candidate cannot tune itself against the exact cases
-  that would catch overfitting.
+  live **outside the repository** in an operator-owned store and are
+  run only by the human at the merge gate. Location is the boundary,
+  not prose: anything committed under `plugin/evals/` is readable by
+  every builder, so an in-repo case can never be sealed — a candidate
+  could read the exact prompt and grader it will be judged on, which
+  is precisely the overfitting the holdout exists to catch.
 
 ## Config
 

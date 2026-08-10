@@ -365,14 +365,21 @@ whole point.
   violation — reject and split it.
 - The score gain, if any, exceeds the observed spread across the
   `>= 3` runs recorded for that PR. Within-spread deltas are not a
-  gain — retest with more runs rather than accepting on noise.
+  gain — retest with more runs rather than accepting on noise. The
+  ledger entry must carry the per-run `scores` array plus the
+  candidate `commit` and `harness` fields (`plugin/evals/README.md`'s
+  schema) — an entry that pre-averaged its runs cannot support this
+  check; reject it as evidence.
 - If the score is flat or within spread but the diff adds prose
   (extra caveats, reminders, paragraphs), reject: prompt
   hill-climbing's dominant failure mode is monotonic bloat, so ties
   favor the shorter prompt.
-- Run the sealed holdout cases yourself (`plugin/evals/README.md`'s
-  dev/sealed split) before merging — the loop never sees them, so a
-  clean dev-set score alone is not sufficient evidence.
+- Run the sealed holdout cases yourself before merging. Sealed cases
+  live **outside the repository** in your own fixture store
+  (`plugin/evals/README.md`'s dev/sealed split) — anything committed
+  in-repo is readable by the candidate's builders and therefore
+  cannot serve as a holdout. A clean dev-set score alone is not
+  sufficient evidence.
 - After merging, remember the generational boundary: the improvement
   applies to ticks started after the plugin version bump that ships
   it, never to the run that produced the PR.

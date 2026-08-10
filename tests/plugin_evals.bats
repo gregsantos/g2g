@@ -80,10 +80,14 @@ case_dirs() {
     grep -qi "dev" "$EVALS_DIR/README.md"
 }
 
-@test "evals: README.md marks at least one case sealed" {
-    run grep -ci "sealed" "$EVALS_DIR/README.md"
-    [[ "$status" -eq 0 ]]
-    [[ "$output" -ge 1 ]]
+@test "evals: README.md documents the external sealed-holdout convention" {
+    # Sealed cases live OUTSIDE the repository (an in-repo case is
+    # readable by any builder, so prose cannot seal it). The README
+    # must state that convention, and no committed case may claim to
+    # be sealed.
+    grep -qi "outside this repository" "$EVALS_DIR/README.md"
+    run grep -E '^\|.*\*\*sealed\*\*' "$EVALS_DIR/README.md"
+    [[ "$status" -ne 0 ]]
 }
 
 @test "evals: results.json exists and parses as a JSON array" {
@@ -93,20 +97,22 @@ case_dirs() {
     [[ "$output" == "true" ]]
 }
 
-@test "evals: results.json entries (if any) have exactly the five schema fields with correct types" {
+@test "evals: results.json entries (if any) have exactly the six schema fields with correct types" {
     # Passes vacuously on the empty seed array ([] has no entries to check).
+    # scores is per-run (raw, never pre-averaged): the selection rule
+    # needs the spread across runs, which a mean cannot reconstruct.
     run jq -e '
         all(.[];
-            (keys | sort) == ["case", "date", "model", "runs", "score"]
+            (keys | sort) == ["case", "commit", "date", "harness", "model", "scores"]
             and (.date | type) == "string"
             and (.date | test("^[0-9]{4}-[0-9]{2}-[0-9]{2}"))
             and (.case | type) == "string"
-            and (.score | type) == "number"
-            and (.score >= 0 and .score <= 1)
-            and (.runs | type) == "number"
-            and (.runs == (.runs | floor))
-            and (.runs > 0)
+            and (.scores | type) == "array"
+            and (.scores | length) > 0
+            and (.scores | all(type == "number" and . >= 0 and . <= 1))
             and (.model | type) == "string"
+            and (.commit | type) == "string"
+            and (.harness | type) == "string"
         )
     ' "$EVALS_DIR/results.json"
     [[ "$status" -eq 0 ]]

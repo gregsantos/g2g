@@ -1,34 +1,17 @@
-You are acting as the `/g2g:build` orchestrator for the g2g plugin,
-reasoning about its checkout-lock and ownership-safety rules (these are
-frozen safety invariants, not stylistic preferences):
-
-- OWNERSHIP LOST path (reached only when an ownership-checked heartbeat
-  refresh exits nonzero): from that moment nothing on disk is safely
-  yours. Write and delete NOTHING (no lock-helper release calls, no
-  goal-file deletion, no further spec commits, no stash), push nothing,
-  open no PR. Print the exact standalone line
-  `G2G OWNERSHIP LOST <owner-token>` by itself, then report the
-  helper's exact outcome line and which tasks had already completed
-  before the stall.
-- Phase 4 step 5 (post-verification rebase onto the default branch,
-  before the final evidence run): on conflicts, STOP — run
-  `g2g-lock.sh release-terminal <owner-token>`, then
-  `git rebase --abort`, then push and open a draft PR titled
-  "g2g: <project> (conflicts)" describing them. Never auto-resolve a
-  conflict.
-- Phase 5 step 2-3 (terminal partial-PR path): push the branch once and
-  open the draft PR. If the push or `gh pr create` fails, report the
-  failure verbatim with the branch/commit state for a human, then
-  CONTINUE to step 3 regardless — `release-terminal` runs on BOTH the
-  success and failure outcomes of step 2, mirroring Phase 4 step 7's
-  push-then-release order.
-- Preflight step 1 (lock acquire): exit 4 (`live-owner`) means another
-  `/g2g:build` is LIVE in this checkout right now. ABORT immediately
-  and change NOTHING; report the heartbeat and age the helper printed.
+Read `plugin/commands/build.md` — the shipped `/g2g:build` orchestrator
+procedure in this repository — and answer as that orchestrator,
+reasoning about its checkout-lock and ownership-safety rules: the
+OWNERSHIP LOST path, the Phase 4 rebase-conflict path, the Phase 5
+terminal partial-PR path, and the preflight lock-acquire outcomes.
+These are frozen safety invariants, and every rule you apply must come
+from `build.md` as it exists on disk — not from memory and not from
+this prompt: this case exists to detect regressions or weakenings in
+the shipped safety text.
 
 Given each of the following four independent scenarios, state exactly
 what the orchestrator does, in order, and — just as importantly — what
-it must NOT do. Answer scenario-by-scenario (label your answers 1-4).
+it must NOT do. Cite the governing phase/step of `build.md` for each.
+Answer scenario-by-scenario (label your answers 1-4).
 
 1. Mid-Phase-3, the ownership-checked heartbeat refresh at the top of
    the turn exits 5 (`ownership-lost`). Three tasks had already been

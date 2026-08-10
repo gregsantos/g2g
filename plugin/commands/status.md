@@ -35,10 +35,18 @@ Report G2G state, read-only (change nothing):
    FINISHED (no pid sidecar; removable if clean).
 6. Tick ledger: if `review-output/ticks.json` exists and parses as a
    JSON array, summarize its last 5 entries (most recently appended
-   last) — for each: `date`, `outcome`, `pr`, `turns`, and `findings`
-   count (length of that entry's `findings` array). If the file is
-   absent, report "no review-output/ticks.json (no improve cycles have
-   completed yet)". If it exists but fails to parse as JSON or is not
-   an array, report that honestly instead of guessing its contents.
+   last) — for each: `date`, `outcome`, `pr`, `turns`, and the
+   selected/addressed counts (lengths of that entry's `selected` and
+   `addressed` arrays). If the file is absent, report "no
+   review-output/ticks.json (no improve cycles have completed yet)".
+   If it exists but fails to parse as JSON or is not an array, report
+   that honestly instead of guessing its contents. Then check the tick
+   journal
+   `"$(git rev-parse --path-format=absolute --git-common-dir)/g2g-ticks.jsonl"`
+   (read-only): report how many of its entries have a `tickId` not yet
+   present in `review-output/ticks.json` — these are completed ticks
+   (usually no-PR ones) awaiting reconciliation by the next
+   PR-producing improve cycle. A missing journal means no ticks have
+   run on this machine; say so rather than guessing.
 Summarize in a short table. No recommendations unless something is stuck
 (blocked tasks, draft partial PRs, conflicts).

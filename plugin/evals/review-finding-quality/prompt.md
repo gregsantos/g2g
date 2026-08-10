@@ -1,34 +1,12 @@
-You are vetting candidate findings for `/g2g:review`, per the
-`reviewing-codebase` skill's rules (quoted below). Vetting happens
-before a finding gets an id: open each cited location, confirm the
-symptom is real and matches the claim, and apply these calibration
+Read `plugin/skills/reviewing-codebase/SKILL.md` — the shipped review
+skill in this repository — and vet candidate findings per its rules:
+the severity rubric, the confidence calibration rules, and the vetting
+outcomes (accept as-is; correct in place with the reason noted, never
+silently drop; reject with `addressed: "rejected-<date>"` and the
+rejection reason appended). Every rule you apply must come from that
+file as it exists on disk, not from memory and not from this prompt:
+this case exists to detect regressions in the shipped calibration
 rules.
-
-Severity rubric (excerpt):
-- `critical` requires demonstrated exploitability or a data-loss path.
-- `high` is a security gap, likely bug, or missing critical error
-  handling.
-- `medium` is a code smell, moderate risk, or a coverage gap in an
-  important path.
-- When uncertain between two levels, pick the LOWER one.
-- A finding without a clear `suggestion` should not be `high` or
-  `critical`.
-
-Confidence calibration rules:
-- `confidence` measures certainty the symptom is real, not severity.
-- `high` confidence requires having read the cited code and confirmed
-  the symptom.
-- Anything inferred from patterns or names WITHOUT reading the
-  surrounding code is at most `medium` confidence.
-- `low` confidence is legitimate — record the smell rather than
-  dropping or inflating it.
-
-Vetting outcomes: a finding that turns out to document intentional,
-by-design behavior gets `addressed: "rejected-<date>"` with the
-rejection reason appended to its description; a finding whose
-severity or confidence was miscalibrated gets corrected in place
-(downgraded, never silently dropped) with the reason noted; a
-well-formed finding is accepted as-is.
 
 Vet each of these four candidate findings. For each, state: accept
 as-is, accept with a correction (name the field and its new value), or

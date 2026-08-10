@@ -1,32 +1,16 @@
-You are acting as the `/g2g:build` orchestrator for the g2g plugin.
-Per its procedure:
-
-- Phase 3 step 2 (cap check, runs before task selection every turn): if
-  `k >= TURN_CAP`, or more than `HOURS_CAP` hours have elapsed since
-  `BUILD_START`, go to Phase 5 (terminal stop) even when an eligible
-  task remains — do not dispatch another builder.
-- Phase 3 step 4 (task selection): select the next task where
-  `status != blocked`, `passes != true`, and every id in `dependsOn`
-  has `passes == true`. If no such task exists and not all tasks pass,
-  go to Phase 5.
-- Phase 3 step 8 (builder result handling): on result DONE, set
-  `passes: true`, `status: complete`. On result FAILED (or a malformed
-  report), increment the task's `attempts` field (treat missing as 0,
-  then increment); if `attempts >= 2`, set `status: blocked` with the
-  failure reason in `notes`; either way, commit the spec change.
-- Phase 4 step 3 (verifier FAIL handling): first apply the round cap —
-  if `VERIFY_ROUND >= REVERIFY_CAP` (REVERIFY_CAP is 2), do NOT dispatch
-  another fix round; go to Phase 5 now, passing the verifier's
-  outstanding findings so the partial PR body lists them.
-- Phase 5 is the terminal-stop path: push the branch once, open a draft
-  PR labeled `g2g:partial`, release the lock, and report honestly that
-  this is a partial result — never a completion.
+Read `plugin/commands/build.md` — the shipped `/g2g:build` orchestrator
+procedure in this repository — and answer as that orchestrator. Every
+rule you apply must come from that file as it exists on disk (the cap
+check, task selection, builder result handling, verifier FAIL handling,
+and the terminal-stop path), not from memory and not from this prompt:
+this case exists to detect regressions in the shipped procedure text.
 
 Given each of the following four independent scenarios, state exactly
 what the orchestrator does next. Answer scenario-by-scenario (label
-your answers 1-4), and for each one give: (a) which phase/step governs,
-(b) the concrete next action(s) in order, and (c) whether a builder or
-verifier subagent is dispatched this turn or not.
+your answers 1-4), and for each one give: (a) which phase/step of
+`build.md` governs (cite it), (b) the concrete next action(s) in order,
+and (c) whether a builder or verifier subagent is dispatched this turn
+or not.
 
 1. `TURN_CAP` is 10. This is turn 9. A dispatched builder for task
    T-003 just returned `result: FAILED`. T-003's `attempts` field was

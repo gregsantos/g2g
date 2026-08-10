@@ -3,18 +3,34 @@
 ## 0.6.2 (2026-08-09)
 
 ### Added
-- Per-tick ledger (fixes F-008): `/g2g:improve-cycle`'s Phase I-5
-  backlog reconciliation now appends one entry
-  (`{date, findings, outcome, pr, turns}`) to the tracked
-  `review-output/ticks.json` inside the same reconciliation commit
-  that marks findings `addressed` — still a single sanctioned
-  post-PR push. Terminal paths with no PR (empty cycle, abort,
-  no-PR partial) print the would-be entry in the final report
-  instead of writing or pushing anything. `/g2g:status` gained a
-  read-only step summarizing the ledger's last 5 entries when the
-  file exists and parses, reporting absence or a parse failure
-  honestly otherwise. Documented in the README's improve/flywheel
-  section.
+- Per-tick ledger (fixes F-008): every `/g2g:improve-cycle` terminal
+  path (success, empty, abort, partial) journals one entry
+  (`{tickId, date, outcome, reason, pr, turns, selected, addressed}`)
+  to a machine-local JSONL journal in the main checkout's git common
+  dir — durable without touching the tracked tree, so failed and
+  empty ticks are recorded, not just successes. Each PR-producing
+  cycle's Phase I-5 reconciliation then folds unreconciled journal
+  entries (matched by `tickId`) plus its own entry into the tracked
+  `review-output/ticks.json`, inside the same single sanctioned
+  reconciliation commit that marks findings `addressed`. `selected`
+  and `addressed` are separate fields so partial work stays visible
+  for budget tuning. `/g2g:status` gained a read-only step
+  summarizing the tracked ledger's last 5 entries plus the count of
+  journal entries awaiting reconciliation, reporting absence or a
+  parse failure honestly otherwise. Documented in the README's
+  improve/flywheel section.
+- Eval hill-climb groundwork (fixes F-014): `plugin/evals/` grown to
+  five area-tagged cases whose prompts exercise the shipped
+  command/skill files (fixture data inline, behavioral contract read
+  from disk — never a pasted copy of the rules), proportional graders
+  pinned by `tests/plugin_evals.bats`; committed score ledger
+  `plugin/evals/results.json` with per-run `scores` plus `commit` and
+  `harness` fields so accept/reject/retest decisions can test gains
+  against observed spread; sealed holdout convention places holdout
+  cases outside the repository (in-repo cases are readable by any
+  builder and cannot be sealed); the hill-climbing loop itself is
+  documented in the README and operator runbook and stays inert until
+  the eval harness is available.
 
 ## 0.6.1 (2026-08-09)
 
