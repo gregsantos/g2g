@@ -58,10 +58,10 @@
       "dependsOn": [
         "T-001"
       ],
-      "status": "in_progress",
-      "passes": false,
+      "status": "complete",
+      "passes": true,
       "effort": "medium",
-      "notes": "",
+      "notes": "Commit efe18a8. KEY EMPIRICAL FINDING: CLAUDE_PROJECT_DIR, $(pwd), and the hook payload's .cwd ALL resolve to the session's starting subdirectory, not the worktree root \u2014 verified by a throwaway repo with repo/sub/deeper, a SessionStart hook loaded via `claude -p --settings <path>` recording all three values, run headlessly from the subdirectory; all three returned repo/sub/deeper. So this is a real bug fix, not a defensive no-op: without it a subdirectory session would arm a goal the hook could not find. g2g-stop.sh gained resolve_anchor() mirroring g2g-lock.sh's exactly (git -C <start> rev-parse --show-toplevel, falling back to the starting directory on failure/empty/non-directory), and goal_file, the ownership-lost lock read, and the head-binding git -C calls (rev-parse HEAD, status --porcelain) now resolve at the anchor. No model call, no new blocking branch \u2014 the anchor only changes which path is checked. build.md Phase 2 step 2 now names the enclosing worktree root explicitly and warns against a relative write or a .g2g-goal inside a subdirectory. Two tests added (160 total); the subdirectory test is deliberately distinguishing \u2014 an armed-but-incomplete build must BLOCK from a subdirectory, because an unresolved anchor would take the no-goal fast path and ALLOW, which is otherwise indistinguishable from a correctly-resolved absent goal. Verified: make check -> 160 ok / 0 not ok, exit 0; shellcheck clean; the 'hook reaches no model' test still passes.",
       "attempts": 0
     },
     {
