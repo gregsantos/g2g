@@ -89,7 +89,39 @@ project_dir="${CLAUDE_PROJECT_DIR:-}"
 [ -n "$project_dir" ] || project_dir=$(payload_field cwd)
 [ -n "$project_dir" ] || project_dir=$PWD
 
-goal_file="$project_dir/.g2g-goal"
+# Resolve the same anchor g2g-lock.sh does (F-064): the enclosing git
+# worktree root of the starting directory, so a session whose
+# CLAUDE_PROJECT_DIR/payload cwd is a subdirectory of the worktree still
+# finds the goal/lock that build.md armed at the root, instead of silently
+# looking at an unenforced path. Empirically, CLAUDE_PROJECT_DIR and the
+# payload's cwd both equal the directory a session was STARTED from, not
+# any resolved repository root -- confirmed by starting a headless CLI
+# session from a subdirectory of a throwaway git repo, with a
+# SessionStart hook printing both values: both came back as the
+# subdirectory. So this is a real fix, not a defensive no-op.
+# `git -C "$project_dir" rev-parse --show-toplevel`
+# reports the WORKTREE root (never the shared .git common dir), so
+# separate worktrees keep independent goals. Any failure -- no enclosing
+# repository, a bare repo, inside a .git dir, GIT_DIR/GIT_WORK_TREE
+# pointing elsewhere -- or empty/non-directory output falls back to
+# project_dir, which is exactly today's behavior; that fallback keeps
+# the existing suite green, since it runs from $BATS_TEST_TMPDIR/work,
+# which IS itself a git repo root (see plugin_stop.bats setup()), so the
+# resolved toplevel equals project_dir there too.
+resolve_anchor() {
+    local starting_dir="$1" toplevel
+    if toplevel=$(git -C "$starting_dir" rev-parse --show-toplevel 2>/dev/null) \
+        && [ -n "$toplevel" ] \
+        && [ -d "$toplevel" ]; then
+        printf '%s\n' "$toplevel"
+    else
+        printf '%s\n' "$starting_dir"
+    fi
+}
+
+anchor="$(resolve_anchor "$project_dir")"
+
+goal_file="$anchor/.g2g-goal"
 
 # Tier 0 — the cheapest and most important check. Every terminal path in
 # build.md deletes .g2g-goal, so its absence means either no goal was ever
@@ -193,7 +225,7 @@ if assistant_text | grep -qxF "G2G OWNERSHIP LOST $owner_token"; then
         '.ownerToken == $token' >/dev/null 2>&1; then
         allow
     fi
-    lock_owner=$(sed -n '2p' "$project_dir/.g2g-goal.lock" 2>/dev/null)
+    lock_owner=$(sed -n '2p' "$anchor/.g2g-goal.lock" 2>/dev/null)
     if [ "$lock_owner" != "$owner_token" ]; then
         allow   # lock is foreign, missing, or malformed — the reclaim is real
     fi
@@ -298,9 +330,9 @@ fi
 extract_head_sha() { printf '%s' "$1" | sed -n 's/^head: \([^ ]*\).*/\1/p'; }
 extract_head_dirty() { printf '%s' "$1" | sed -n 's/^head: .*(tracked-dirty: \([0-9]*\)).*/\1/p'; }
 
-current_head_sha=$(git -C "$project_dir" rev-parse --short HEAD 2>/dev/null || true)
+current_head_sha=$(git -C "$anchor" rev-parse --short HEAD 2>/dev/null || true)
 if [ -n "$current_head_sha" ]; then
-    current_head_dirty=$(git -C "$project_dir" status --porcelain --untracked-files=no 2>/dev/null | wc -l | tr -d '[:space:]')
+    current_head_dirty=$(git -C "$anchor" status --porcelain --untracked-files=no 2>/dev/null | wc -l | tr -d '[:space:]')
     current_head_line="head: $current_head_sha (tracked-dirty: $current_head_dirty)"
 else
     current_head_sha="none"
