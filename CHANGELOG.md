@@ -17,7 +17,9 @@ durable launch/ledger records for every nightly routine tick.
   rewritten and stays the record of the original PASS. `CLAUDE.md`'s
   "Conventions for editing the plugin" section carries the same rule.
   `/g2g:status` gained a read-only step that flags specs whose branch
-  has commits after the verifier's recorded PASS date, so a silent
+  has commits after the commit that recorded the verifier's PASS
+  (never on the default branch, and never when that anchor commit or
+  the default branch can't be determined), so a silent
   divergence like PR #11's (three criteria superseded by review fixes
   with no spec amendment) surfaces instead of requiring manual review.
 - Launch records for every nightly routine tick (fixes F-063):

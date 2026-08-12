@@ -18,16 +18,30 @@ Report G2G state, read-only (change nothing):
    report it as "unbuildable (no verificationCommands)".
 
    Post-verifier staleness flag (read-only, informational only): first
-   check whether the current branch is the default branch — compare
-   `git branch --show-current` against
-   `git symbolic-ref --short refs/remotes/origin/HEAD` with the
-   `origin/` prefix stripped. On the default branch, skip this flag
-   entirely for every spec. Otherwise, for each spec whose top-level
-   `verifier` field is non-null, run one command from the repo root:
-   `git log --oneline --since "<verifier.date>" -- . ":(exclude)<spec-path>"`
-   (using that spec's own `verifier.date` and path) and count the
-   returned lines. When the count is 1 or more, append "record may
-   trail branch (N post-verifier commits)" to that spec's summary line,
+   get the default branch — strip the `origin/` prefix from
+   `git symbolic-ref --short refs/remotes/origin/HEAD` — and the
+   current branch via `git branch --show-current`. If the
+   symbolic-ref command errors (no `origin/HEAD`, e.g. a fresh clone
+   or `git init`) or the current branch is empty (detached HEAD), the
+   check is unavailable: report "staleness check unavailable" once
+   and skip the flag for every spec — never guess which branch is
+   default and never flag on a guess. If the current branch equals
+   the default branch, also skip this flag entirely for every spec
+   (this is the default branch, not staleness). Otherwise, for each
+   spec whose top-level `verifier` field is non-null, run one command
+   from the repo root:
+   `git log --oneline "$(git log -1 --format=%H -- <spec-path>)..HEAD" -- . ":(exclude)<spec-path>"`
+   (using that spec's own path in both places) and count the returned
+   lines. This anchors on the commit that last touched the spec file —
+   the PASS-recording `chore(<task>): complete`/verifier-write commit —
+   and counts only commits strictly after it that touch paths other
+   than the spec, so it cannot count commits made before the PASS was
+   recorded. If no commit has ever touched the spec file, the inner
+   lookup returns nothing, the range is invalid, and the command
+   fails — treat that the same as an unavailable check: report
+   "staleness check unavailable" for that spec and add no flag, never
+   a guess. When the count is 1 or more, append "record may trail
+   branch (N post-verifier commits)" to that spec's summary line,
    where N is the count. When the count is 0, add no flag. This flag
    changes nothing and recommends nothing beyond the flag text itself —
    a flagged spec counts as "stuck" for the no-recommendations rule
