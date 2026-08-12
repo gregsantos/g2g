@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.6.3 (2026-08-12)
+
+Record-integrity follow-ups from PR #11's review cycle (F-061, F-063):
+a spec-reconciliation convention for post-verifier branch changes, and
+durable launch/ledger records for every nightly routine tick.
+
+### Added
+- Spec-reconciliation rule (fixes F-061): `build.md` now states, right
+  after the verifier-PASS recording step, that any LATER commit on the
+  build branch (adversarial-review fixes, human review feedback, other
+  follow-ups) which changes behavior an acceptance criterion describes
+  must, in the same change, amend that criterion to the as-shipped
+  design and append an amendment note to the task's `notes` citing the
+  superseding commit(s) — the spec's `verifier` field is never
+  rewritten and stays the record of the original PASS. `CLAUDE.md`'s
+  "Conventions for editing the plugin" section carries the same rule.
+  `/g2g:status` gained a read-only step that flags specs whose branch
+  has commits after the commit that recorded the verifier's PASS
+  (never on the default branch, and never when that anchor commit or
+  the default branch can't be determined), so a silent
+  divergence like PR #11's (three criteria superseded by review fixes
+  with no spec amendment) surfaces instead of requiring manual review.
+- Launch records for every nightly routine tick (fixes F-063):
+  `plugin/routines/improve-nightly.md` now retains a launch-plus-
+  terminal (or synthesized) record for its own report on BOTH paths —
+  the `/g2g:improve --wait` path (step 2), whose launch and terminal
+  records land only in the ephemeral clone's journal and log, and the
+  fallback path (step 3), which starts the capped improve-cycle child
+  directly (skipping `improve.md`'s launcher-side "launched" journal
+  write). Both paths retain their launch record before the child's
+  outcome is known and synthesize a killed-or-crashed ledger entry
+  when the child dies without printing a terminal entry — so a
+  turn/budget kill before Cleanup no longer leaves zero record on
+  either path in an ephemeral clone whose journal dies with it.
+
 ## 0.6.2 (2026-08-09)
 
 ### Added
