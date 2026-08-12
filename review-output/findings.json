@@ -115,7 +115,7 @@
       "description": "Ticks report outcomes in their final message and logs, but nothing durable records cost, turns, findings selected, and outcome per tick, so budget-sizing guidance (runbook section 7) cannot be tuned from data.",
       "suggestion": "Append one entry per tick to a tracked review-output/ticks.json ({date, findings, outcome, pr, turns}) during Cleanup; have /g2g:status summarize the last few entries.",
       "effort": "small",
-      "addressed": null
+      "addressed": 11
     },
     {
       "id": "F-009",
@@ -181,7 +181,7 @@
       "description": "The eval suite has one case and no score history, and the eval harness is entitlement-gated. Once it opens, eval scores could serve as an objective function for improving the plugin's own prompts (propose a command-prompt variant, re-score, keep it if the tagged score rises across N runs) — genuine agent self-improvement rather than only codebase improvement. That requires groundwork that does not exist yet: without a committed baseline there is nothing to climb, and with one case any climb overfits to a single prompt.",
       "suggestion": "Three pieces, all useful even before climbing: (1) grow the suite to ~5-8 cases covering each command's core behavior (spec quality, build orchestration decisions, review finding quality, status accuracy), tagged by area so a change to one command is scored against its own cases; keep every grader proportional, never pass/fail, with headroom below 1.0; (2) commit a distilled score ledger (sibling of the tick ledger, e.g. evals/results ledger entry per run: date, case, score, runs, model) so baseline and trend exist, and gate CI with --threshold as the regression floor; (3) once (1) and (2) exist, express the climbing loop in existing machinery: an improve fix-spec whose acceptance criterion is 'tagged eval score >= committed baseline across >=3 runs' for a proposed prompt change. No new orchestration — it is a build whose verification command happens to be an eval.",
       "effort": "medium",
-      "addressed": null
+      "addressed": 11
     },
     {
       "id": "F-015",
@@ -737,10 +737,10 @@
       "file": "plugin/commands/build.md",
       "line": 290,
       "title": "Phase 4 completion loop never refreshes the checkout-lock heartbeat",
-      "description": "Phase 3's turn contract refreshes the lock heartbeat every turn (step 1, g2g-lock.sh refresh) and routes to OWNERSHIP LOST on any nonzero exit — the liveness signal that stops a concurrent /g2g:build from reclaiming the lock as stale. Phase 4 (verifier dispatch, up to REVERIFY_CAP fix rounds each dispatching several synchronous fix-builders, rebase, push, PR) contains no refresh call at all; step 3 explicitly re-runs only the turn line and the Phase 3 step 2 cap check, not the step-1 refresh. If Phase 4 wall-clock exceeds G2G_LOCK_STALE_SECONDS (default 3600s) during its most critical final work, the heartbeat mtime goes stale while the build is alive. A concurrent build's acquire would then reclaim the checkout as stale debris, delete THIS build's .g2g-goal (disarming its Stop-hook enforcement mid-flight) and its lock, and arm its own goal — two builds on one checkout, exactly what the lock exists to prevent.",
+      "description": "Phase 3's turn contract refreshes the lock heartbeat every turn (step 1, g2g-lock.sh refresh) and routes to OWNERSHIP LOST on any nonzero exit — the liveness signal that stops a concurrent /g2g:build from reclaiming the lock as stale. Phase 4 (verifier dispatch, up to REVERIFY_CAP fix rounds each dispatching several synchronous fix-builders, rebase, push, PR) contains no refresh call at all; step 3 explicitly re-runs only the turn line and the Phase 3 step 2 cap check, not the step-1 refresh. If Phase 4 wall-clock exceeds G2G_LOCK_STALE_SECONDS (default 3600s) during its most critical final work, the heartbeat mtime goes stale while the build is alive. A concurrent build's acquire would then reclaim the checkout as stale debris, delete THIS build's .g2g-goal (disarming its Stop-hook enforcement mid-flight) and its lock, and arm its own goal — two builds on one checkout, exactly what the lock exists to prevent. [Revalidated 2026-08-12: symptom gone — build.md Phase 4 step 1 now prints the turn line and runs the OWNERSHIP-CHECKED REFRESH before every verifier dispatch, and Phase 4 step 3 repeats the per-finding cap check; the completion loop no longer skips heartbeat refreshes.]",
       "suggestion": "Add the Phase 2 step 1 / Phase 3 step 1 OWNERSHIP-CHECKED REFRESH (g2g-lock.sh refresh <owner-token>, routing nonzero exits to OWNERSHIP LOST) at the start of each Phase 4 iteration — before the verifier dispatch in step 1 and before each fix-builder dispatch in step 3 — so the heartbeat stays fresh throughout completion, mirroring the per-turn contract Phase 3 enforces.",
       "effort": "small",
-      "addressed": null
+      "addressed": "stale-2026-08-12"
     },
     {
       "id": "F-057",
