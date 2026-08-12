@@ -45,13 +45,32 @@ You are a scheduled G2G improvement tick running in a fresh clone.
      array, empty, whitespace, metacharacters) STOPS the run with the
      offending value quoted, never interpolated. Set `CYCLE_MODEL` to
      the validated value.
-   - from inside the worktree (`cd "$WT"`):
+   - `ID=$(basename "$RUNDIR")`
+   - LAUNCH RECORD — before starting the child, print (into this
+     routine's own durable output — its report/log is the only
+     storage that survives the clone; never a tracked file, never a
+     `git add`/`commit`/`push`) the improve-cycle launch entry, the
+     same shape `plugin/commands/improve.md`'s LAUNCH RECORD step
+     writes: `{"tickId": "$ID", "date": "<today, YYYY-MM-DD>",
+     "outcome": "launched", "reason": "tick spawned; terminal record
+     pending", "pr": null, "turns": null, "selected": [], "addressed":
+     []}`. Retain this record verbatim for step 5's report — it is the
+     only trace of this tick if the child is killed before it can
+     print a terminal entry of its own.
+   - from inside the worktree (`cd "$WT"`), run the capped child and
+     retain its exit status — this step runs in the foreground and
+     blocks until the child exits, so no pid/log sidecar is needed:
      `claude -p "/g2g:improve-cycle" --plugin-dir "$PWD/plugin"
      --setting-sources project --permission-mode acceptEdits
      --allowedTools "Agent,Bash,Read,Write,Edit,Glob,Grep"
-     --max-turns 50 --max-budget-usd 25 --model "$CYCLE_MODEL"`
+     --max-turns 50 --max-budget-usd 25 --model "$CYCLE_MODEL"
+     ; CHILD_EXIT=$?`
      (always the quoted variable expansion of the validated value,
-     never raw config text substituted into the command)
+     never raw config text substituted into the command). Retain
+     `$CHILD_EXIT` and note whether the child's own output printed a
+     terminal ledger entry (the JSON shape from improve-cycle.md's
+     Cleanup, `outcome` one of `complete|partial|empty|abort`) — step
+     5 needs both to report honestly.
    - billing, same rule as improve.md's launcher: when
      `G2G_IMPROVE_API_KEY` is set and non-empty in the routine's
      environment, prefix the command above with
@@ -64,17 +83,31 @@ You are a scheduled G2G improvement tick running in a fresh clone.
      as an environment secret there, or the spawn has no credentials
      and fails at the first model call.
    (the cycle's instructions come from the clone's own plugin dir — no
-   inlined drift; this step runs in the foreground and blocks until
-   the cycle exits, so no pid/log sidecar is needed)
+   inlined drift)
 4. If neither is possible, STOP and report "g2g plugin unavailable in
    routine environment" — do not improvise the cycle.
 5. Report: the PR URL (or the honest failure/empty-cycle outcome), the
    caps used, which findings were selected, and which were addressed.
-   Include the tick's would-be ledger entry (the JSON shape from
-   improve-cycle.md's Cleanup) verbatim in this report: the machine-
-   local tick journal lives in the clone's git common dir and is
-   DESTROYED with the clone, so for a no-PR routine tick this report
-   is the only durable record — PR-producing ticks are still recorded
-   in the tracked `review-output/ticks.json` via reconciliation, but a
-   fresh-clone environment cannot carry journal entries forward across
-   runs.
+   If step 3's fallback ran, this report is the ONLY durable record of
+   the tick: the machine-local tick journal lives in the clone's git
+   common dir and is DESTROYED with the clone. Print BOTH of the
+   following into this report — never into a tracked file and never
+   via any push:
+   - the launch record printed in step 3, verbatim;
+   - the terminal record: if the child's own output printed a terminal
+     ledger entry (the JSON shape from improve-cycle.md's Cleanup,
+     `outcome` one of `complete|partial|empty|abort`), quote that
+     entry verbatim, exactly as before; otherwise — `$CHILD_EXIT`
+     nonzero from the outer `--max-turns`/`--max-budget-usd` cap, a
+     crash, or any other exit with no terminal entry in the child's
+     output — synthesize and print a killed-or-crashed entry instead:
+     `{"tickId": "$ID", "date": "<today, YYYY-MM-DD>", "outcome":
+     "killed-or-crashed", "reason": "child exited with status
+     $CHILD_EXIT and printed no terminal ledger entry", "pr": null,
+     "turns": null, "selected": [], "addressed": []}`.
+   PR-producing ticks are still recorded in the tracked
+   `review-output/ticks.json` via reconciliation, but a fresh-clone
+   environment cannot carry journal entries forward across runs, so
+   the launch record plus the terminal-or-synthesized record printed
+   here are what keep a cap-killed or crashed scheduled tick from
+   vanishing.

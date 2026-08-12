@@ -152,9 +152,16 @@ git common dir (`$(git rev-parse --git-common-dir)/g2g-ticks.jsonl` —
 shared across worktrees, survives worktree removal, never tracked).
 One honest limitation: an ephemeral fresh-clone environment (a
 scheduled cloud routine, CI) destroys its journal with the clone, so
-no-PR ticks there are recorded only in the routine's own run report —
-the nightly routine template prints the would-be entry verbatim for
-exactly this reason.
+a no-PR tick there has no journal to fall back on — the nightly
+routine template covers this itself: before starting the capped
+child it prints its own `launched` record into the routine's run
+report (the durable output that survives the clone), then in that
+same report either quotes the child's terminal ledger entry verbatim
+or, when the child exits without printing one (a `--max-turns`/
+`--max-budget-usd` cap kill or a crash), synthesizes and prints a
+`killed-or-crashed` entry naming the exit status — so every scheduled
+tick leaves a launch-plus-terminal (or synthesized) record without
+needing a PR.
 Each entry: `{"tickId": "<run id>", "date": "<YYYY-MM-DD>",
 "outcome": "<terminal state>", "reason": "<why it ended that way>",
 "pr": <PR number or null>, "turns": <the tick's turn count>,
