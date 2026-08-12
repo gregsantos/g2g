@@ -14,10 +14,10 @@
     "lastReviewedSha": "23649449d506c9aa0aceeeb157ae08313ba7bf66"
   },
   "summary": {
-    "total": 60,
+    "total": 66,
     "critical": 0,
-    "high": 2,
-    "medium": 26,
+    "high": 3,
+    "medium": 31,
     "low": 32,
     "info": 0
   },
@@ -842,6 +842,42 @@
       "title": "Routine fallback loses cap-killed ticks before Cleanup",
       "description": "The nightly routine fallback starts the capped improve-cycle child directly without the launcher-side launched record; a turn/budget kill before Cleanup leaves no terminal record, and the fresh clone destroys its journal, so expensive failed scheduled ticks stay invisible and the ledger regains success bias in that environment. Local launcher path is covered. Surfaced by Codex adversarial review round 5 on PR #11.",
       "suggestion": "Replicate the launcher protocol in the routine: emit a launch record into the routine durable output before starting the capped child, retain its exit status, and synthesize a killed-or-crashed ledger entry in the step-5 report when the child exits without printing a terminal entry; or drop the direct fallback and require /g2g:improve --wait.",
+      "effort": "small",
+      "addressed": null
+    },
+    {
+      "id": "F-064",
+      "category": "bug",
+      "severity": "medium",
+      "confidence": "high",
+      "file": "plugin/scripts/g2g-lock.sh",
+      "title": "Lock paths are CWD-relative, so one-build-per-checkout is bypassable from a subdirectory",
+      "description": "g2g-lock.sh resolves its three state paths as bare relative names (GOAL=\".g2g-goal\", LOCK=\".g2g-goal.lock\", MUTEX=\".g2g-goal.mutex\") and never normalizes them against the repository root, so the documented one-build-per-checkout guarantee silently depends on every caller's CWD being that root. build.md states the precondition (\"run, from the repo root\") but nothing enforces it, and Claude Code can start a session in any subdirectory of a repo. Reproduced against a throwaway repo: with a live root lock owned by another build, `g2g-lock.sh acquire` run from sub/dir/ returned exit 0 (`acquired`) instead of exit 4 (`live-owner`) and created a second lock at sub/dir/.g2g-goal.lock, leaving two builds each believing they owned the checkout and free to write the same branch and spec. plugin/README.md's claim that the protocol is serialized so \"two concurrent builds can never both hold the checkout\" holds only at the root. Worktree isolation itself is correct and must be preserved: separate worktrees legitimately get independent locks (verified), so the anchor is the worktree root, never the shared git common dir. Coupling to check in the same change: g2g-stop.sh reads the goal and lock as \"$project_dir/.g2g-goal\" from CLAUDE_PROJECT_DIR/cwd, and build.md writes .g2g-goal with the Write tool relative to its own CWD — if the helper anchors to the worktree root while those two do not, a subdirectory session would arm a goal the hook cannot find, converting a bypassed lock into an unenforced goal.",
+      "suggestion": "Anchor the helper's three paths to the enclosing worktree root (git rev-parse --show-toplevel, which returns the worktree root and so preserves per-worktree independence), falling back to the CWD when the command fails because there is no repository — the existing 25 tests in tests/plugin_lock.bats execute the helper in $BATS_TEST_TMPDIR, which is not a git repo, and assert lock files in the CWD, so a fallback-free change breaks the whole suite. Pin the new contract with a test that reproduces the reported case (live root lock, acquire from a subdirectory, expect exit 4) and one asserting two worktrees of the same repository still acquire independently. Make the goal-file writer and the Stop hook's lookup resolve to the same anchor so all three agree, and correct the README sentence.",
+      "effort": "small",
+      "addressed": null
+    },
+    {
+      "id": "F-065",
+      "category": "bug",
+      "severity": "medium",
+      "confidence": "high",
+      "file": "plugin/commands/build.md",
+      "title": "A running build's crash-stash absorbs files written by unlocked commands in the same checkout",
+      "description": "Only /g2g:build and /g2g:improve-cycle participate in the checkout-lock protocol; the other write-capable commands take no lock and create no worktree. /g2g:spec writes specs/<slug>.json and leaves it uncommitted; /g2g:review writes review-output/findings.json (tracked) and review-output/REVIEW_REPORT.md; /g2g:dev generates a spec in Phase A before its Phase B ever reaches build.md's lock acquisition. Meanwhile /g2g:build's per-turn tree check (build.md Phase 3 step 3) treats any dirty path outside a narrow exclusion list (.g2g-goal, .g2g-goal.lock, .g2g-goal.mutex, and its own target spec) as evidence that a builder crashed, and stashes it as g2g-crash-<task-id> to hand the next builder as recovery context. Run any of those commands in a checkout where a build is live and its output is swept into another session's crash stash — recoverable, but silently and under a misleading label, and for /g2g:review the swept file is a tracked backlog other sessions read. This is a different failure from the lock's deliberate exit 4 live-owner refusal, which correctly serializes two builds. Related and separately filed: F-066 (/g2g:go switches branches with no lock check). Distinct from F-064, which is about where the lock file resolves rather than who honors it. Also unaddressed: the concurrency model is nowhere documented — /g2g:improve is fully worktree-isolated (git worktree add per tick) while /g2g:build is serialized in place, and nothing tells an operator that concurrent builds need one worktree each or that spec generation and review should not share a checkout with a live build.",
+      "suggestion": "Three parts. (1) Narrow the crash-stash heuristic so it cannot capture files the running build has no claim to — for example restrict the stash to tracked-file modifications plus paths the build itself touched, and report any other unexpected path instead of stashing it, so a foreign writer's file is surfaced rather than absorbed. (2) Have the write-capable commands that currently ignore the lock (spec.md, review.md, and dev.md's Phase A) check for a live lock before writing and refuse or warn, reusing g2g-lock.sh rather than reimplementing staleness logic in prose. (3) Document the concurrency model in one normative place (plugin/README.md, referenced from the commands rather than restated): builds serialize per checkout by design, concurrent builds need one worktree each, /g2g:improve already isolates itself, and generation/review commands should not share a checkout with a live build.",
+      "effort": "medium",
+      "addressed": null
+    },
+    {
+      "id": "F-066",
+      "category": "bug",
+      "severity": "high",
+      "confidence": "medium",
+      "file": "plugin/commands/go.md",
+      "title": "/g2g:go can switch branches under a running build, sending its commits to the wrong branch",
+      "description": "/g2g:go takes no checkout lock and consults no goal file, yet its step 1 preflight requires a clean tree and then runs `git checkout -b g2g/go-<slug>` in the current checkout. A live /g2g:build keeps the tree clean between turns — it commits the spec transition and the builder's work each turn — so go's clean-tree preflight passes mid-build, the branch switch moves HEAD out from under the running build, and the build's next commit (spec status transition, builder work, or verifier-PASS record) lands on go's branch instead of its own. The build's later rebase and single push then operate on a branch whose history it never intended, and the two runs' work is interleaved on one ref. The same class of hazard applies to any unlocked command that mutates refs or HEAD in a shared checkout. Confidence is medium only on real-world frequency (it needs two concurrent sessions in one checkout); the mechanism itself is plain from the command text — no lock acquisition, no goal check, an unconditional checkout -b. Related: F-065 (unlocked writers swept by the crash-stash), F-064 (lock anchor).",
+      "suggestion": "Make /g2g:go a lock participant rather than a bystander: acquire the checkout lock via g2g-lock.sh with its own owner token before the branch is created, abort on exit 4 live-owner exactly as build.md's preflight does, and release on every terminal path including its abort paths. If full participation is judged too heavy for a one-off command, at minimum have it refuse to run when a live lock or .g2g-goal is present, and say which build owns the checkout. Either way, pin the refusal with a bats test so a future edit cannot silently drop it.",
       "effort": "small",
       "addressed": null
     }
