@@ -29,10 +29,10 @@
         "make check passes"
       ],
       "dependsOn": [],
-      "status": "in_progress",
-      "passes": false,
+      "status": "complete",
+      "passes": true,
       "effort": "small",
-      "notes": "",
+      "notes": "Commit 999211b. Rule added to build.md Phase 4 step 4 (immediately below the verifier-PASS write, as a separate note so step numbering and pinned test expectations are unchanged) and as one bullet in CLAUDE.md's 'Conventions for editing the plugin'. plugin.json bumped 0.6.2 -> 0.6.3; CHANGELOG.md 0.6.3 entry covers the whole spec's scope, so T-002/T-003 must not touch plugin.json or CHANGELOG.md. No changes to plugin/scripts/, plugin/hooks/, or any report marker. Verified: make check -> 155 ok / 0 not ok, exit 0.",
       "attempts": 0
     },
     {
