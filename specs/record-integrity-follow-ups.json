@@ -1,4 +1,9 @@
 {
+  "verifier": {
+    "verdict": "PASS",
+    "date": "2026-08-12",
+    "summary": "Round 2: all three round-1 findings genuinely fixed in the shipped text, all 14 acceptance criteria hold against the branch diff, frozen contracts and the single 0.6.2->0.6.3 bump intact, make check exit 0 (155 ok / 0 not ok)."
+  },
   "project": "Record Integrity Follow-ups",
   "description": "Fix-spec from findings F-061 and F-063: the spec-reconciliation rule for post-verifier branch changes (documented + surfaced by status) and launch records for routine fallback ticks",
   "context": {
