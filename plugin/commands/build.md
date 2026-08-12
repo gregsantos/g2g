@@ -363,6 +363,16 @@ finish line and burn the whole remaining budget before surfacing partial work.
    with the verifier; fix or surface.
 4. verdict PASS: write {"verifier": {"verdict": "PASS", "date": <today>,
    "summary": <one line>}} into the spec; commit.
+
+   Spec-reconciliation rule: this verifier-PASS commit is the last point
+   where the spec is guaranteed to match the branch. Any LATER commit on
+   this build branch — adversarial-review fixes, human review feedback,
+   or any other follow-up — that changes behavior an acceptance
+   criterion describes MUST, in the same change, amend that criterion to
+   the as-shipped design and append an amendment note to the task's
+   `notes` citing the superseding commit(s). The `verifier` field written
+   above is NEVER rewritten by such a change — it stays the historical
+   record of the PASS against the original criteria, not a moving target.
 5. Rebase onto the default branch, BEFORE the final evidence run — the
    tree the evidence step certifies must be the tree that ships, not a
    pre-rebase snapshot the push will move past. Conflicts: STOP — run

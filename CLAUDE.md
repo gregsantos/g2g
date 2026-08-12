@@ -131,6 +131,13 @@ g2g/
   them; never leave a terminal path that skips the release.
 - **Version bumps:** update `plugin/.claude-plugin/plugin.json` when
   command behavior, config schema, or templates change.
+- **Post-verifier-PASS changes amend the spec record.** Any commit on a
+  `g2g/*` build branch after the verifier PASS that changes behavior an
+  acceptance criterion describes must, in the same change, amend that
+  criterion to the as-shipped design and append an amendment note to the
+  task's notes citing the superseding commit(s); the spec's `verifier`
+  field is never rewritten — it remains the record of the PASS against
+  the original criteria (F-061).
 - Shell: bash, shellcheck-clean (`.shellcheckrc` at repo root). Tests:
   bats, one behavior per test, golden output where format is contractual.
 
