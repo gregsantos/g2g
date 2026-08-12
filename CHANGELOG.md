@@ -4,7 +4,7 @@
 
 Record-integrity follow-ups from PR #11's review cycle (F-061, F-063):
 a spec-reconciliation convention for post-verifier branch changes, and
-durable launch/ledger records for the nightly routine's fallback path.
+durable launch/ledger records for every nightly routine tick.
 
 ### Added
 - Spec-reconciliation rule (fixes F-061): `build.md` now states, right
@@ -20,15 +20,18 @@ durable launch/ledger records for the nightly routine's fallback path.
   has commits after the verifier's recorded PASS date, so a silent
   divergence like PR #11's (three criteria superseded by review fixes
   with no spec amendment) surfaces instead of requiring manual review.
-- Launch records for the nightly routine's fallback path (fixes
-  F-063): `plugin/routines/improve-nightly.md`'s fallback, which starts
-  the capped improve-cycle child directly (skipping `improve.md`'s
-  launcher-side "launched" journal write), now emits its own launch
-  record into the routine's durable report/log before starting the
-  child, and synthesizes a killed-or-crashed ledger entry in that
-  report when the child dies without printing a terminal entry — so a
-  turn/budget kill before Cleanup no longer leaves zero record in an
-  ephemeral clone whose journal dies with it.
+- Launch records for every nightly routine tick (fixes F-063):
+  `plugin/routines/improve-nightly.md` now retains a launch-plus-
+  terminal (or synthesized) record for its own report on BOTH paths —
+  the `/g2g:improve --wait` path (step 2), whose launch and terminal
+  records land only in the ephemeral clone's journal and log, and the
+  fallback path (step 3), which starts the capped improve-cycle child
+  directly (skipping `improve.md`'s launcher-side "launched" journal
+  write). Both paths retain their launch record before the child's
+  outcome is known and synthesize a killed-or-crashed ledger entry
+  when the child dies without printing a terminal entry — so a
+  turn/budget kill before Cleanup no longer leaves zero record on
+  either path in an ephemeral clone whose journal dies with it.
 
 ## 0.6.2 (2026-08-09)
 
