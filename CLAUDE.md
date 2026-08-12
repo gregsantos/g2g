@@ -58,7 +58,7 @@ g2g/
 │   ├── scripts/g2g-stop.sh           # Stop-hook goal enforcement (sole implementation)
 │   ├── templates/                    # /g2g:init config starters (g2g-*.json)
 │   ├── routines/                     # Scheduled-run templates
-│   └── evals/                        # plugin-eval cases (harness in early access)
+│   └── evals/                        # plugin-eval cases (status: its README)
 ├── specs/                            # Spec JSONs — must stay git-tracked
 ├── review-output/                    # Findings backlog — must stay git-tracked
 ├── docs/G2G_PLUGIN_REF.md            # Operator runbook
@@ -129,8 +129,14 @@ g2g/
   `/g2g:build`, the lock/mutex only ever by `g2g-lock.sh`. All are
   gone at every terminal state (`release-terminal`). Never commit
   them; never leave a terminal path that skips the release.
-- **Version bumps:** update `plugin/.claude-plugin/plugin.json` when
-  command behavior, config schema, or templates change.
+- **Version bumps: one per PR that changes the plugin.** Bump
+  `plugin/.claude-plugin/plugin.json` whenever anything under `plugin/`
+  changes installed behavior (commands, agents, skills, scripts, hooks,
+  templates, routines, config schema) and add the matching
+  `CHANGELOG.md` entry in the same commit; docs-only edits need
+  neither. Bump exactly once per PR, never per commit — in a multi-task
+  spec, assign the bump to ONE task and tell the other builders it is
+  taken, or every fresh context reads this rule and bumps again.
 - **Post-verifier-PASS changes amend the spec record.** Any commit on a
   `g2g/*` build branch after the verifier PASS that changes behavior an
   acceptance criterion describes must, in the same change, amend that
@@ -138,6 +144,12 @@ g2g/
   task's notes citing the superseding commit(s); the spec's `verifier`
   field is never rewritten — it remains the record of the PASS against
   the original criteria (F-061).
+- **Merge `g2g/*` PRs, never squash them.** The rule above puts per-task
+  commit SHAs in task notes; squashing makes every cited SHA unreachable
+  from a fresh clone of the default branch, so the spec's own record
+  stops resolving. Merge commits keep them, and
+  `git log --first-parent` reads the default branch at one line per PR
+  when the per-task commits are noise.
 - Shell: bash, shellcheck-clean (`.shellcheckrc` at repo root). Tests:
   bats, one behavior per test, golden output where format is contractual.
 
