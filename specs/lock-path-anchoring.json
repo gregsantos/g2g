@@ -35,10 +35,10 @@
         "make check passes"
       ],
       "dependsOn": [],
-      "status": "in_progress",
-      "passes": false,
+      "status": "complete",
+      "passes": true,
       "effort": "small",
-      "notes": "",
+      "notes": "Commit 642e4e2. Adds resolve_anchor() where GOAL/LOCK/MUTEX were previously bare relative names: git rev-parse --show-toplevel, with any failure, empty output, or non-directory result falling back to $PWD (today's behavior). Because GOAL/LOCK/MUTEX are now absolute, every existing read/write/removal \u2014 including mutex children owner, lock.tmp.$$, lock.tmp.* \u2014 routes through the anchor with no other code change. No outcome line, exit code, or staleness/mutex timing value touched. Three tests added (28 total in the lock suite): subdirectory acquire finds the root's live lock and exits 4 creating no second lock; two worktrees acquire independently; no-repository fallback creates the lock in the CWD. All 25 pre-existing lock tests passed unedited (diff is additions-only). Verified: make check -> 158 ok / 0 not ok, exit 0; plus a throwaway-repo demo showing acquire from sub/dir/ now exits 4 with the root lock's owner unchanged.",
       "attempts": 0
     },
     {
