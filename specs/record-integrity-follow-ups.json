@@ -48,10 +48,10 @@
       "dependsOn": [
         "T-001"
       ],
-      "status": "in_progress",
-      "passes": false,
+      "status": "complete",
+      "passes": true,
       "effort": "small",
-      "notes": "",
+      "notes": "Commit b110aee. Added a 'Post-verifier staleness flag' paragraph to status.md step 2: skips entirely on the default branch (compares git branch --show-current against git symbolic-ref --short refs/remotes/origin/HEAD with the origin/ prefix stripped); for each spec with a non-null verifier field runs exactly one `git log --oneline --since \"<verifier.date>\" -- . \":(exclude)<spec-path>\"` and counts lines; appends 'record may trail branch (N post-verifier commits)' when N>=1 and nothing when N==0; states the flag changes nothing and recommends nothing beyond the flag, with a flagged spec counting as stuck for the command's no-recommendations rule. status.md only — no version bump or CHANGELOG edit (T-001 owns those). Verified: make check -> 155 ok / 0 not ok, exit 0.",
       "attempts": 0
     },
     {
