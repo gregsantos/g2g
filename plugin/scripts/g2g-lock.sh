@@ -14,7 +14,11 @@
 #                      this run never armed)
 #   release-terminal   remove the owned goal/lock pair
 #
-# Files (in the CWD, which callers make the repo root):
+# Files (anchored to the enclosing git worktree root — `git rev-parse
+# --show-toplevel`, resolved once at startup — so a build started from a
+# subdirectory shares the same lock as one started at the root; when the
+# caller is not inside a repository, these fall back to the CWD, which
+# is today's behavior):
 #   .g2g-goal        armed goal condition (written by build.md, not here;
 #                    deleted here only by an owner's release-terminal or
 #                    a stale reclaim)
@@ -60,9 +64,32 @@
 #   G2G_LOCK_MUTEX_POLL_SECONDS     wait between mutex attempts (2)
 set -euo pipefail
 
-GOAL=".g2g-goal"
-LOCK=".g2g-goal.lock"
-MUTEX=".g2g-goal.mutex"
+# Anchor the three state paths to the enclosing worktree root so that a
+# caller in any subdirectory of a repository resolves the same lock as one
+# at the root — the documented one-build-per-checkout guarantee otherwise
+# silently depends on CWD (F-064). `git rev-parse --show-toplevel` reports
+# the WORKTREE root (never the shared .git common dir), so separate
+# worktrees of one repository keep independent locks. Any failure — no
+# enclosing repository, a bare repo, inside a .git dir, GIT_DIR/
+# GIT_WORK_TREE pointing elsewhere — or empty/non-directory output falls
+# back to the CWD, which is exactly today's behavior; this is also what
+# keeps the existing suite green, since it runs from $BATS_TEST_TMPDIR,
+# which is not a git repository.
+resolve_anchor() {
+    local toplevel
+    if toplevel=$(git rev-parse --show-toplevel 2>/dev/null) \
+        && [[ -n "$toplevel" ]] \
+        && [[ -d "$toplevel" ]]; then
+        printf '%s\n' "$toplevel"
+    else
+        printf '%s\n' "$PWD"
+    fi
+}
+
+ANCHOR="$(resolve_anchor)"
+GOAL="$ANCHOR/.g2g-goal"
+LOCK="$ANCHOR/.g2g-goal.lock"
+MUTEX="$ANCHOR/.g2g-goal.mutex"
 
 STALE_SECONDS="${G2G_LOCK_STALE_SECONDS:-3600}"
 MUTEX_STALE_SECONDS="${G2G_LOCK_MUTEX_STALE_SECONDS:-60}"
