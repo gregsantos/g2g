@@ -79,7 +79,7 @@
         "T-001",
         "T-002"
       ],
-      "status": "pending",
+      "status": "in_progress",
       "passes": false,
       "effort": "small",
       "notes": "",
