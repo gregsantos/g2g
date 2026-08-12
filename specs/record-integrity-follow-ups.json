@@ -66,10 +66,10 @@
         "make check passes"
       ],
       "dependsOn": [],
-      "status": "in_progress",
-      "passes": false,
+      "status": "complete",
+      "passes": true,
       "effort": "small",
-      "notes": "",
+      "notes": "Commit 2a17301. improve-nightly.md step 3 (fallback) now computes ID=$(basename \"$RUNDIR\"), prints a 'launched' ledger record matching improve.md's LAUNCH RECORD shape (tickId/date/outcome 'launched'/reason/pr null/turns null/selected []/addressed []) into the routine's own output before spawning the capped child, and captures CHILD_EXIT=$? after the blocking spawn. Step 5's report always prints the launch record plus either the child's verbatim terminal ledger entry or a synthesized 'killed-or-crashed' entry naming $CHILD_EXIT and the missing terminal record. plugin/README.md's fresh-clone limitation sentence updated to describe launch-plus-terminal/synthesized coverage. No git add/commit/push instruction added (grep: only prohibition language). No version bump or CHANGELOG edit (T-001 owns those); status.md/build.md/CLAUDE.md/improve.md untouched. The --wait path (step 2) is unchanged — already covered by improve.md's launcher records. Verified: make check -> 155 ok / 0 not ok, exit 0.",
       "attempts": 0
     }
   ]
