@@ -16,6 +16,22 @@ Report G2G state, read-only (change nothing):
    `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-evidence.sh <spec>` and show the
    counts line. Note: exit 3 means the spec lacks verificationCommands —
    report it as "unbuildable (no verificationCommands)".
+
+   Post-verifier staleness flag (read-only, informational only): first
+   check whether the current branch is the default branch — compare
+   `git branch --show-current` against
+   `git symbolic-ref --short refs/remotes/origin/HEAD` with the
+   `origin/` prefix stripped. On the default branch, skip this flag
+   entirely for every spec. Otherwise, for each spec whose top-level
+   `verifier` field is non-null, run one command from the repo root:
+   `git log --oneline --since "<verifier.date>" -- . ":(exclude)<spec-path>"`
+   (using that spec's own `verifier.date` and path) and count the
+   returned lines. When the count is 1 or more, append "record may
+   trail branch (N post-verifier commits)" to that spec's summary line,
+   where N is the count. When the count is 0, add no flag. This flag
+   changes nothing and recommends nothing beyond the flag text itself —
+   a flagged spec counts as "stuck" for the no-recommendations rule
+   below.
 3. PRs: `gh pr list --state open --json headRefName,title,url,isDraft`
    filtered to branches starting with g2g/ (report "gh unavailable" if
    the command fails; don't guess).
