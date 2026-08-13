@@ -79,10 +79,10 @@
         "T-001",
         "T-002"
       ],
-      "status": "in_progress",
-      "passes": false,
+      "status": "complete",
+      "passes": true,
       "effort": "small",
-      "notes": "",
+      "notes": "Commit 3daadd4. plugin/README.md's one-build-per-checkout passage now states the guarantee is anchored to the enclosing worktree root, holds regardless of the caller's CWD, and is per-worktree (separate worktrees independent by design) \u2014 deliberately NOT claiming concurrent builds in one checkout, which remains unsupported. CLAUDE.md's 'The lock script is the protocol' bullet extended with the worktree-root anchor and the resolve_anchor() fallback. plugin.json bumped exactly once, 0.6.3 -> 0.6.4, with a matching CHANGELOG 0.6.4 entry covering T-001, T-002, and this task. Diff touches only those four files; no source behavior changed. Verified: make check -> 160 ok / 0 not ok, exit 0.",
       "attempts": 0
     }
   ]
