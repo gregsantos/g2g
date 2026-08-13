@@ -21,6 +21,11 @@
       "make check"
     ]
   },
+  "verifier": {
+    "verdict": "PASS",
+    "date": "2026-08-13",
+    "summary": "Round 2 PASS after three round-1 findings were fixed (e3540d7, 563a9da, 3eea557): the frozen acquire/refresh/release contract is byte-unchanged under a 22-case execution matrix, `status` is non-mutating and mutex-independent by execution, go.md now releases on every terminal path after a successful acquire, command files are additions-only apart from build.md's licensed step-3 rewrite, one version bump (0.6.4 -> 0.6.5) with a matching CHANGELOG entry, and every new test was proven to refute against reverted sources. make check 175/175 ok."
+  },
   "tasks": [
     {
       "id": "T-001",
@@ -41,7 +46,7 @@
       "status": "complete",
       "passes": true,
       "effort": "small",
-      "notes": "Commit 9d6657c. Modeled acquire/branch structure on build.md Phase 1 step 1 (exit-code branch table) and release discipline on its release-on-every-terminal-path pattern, but consolidated go's release into a single step (5a) reached by every downstream path, since go.md's procedure is a single linear funnel — satisfies the criterion while avoiding four near-duplicate release blocks. New steps use letter-suffixed numbering (0, 2a, 3a, 4a, 5a) following build.md's existing '3a' convention, so no existing step was renumbered or reworded; diff is pure additions (go.md +71, commands.bats +44, 0 deletions). Three new bats tests added to tests/commands.bats (tests 29-31). make check EXIT:0.",
+      "notes": "Commit 9d6657c. Modeled acquire/branch structure on build.md Phase 1 step 1 (exit-code branch table) and release discipline on its release-on-every-terminal-path pattern, but consolidated go's release into a single step (5a) reached by every downstream path, since go.md's procedure is a single linear funnel — satisfies the criterion while avoiding four near-duplicate release blocks. New steps use letter-suffixed numbering (0, 2a, 3a, 4a, 5a) following build.md's existing '3a' convention, so no existing step was renumbered or reworded; diff is pure additions (go.md +71, commands.bats +44, 0 deletions). Three new bats tests added to tests/commands.bats (tests 29-31). make check EXIT:0. FIX ROUND 1 (commit e3540d7): the verifier found the lock was acquired at step 0 but released only on the verification/commit/push/PR failure paths, so a step 1 preflight abort or step 2 abandonment stranded it for the full stale threshold — a regression, since go previously took no lock at all. Added step 0a (LOCK RELEASE ON PREFLIGHT ABORT) covering every abort after a successful acquire, still excluding step 0's own acquisition-failure paths, plus a fourth bats test (33). go.md is now +99, still zero deletions.",
       "attempts": 0
     },
     {
@@ -85,7 +90,7 @@
       "status": "complete",
       "passes": true,
       "effort": "medium",
-      "notes": "Commit a7fb070. `status` reuses exit 4 (live-owner) to match acquire's semantics for the same condition, adds exit 9 (stale-debris) since 0/2/4/5/6/7/8 were taken, exit 0 for no-lock, and falls through to the existing operational-error (8) / malformed-state (7) outcomes for an unreadable mtime or out-of-protocol lock shape — sharing existing outcome text rather than inventing subcommand-specific strings. status never calls acquire_mutex; it relies on write_lock's atomic mv so a concurrent writer cannot expose a torn read. Exit codes and output shape documented in the usage block. Four new bats tests in tests/plugin_lock.bats (28-31) incl. byte-identical/no-mutex and backdated-not-reclaimed (which then proves the debris is still reclaimable by a real acquire). All 32 lock tests ok; make check exit 0, 1..168 all ok.",
+      "notes": "Commit a7fb070. `status` reuses exit 4 (live-owner) to match acquire's semantics for the same condition, adds exit 9 (stale-debris) since 0/2/4/5/6/7/8 were taken, exit 0 for no-lock, and falls through to the existing operational-error (8) / malformed-state (7) outcomes for an unreadable mtime or out-of-protocol lock shape — sharing existing outcome text rather than inventing subcommand-specific strings. status never calls acquire_mutex; it relies on write_lock's atomic mv so a concurrent writer cannot expose a torn read. Exit codes and output shape documented in the usage block. Four new bats tests in tests/plugin_lock.bats (28-31) incl. byte-identical/no-mutex and backdated-not-reclaimed (which then proves the debris is still reclaimable by a real acquire). All 32 lock tests ok; make check exit 0, 1..168 all ok. FIX ROUND 1 (commit 563a9da): the verifier found one new test named for rejecting extra arguments whose body never passed any — false coverage over a real gap, since `status bogus extra` exited 0. Implemented the rejection through the pre-existing usage_fail/exit-2 path (no `caller-error` string exists in this codebase) and rewrote the test to exercise it. The four frozen subcommands' exit codes and outcome lines stay byte-identical; only the unknown-command usage string now advertises `status`.",
       "attempts": 0
     },
     {
@@ -110,7 +115,7 @@
       "status": "complete",
       "passes": true,
       "effort": "medium",
-      "notes": "Commit 1625b37. Two design judgments beyond the card: (1) exit 7/8 (malformed-state/operational-error) routing — spec.md and dev.md warn and proceed, consistent with their may-proceed philosophy; review.md refuses, consistent with its fail-closed philosophy on ambiguity. (2) review.md's liveness check runs before subagent dispatch rather than only before the final write, so a refusal does not burn a full review's worth of subagent calls — still satisfies 'before writing'. dev.md's Phase A restates the check rather than delegating to spec.md's procedure so a reader of dev.md alone sees the behavior. Five new bats tests in tests/commands.bats (43-47) incl. the overwrite-guard pin (grep count == 1, not duplicated) and a negative test that none of the three files mentions acquire/refresh/release. make check exit 0, 173 ok / 0 not ok.",
+      "notes": "Commit 1625b37. Two design judgments beyond the card: (1) exit 7/8 (malformed-state/operational-error) routing — spec.md and dev.md warn and proceed, consistent with their may-proceed philosophy; review.md refuses, consistent with its fail-closed philosophy on ambiguity. (2) review.md's liveness check runs before subagent dispatch rather than only before the final write, so a refusal does not burn a full review's worth of subagent calls — still satisfies 'before writing'. dev.md's Phase A restates the check rather than delegating to spec.md's procedure so a reader of dev.md alone sees the behavior. Five new bats tests in tests/commands.bats (43-47) incl. the overwrite-guard pin (grep count == 1, not duplicated) and a negative test that none of the three files mentions acquire/refresh/release. make check exit 0, 173 ok / 0 not ok. FIX ROUND 1 (commit 3eea557): dev.md's Phase A stale-debris branch reported the age but not the owner token and heartbeat, meeting the criterion only indirectly through its delegation to spec.md; added a trailing sentence stating it directly, plus a bats test (48).",
       "attempts": 0
     },
     {
