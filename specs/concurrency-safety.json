@@ -107,10 +107,10 @@
       "dependsOn": [
         "T-003"
       ],
-      "status": "in_progress",
-      "passes": false,
+      "status": "complete",
+      "passes": true,
       "effort": "medium",
-      "notes": "",
+      "notes": "Commit 1625b37. Two design judgments beyond the card: (1) exit 7/8 (malformed-state/operational-error) routing — spec.md and dev.md warn and proceed, consistent with their may-proceed philosophy; review.md refuses, consistent with its fail-closed philosophy on ambiguity. (2) review.md's liveness check runs before subagent dispatch rather than only before the final write, so a refusal does not burn a full review's worth of subagent calls — still satisfies 'before writing'. dev.md's Phase A restates the check rather than delegating to spec.md's procedure so a reader of dev.md alone sees the behavior. Five new bats tests in tests/commands.bats (43-47) incl. the overwrite-guard pin (grep count == 1, not duplicated) and a negative test that none of the three files mentions acquire/refresh/release. make check exit 0, 173 ok / 0 not ok.",
       "attempts": 0
     },
     {
