@@ -375,6 +375,27 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     grep -qi 'possibly contested' "$PLUGIN_DIR/commands/go.md"
 }
 
+@test "safety: go releases its lock on a step 1 preflight abort, not just step 3-5 failures" {
+    # T-001 follow-up: step 0's acquire happens BEFORE step 1's preflight
+    # (git-status/default-branch checks) and step 2's implementation, but
+    # the original release instruction (step 5a) only enumerated the
+    # failure paths of verification/commit/push/PR-creation. A dirty-tree
+    # or default-branch abort at step 1 (or an abandoned step 2) is a
+    # terminal path reached after a successful acquire with no release,
+    # which would block every subsequent /g2g:build, /g2g:go, and
+    # /g2g:review in the checkout as LIVE for the full stale threshold —
+    # a regression versus pre-lock /g2g:go, which took no lock at all.
+    # Model: build.md's LOCK RELEASE ON PREFLIGHT ABORT block.
+    grep -q 'LOCK RELEASE ON PREFLIGHT ABORT' "$PLUGIN_DIR/commands/go.md"
+    grep -qi "step 1's preflight aborts" "$PLUGIN_DIR/commands/go.md"
+    grep -qi "step 2's abandonment" "$PLUGIN_DIR/commands/go.md"
+    # The addition must not swallow step 0's own rule that acquisition
+    # failure (exit 4/2/6/7/8) never releases — that lock is someone
+    # else's.
+    grep -qi "acquisition itself failed\|acquisition-failure path" "$PLUGIN_DIR/commands/go.md"
+    grep -qi "acquisition failure specifically" "$PLUGIN_DIR/commands/go.md"
+}
+
 @test "models: routing pins agree with the config contract" {
     grep -q 'models.builder' "$PLUGIN_DIR/commands/build.md"
     grep -q 'models.verifier' "$PLUGIN_DIR/commands/build.md"

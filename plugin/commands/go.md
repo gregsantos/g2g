@@ -44,6 +44,30 @@ Procedure — deviations are failures:
    Do NOT run any release call on this step's abort paths — acquisition
    itself failed, so any lock in place belongs to someone else, not to
    this run.
+0a. LOCK RELEASE ON PREFLIGHT ABORT: from this point — a successful step
+    0 acquire — until step 5a's own release, every terminal path this
+    run takes must release the lock before reporting the abort,
+    including step 1's preflight aborts (dirty tree, or being on the
+    default branch) and step 2's abandonment of the task (cannot be
+    completed, blocked, or otherwise given up on). On any such abort,
+    run:
+    `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-lock.sh release-preflight <owner-token>`
+    — the same call step 5a documents — before reporting the abort.
+    Exit 5 (`ownership-lost`) there means the lock already stopped
+    being yours while you were aborting anyway: report it and abort
+    without touching anything further. Without this, a preflight abort
+    or an abandoned task leaves the lock LIVE and blocks every
+    subsequent /g2g:build, /g2g:go, and /g2g:review in this checkout
+    for the full stale threshold — before this discipline, /g2g:go took
+    no lock at all, so this would otherwise be a regression the
+    checkout-lock protocol introduces. This is IN ADDITION to step 5a's
+    enumerated release paths (verification, commit, push, PR creation,
+    and success) — it does not replace or narrow them. Step 0's
+    instruction not to run any release call on ITS OWN abort paths is
+    unchanged and stays scoped to acquisition failure specifically
+    (exit 4, 2, 6, 7, or 8): there the lock belongs to someone else and
+    must never be touched; this note covers only paths reached AFTER a
+    successful acquire.
 1. Preflight: `git status` must be clean; you must NOT be on the default
    branch when committing. Create `g2g/go-<slug>` (slug: lowercase task
    summary, hyphenated, ≤5 words) from the current HEAD.
