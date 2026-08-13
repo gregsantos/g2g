@@ -38,7 +38,7 @@
         "make check passes"
       ],
       "dependsOn": [],
-      "status": "pending",
+      "status": "in_progress",
       "passes": false,
       "effort": "small",
       "notes": "",
