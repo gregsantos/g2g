@@ -306,6 +306,50 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     grep -q 'release-terminal' "$PLUGIN_DIR/commands/improve-cycle.md"
 }
 
+@test "safety: go acquires the checkout lock before creating a branch" {
+    # F-066: go used to create a branch in a shared checkout with no
+    # synchronization. The acquire call must appear before the branch
+    # creation instruction, not just be present somewhere in the file.
+    acquire_line=$(grep -n 'g2g-lock.sh acquire' "$PLUGIN_DIR/commands/go.md" | head -1 | cut -d: -f1)
+    branch_line=$(grep -n 'Create `g2g/go-<slug>`' "$PLUGIN_DIR/commands/go.md" | head -1 | cut -d: -f1)
+    [[ -n "$acquire_line" && -n "$branch_line" ]] \
+        || { echo "go.md missing acquire or branch-creation line (acquire=$acquire_line branch=$branch_line)"; return 1; }
+    [[ "$acquire_line" -lt "$branch_line" ]] \
+        || { echo "go.md must acquire the lock before creating the branch"; return 1; }
+    grep -q 'live-owner' "$PLUGIN_DIR/commands/go.md"
+}
+
+@test "safety: go releases the lock on abort paths, never with release-terminal" {
+    # go arms no .g2g-goal, so its release must be the lock-only form —
+    # release-terminal would delete a foreign build's goal file.
+    grep -q 'release-preflight' "$PLUGIN_DIR/commands/go.md"
+    grep -qi 'failure paths of verification' "$PLUGIN_DIR/commands/go.md"
+    grep -qi "acquisition itself failed\|acquisition-failure path" "$PLUGIN_DIR/commands/go.md"
+    if grep -qE '\brelease-terminal <owner-token>' "$PLUGIN_DIR/commands/go.md"; then
+        echo "go.md must never call release-terminal (would delete a foreign .g2g-goal)"
+        return 1
+    fi
+}
+
+@test "safety: go refreshes the heartbeat before push" {
+    # A go run is not reliably short; without a pre-push refresh a stale
+    # reclaim by another build could be pushed past silently.
+    refresh_lines=$(grep -n 'g2g-lock.sh refresh' "$PLUGIN_DIR/commands/go.md" | cut -d: -f1)
+    push_line=$(grep -n 'git push -u origin' "$PLUGIN_DIR/commands/go.md" | head -1 | cut -d: -f1)
+    [[ -n "$refresh_lines" && -n "$push_line" ]] \
+        || { echo "go.md missing refresh or push line"; return 1; }
+    found_before_push=0
+    for line in $refresh_lines; do
+        if [[ "$line" -lt "$push_line" ]]; then
+            found_before_push=1
+        fi
+    done
+    [[ "$found_before_push" -eq 1 ]] \
+        || { echo "go.md has no heartbeat refresh before the push"; return 1; }
+    grep -q 'ownership-lost' "$PLUGIN_DIR/commands/go.md"
+    grep -qi 'possibly contested' "$PLUGIN_DIR/commands/go.md"
+}
+
 @test "models: routing pins agree with the config contract" {
     grep -q 'models.builder' "$PLUGIN_DIR/commands/build.md"
     grep -q 'models.verifier' "$PLUGIN_DIR/commands/build.md"
