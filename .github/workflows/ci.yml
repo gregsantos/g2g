@@ -25,6 +25,34 @@ jobs:
       - name: make test
         run: make test
 
+  # The pre-merge half of CLAUDE.md's one-bump-per-PR rule. The tag job below
+  # also enforces it, but only after the merge — by which point the default
+  # branch is already red and the code is already shipped-but-unreleased.
+  # Blocking the merge is the useful end of the same invariant, which is why
+  # both call the same script rather than restating the rule.
+  #
+  # A pass here can go stale: if another PR claims the same version and
+  # merges first, nothing re-runs this check without an up-to-date-branches
+  # rule or a merge queue. The tag job's post-merge check is the backstop
+  # that keeps that race loud instead of silent.
+  version-bump:
+    name: Version bump for plugin changes
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          # Needed for the merge-base against the target branch.
+          fetch-depth: 0
+
+      - name: Require a version bump for release-sensitive changes
+        # Via env, never inlined into run: — a base SHA is safer than a ref
+        # name, and workflow inputs never belong in a shell command.
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: ./scripts/check-version-bump.sh --base "$BASE_SHA"
+
   # Release tags are cut here, never by hand. The tag step lives after the
   # merge because the tag must point AT the commit that introduces the
   # version — a step in that gap is one a human drops, and it was dropped

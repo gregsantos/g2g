@@ -32,7 +32,7 @@ test:
 	"$$BATS_BASH" "$$(command -v bats)" tests/
 
 lint:
-	shellcheck -x -s bash plugin/scripts/g2g-evidence.sh plugin/scripts/g2g-lock.sh plugin/scripts/g2g-stop.sh plugin/templates/verify-starter.sh scripts/tag-release.sh tests/make_sandbox.sh tests/smoke.sh
+	shellcheck -x -s bash plugin/scripts/g2g-evidence.sh plugin/scripts/g2g-lock.sh plugin/scripts/g2g-stop.sh plugin/templates/verify-starter.sh scripts/tag-release.sh scripts/check-version-bump.sh scripts/lib/semver.sh tests/make_sandbox.sh tests/smoke.sh
 
 validate:
 	claude plugin validate plugin
