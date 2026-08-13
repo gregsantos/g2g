@@ -1,0 +1,142 @@
+{
+  "project": "Concurrency Safety",
+  "description": "Phase 1 of the concurrency model (F-065, F-066): make every write-capable command honor the checkout lock, give the helper a read-only liveness query, stop the build's crash-stash from absorbing foreign files, and document the model normatively. No new isolation capability — safety only.",
+  "context": {
+    "currentState": "Only /g2g:build and /g2g:improve-cycle participate in the checkout-lock protocol. Three consequences, all verified by reading the command text and reproducing where possible. (1) /g2g:go takes no lock and consults no goal file, yet its preflight requires a clean tree and then runs `git checkout -b g2g/go-<slug>`; a live build keeps the tree clean between turns, so go's preflight passes mid-build and the branch switch moves HEAD, sending the build's next commit to go's branch (F-066). (2) /g2g:spec, /g2g:review, and /g2g:dev Phase A write into the working tree with no lock; build.md Phase 3 step 3 treats any dirty path outside a narrow exclusion list as a crashed builder and stashes it as g2g-crash-<task-id>, so a foreign command's output is absorbed into another session's stash under a misleading label — for /g2g:review the swept file is the tracked findings backlog other sessions read (F-065). (3) The concurrency model is undocumented: /g2g:improve is worktree-isolated per tick while /g2g:build serializes in place, and nothing tells an operator that concurrent builds need one worktree each. PR #14 (F-064) fixed WHERE the lock resolves; this spec fixes WHO honors it. Also relevant: lock staleness is computed inside the helper from the lock file's mtime against G2G_LOCK_STALE_SECONDS (default 3600), so no caller can distinguish a live owner from crash debris by reading the lock file alone — the helper exposes no non-mutating query today.",
+    "targetState": "Every command that mutates refs, HEAD, or the working tree either holds the checkout lock or refuses to run while another session holds it, and says which build owns the checkout when it refuses. The helper answers a read-only liveness question so no command has to infer staleness from a raw file read. A build's crash-recovery stash captures only what that build could plausibly have dirtied, surfaces anything else instead of absorbing it, and has a defined next step for each surfaced case. plugin/README.md carries the normative concurrency model, and the commands gain references to it without losing any procedural text they already carry.",
+    "constraints": [
+      "g2g-lock.sh remains the sole implementation of the synchronization protocol: commands acquire and branch on its documented exit codes (0/2/4/5/6/7/8), never reimplement staleness or mutex logic as command prose, and never hand-create or delete .g2g-goal.lock or .g2g-goal.mutex",
+      "The lock's EXISTING public contract is frozen: the exit codes and outcome-line text of acquire, refresh, release-preflight, and release-terminal must not change, and tests/plugin_lock.bats must keep passing unedited. The new read-only query in T-003 is purely additive and must not alter any existing subcommand's behavior, output, or exit codes",
+      "The read-only query must be genuinely non-mutating: it must never create, refresh, reclaim, or delete the lock, goal, or mutex, and must not depend on the mutex",
+      "Do not change g2g-evidence.sh's output format, g2g-stop.sh's completion semantics, or the BUILDER REPORT / VERIFIER REPORT markers",
+      "Every command that acquires the lock must release it on EVERY terminal path including its abort paths, or a failed run blocks all retries for the full stale threshold",
+      "A refusal must never be silent: a command that declines because another session holds the checkout reports the owner and heartbeat the helper printed",
+      "Commands are procedures and their existing procedural text is load-bearing: tests/commands.bats carries 43 assertions against build.md alone, including greps for `g2g-lock.sh acquire`, `LOCK RELEASE ON PREFLIGHT ABORT`, and `release-preflight`. No task in this spec may delete or reword existing procedural instructions — additions only",
+      "plugin/.claude-plugin/plugin.json must be bumped exactly once across this spec, with a matching CHANGELOG.md entry; T-005 owns that bump and no other task may touch either file",
+      "Shell stays bash and shellcheck-clean; new tests are bats, one behavior per test",
+      "OUT OF SCOPE — do not implement here: worktree-isolated builds of any shape, concurrent builds within one checkout, and any serialized or lock-protected merge of review-output/findings.json. Concurrent /g2g:review is deliberately UNSUPPORTED and T-004's refusal path is how that is enforced (see docs/proposals/concurrency-model.md)",
+      "`make smoke` is the human merge gate because plugin/commands/ changes; it is deliberately NOT in verificationCommands"
+    ],
+    "verificationCommands": [
+      "make check"
+    ]
+  },
+  "tasks": [
+    {
+      "id": "T-001",
+      "title": "Make /g2g:go a checkout-lock participant, with heartbeat and reclaim handling",
+      "description": "Fixes F-066. /g2g:go currently creates a branch in a shared checkout with no synchronization. Add lock participation to plugin/commands/go.md modeled on build.md's Phase 1 step 1 and its release discipline, without copying build.md's goal-arming protocol (go arms no goal and needs no Stop-hook enforcement). Requirements. (a) Choose an opaque single-line owner token and acquire via g2g-lock.sh BEFORE the branch is created; branch only on the helper's documented exit codes — 0 proceed; 4 ABORT reporting the heartbeat and owner the helper printed; 2/6/7/8 ABORT printing the helper's output verbatim and changing nothing. (b) Release with `release-preflight`, which is the lock-only release: the helper's own usage block documents it as 'remove the owned lock only (preserves any .g2g-goal this run never armed)'. Use that form, NOT release-terminal, precisely because go never arms a goal and must never delete a foreign build's goal file. (c) Release on every terminal path reached after a successful acquire — success, and the failure paths of verification, commit, push, and PR creation — but NEVER on the path where acquisition itself failed, because there the lock is someone else's. (d) Heartbeat: the lock's staleness threshold is 3600 seconds by default and a go run is NOT reliably short — implement, verify, and fix cycles can exceed it, after which another build may legitimately reclaim the checkout. Instruct a `refresh` at phase boundaries (before verification, before commit, before push) and specify exit-5 handling: report the reclaim, write and delete NOTHING further, push nothing, and flag the branch as possibly contested for a human to salvage. Add bats coverage in the suite that already covers command prose, one behavior per test.",
+      "acceptanceCriteria": [
+        "plugin/commands/go.md instructs acquiring the checkout lock via g2g-lock.sh with an owner token BEFORE any branch is created, and names the exit-code branches 0 proceed / 4 abort-with-owner-and-heartbeat / 2,6,7,8 abort-verbatim",
+        "go.md's release instruction uses `release-preflight` (the lock-only release) and never release-terminal, so a foreign .g2g-goal can never be deleted",
+        "go.md instructs releasing on every terminal path reached after a successful acquire, including the failure paths of verification, commit, push, and PR creation, and explicitly NOT on the path where acquisition failed",
+        "go.md instructs a `refresh` at phase boundaries (before verification, before commit, before push) and specifies exit-5 handling: report the reclaim, change nothing further, push nothing, flag the branch as possibly contested",
+        "go.md contains no hand-rolled lock logic: no direct creation, mutation, or deletion of .g2g-goal.lock or .g2g-goal.mutex, and no staleness computation in prose",
+        "A new bats test asserts go.md instructs acquisition before branch creation; a second asserts it instructs release on abort paths; a third asserts it instructs a refresh before push",
+        "No existing procedural text in go.md is deleted or reworded (git diff shows additions and their surrounding integration only)",
+        "No change to plugin/.claude-plugin/plugin.json or CHANGELOG.md in this task (T-005 owns the single bump)",
+        "make check passes"
+      ],
+      "dependsOn": [],
+      "status": "pending",
+      "passes": false,
+      "effort": "small",
+      "notes": "",
+      "attempts": 0
+    },
+    {
+      "id": "T-002",
+      "title": "Stop the build's crash-stash from absorbing files it has no claim to",
+      "description": "Fixes F-065 (stash half). build.md Phase 3 step 3 stashes any dirty path outside its exclusion list as g2g-crash-<task-id>, which sweeps up files written by a concurrent unlocked command. Narrow the rule so it captures only what a crashed builder could plausibly have left, and SURFACES anything else instead of absorbing it. An exact predicate is NOT achievable and should not be attempted: the one writer that cannot report a manifest is precisely the crashed builder, and a pre-declared file list does not bind an agent that wandered. What the orchestrator does guarantee is a clean tree at every dispatch, so 'dirty at crash' is exact in TIME but not in AUTHORSHIP — hence surface-don't-absorb with a stated, imperfect predicate. Specify the predicate in the command text (probable builder debris = modifications to tracked files plus untracked files under paths the build itself works in), and state it once in a form a later change can reuse. CRITICALLY, specify what happens AFTER surfacing, because the two sub-cases diverge and an unhandled surfaced path would re-trip the tree check every subsequent turn: (a) a foreign UNTRACKED file — report it once, name it as possibly another session's, and carry it as a remembered exclusion for the remaining turns' tree checks so it is neither restashed nor re-reported each turn; (b) a foreign TRACKED modification — report it and route to Phase 5 (terminal partial), because an unattributed change to a tracked file means the single-writer premise of this checkout is broken and Phase 4 step 5's rebase would fail on it anyway. Keep the recovery behavior that works: genuine builder debris must still be stashed as g2g-crash-<task-id> with its stash reference passed to the next builder as recovery context. Phase 4's fix-builder loop has no tree check at all (already filed as F-057); do not fix that here.",
+      "acceptanceCriteria": [
+        "plugin/commands/build.md Phase 3 step 3 states a predicate distinguishing probable crashed-builder debris from paths the build has no claim to, stated once in a form a later change can reuse",
+        "The command instructs SURFACING an unexplained path rather than stashing it, and never labels a foreign path as this build's crash",
+        "A foreign untracked file is reported once and carried as a remembered exclusion for later turns' tree checks, so it is neither restashed nor re-reported every turn",
+        "A foreign tracked modification routes to Phase 5 (terminal partial) with the reason stated, rather than being stashed or ignored",
+        "Genuine builder debris is still stashed as g2g-crash-<task-id> and its stash reference still passed to the next builder as recovery context",
+        "The goal/lock/mutex exclusions from the existing rule are preserved unchanged",
+        "No existing procedural text in build.md is deleted or reworded beyond the step being rewritten, and every string tests/commands.bats greps for in build.md is still present",
+        "A new bats test pins that build.md instructs surfacing rather than stashing for a path outside the build's claim",
+        "No change to plugin/.claude-plugin/plugin.json or CHANGELOG.md in this task (T-005 owns the single bump)",
+        "make check passes"
+      ],
+      "dependsOn": [],
+      "status": "pending",
+      "passes": false,
+      "effort": "medium",
+      "notes": "",
+      "attempts": 0
+    },
+    {
+      "id": "T-003",
+      "title": "Add a read-only liveness query to g2g-lock.sh",
+      "description": "Enables T-004 without letting three commands each invent their own staleness logic. Lock freshness is computed inside the helper from the lock file's mtime against G2G_LOCK_STALE_SECONDS (default 3600); a caller reading the lock file's owner and heartbeat lines therefore CANNOT tell a live owner from crash debris, and a command that refuses on debris would be an availability regression with no remedy. Add a `status` subcommand to plugin/scripts/g2g-lock.sh that answers the liveness question and nothing else. It takes no owner token, is strictly non-mutating (it must never create, refresh, reclaim, or delete the lock, goal, or mutex, and must not acquire the mutex), and reports enough for a caller to act and to explain itself to a human: whether a lock exists, its owner token, its heartbeat, its age, and whether that age is within or beyond the stale threshold. Choose the exit-code and output shape deliberately and document it in the helper's usage block alongside the existing subcommands; keep it consistent with the existing outcome-line style (`g2g-lock: <outcome> ...`) without altering any existing subcommand's strings or codes. Distinguish 'no lock' from 'live owner' from 'stale debris' so a caller can branch on the three cases. Pin the new subcommand with bats tests in tests/plugin_lock.bats, one behavior per test, including at minimum: no lock present; a live lock; a lock backdated past the stale threshold reported as stale rather than reclaimed; and a test asserting `status` left the lock file byte-identical and created no mutex.",
+      "acceptanceCriteria": [
+        "plugin/scripts/g2g-lock.sh has a `status` subcommand that requires no owner token and distinguishes no-lock, live-owner, and stale-debris",
+        "Its output reports the owner token, heartbeat, and age, in the existing `g2g-lock: <outcome> ...` style, and its exit codes and output shape are documented in the helper's usage block",
+        "A bats test asserts `status` on a live lock leaves the lock file byte-identical and creates no .g2g-goal.mutex",
+        "A bats test asserts a lock backdated past the stale threshold is REPORTED as stale and is NOT reclaimed or deleted by `status`",
+        "Bats tests cover the no-lock and live-lock cases",
+        "All pre-existing tests in tests/plugin_lock.bats pass unedited, and no existing subcommand's outcome line or exit code changed",
+        "No change to plugin/.claude-plugin/plugin.json or CHANGELOG.md in this task (T-005 owns the single bump)",
+        "make check passes"
+      ],
+      "dependsOn": [],
+      "status": "pending",
+      "passes": false,
+      "effort": "medium",
+      "notes": "",
+      "attempts": 0
+    },
+    {
+      "id": "T-004",
+      "title": "Have the unlocked writers query the lock before writing",
+      "description": "Fixes F-065 (writer half). /g2g:spec, /g2g:review, and /g2g:dev Phase A write into a shared checkout with no idea whether a build owns it. Using T-003's read-only `status` query — never acquire, refresh, or release, and never create or delete the goal or mutex, because these commands are polite neighbors, not lock owners — add a liveness check to plugin/commands/spec.md, plugin/commands/review.md, and dev.md's Phase A before each writes its artifact. Behavior on a LIVE owner differs by command and each must state its choice with a one-line justification: /g2g:review REFUSES, because concurrent review is unsupported by decision (its product is a read-modify-write merge of the tracked backlog, and two runs analyzing against a baseline that moved cannot be reconciled by any file lock) — this refusal is how that decision is enforced; /g2g:spec and /g2g:dev Phase A WARN prominently and may proceed, because each writes a fresh file under its own slug. On STALE debris rather than a live owner, do not refuse outright: report the heartbeat and age and note that a build's next acquire will reclaim it, so an operator is never stuck behind a dead build. All three must name the owner and heartbeat when reporting. NOTE on scope: plugin/commands/spec.md ALREADY aborts on an existing slug ('If that file already exists: ABORT and report the collision — never overwrite an existing spec', spec.md step 4) — do not add a second guard. The real gap is that no test pins it; add one.",
+      "acceptanceCriteria": [
+        "plugin/commands/spec.md, plugin/commands/review.md, and dev.md's Phase A each instruct the read-only `status` query before writing their artifact",
+        "review.md REFUSES on a live owner, with a one-line justification that concurrent review is unsupported; spec.md and dev.md Phase A warn and may proceed, each with its justification",
+        "All three distinguish stale debris from a live owner and, on stale debris, report the age and that a build's acquire will reclaim it rather than refusing outright",
+        "All three report the owner token and heartbeat when a lock is present",
+        "None of the three instructs acquire, refresh, release, or any creation or deletion of the lock, goal, or mutex",
+        "A new bats test pins that spec.md's existing overwrite guard is present (the guard itself is pre-existing and must not be duplicated)",
+        "A new bats test pins that each of the three commands instructs the liveness query before its write",
+        "No existing procedural text in the three command files is deleted or reworded",
+        "No change to plugin/.claude-plugin/plugin.json or CHANGELOG.md in this task (T-005 owns the single bump)",
+        "make check passes"
+      ],
+      "dependsOn": [
+        "T-003"
+      ],
+      "status": "pending",
+      "passes": false,
+      "effort": "medium",
+      "notes": "",
+      "attempts": 0
+    },
+    {
+      "id": "T-005",
+      "title": "Document the concurrency model normatively, bump the version, record the CHANGELOG",
+      "description": "Fixes F-065 (documentation half) and owns this spec's SINGLE version bump. Add a concurrency section to plugin/README.md as the one normative place, covering: builds serialize per checkout by design and the second aborts with the helper's live-owner outcome; the lock is anchored to the enclosing worktree root (PR #14), so separate worktrees are independent — and therefore the SUPPORTED way to run several builds at once is one worktree per build with a session started inside it, which needs no new configuration; /g2g:improve already isolates every tick in its own worktree; /g2g:go now participates in the lock; /g2g:spec, /g2g:review, and /g2g:dev Phase A query the lock read-only before writing, with review refusing on a live owner because concurrent review is unsupported; /g2g:status is read-only and always safe. CRITICAL CONSTRAINT ON HOW YOU ADD REFERENCES: commands are procedures and their existing lock text is pinned by tests — tests/commands.bats carries 43 assertions against build.md alone, including greps for `g2g-lock.sh acquire`, `LOCK RELEASE ON PREFLIGHT ABORT`, and `release-preflight`. Add a pointer line to the README section where useful; do NOT delete, condense, or reword any existing procedural instruction in any command file in the name of 'not restating'. Add one bullet to CLAUDE.md's plugin conventions requiring every new write-capable command to either hold the lock or query it read-only before writing. Then bump plugin/.claude-plugin/plugin.json exactly once and write the matching CHANGELOG.md entry covering all five tasks. Do NOT document worktree-isolated builds as a plugin feature or a config option — the supported pattern is operator-created worktrees, and no isolateBuilds setting exists.",
+      "acceptanceCriteria": [
+        "plugin/README.md has a concurrency section covering all seven behaviors listed in the description, and it is the only place those rules are stated in full",
+        "The README names one-worktree-per-build with a session started inside it as the supported way to run concurrent builds, and does not describe any configuration option for it",
+        "Command files gain only ADDITIVE pointer lines to that section: no existing procedural instruction is deleted, condensed, or reworded, and every string tests/commands.bats greps for is still present",
+        "CLAUDE.md's plugin conventions gain a bullet requiring every new write-capable command to hold the lock or query it read-only before writing",
+        "plugin/.claude-plugin/plugin.json is bumped exactly once relative to the default branch and CHANGELOG.md has one matching entry covering T-001 through T-005",
+        "No claim anywhere that concurrent builds within one checkout, an isolateBuilds option, or a lock-protected findings.json merge are supported",
+        "make check passes"
+      ],
+      "dependsOn": [
+        "T-001",
+        "T-002",
+        "T-003",
+        "T-004"
+      ],
+      "status": "pending",
+      "passes": false,
+      "effort": "small",
+      "notes": "",
+      "attempts": 0
+    }
+  ]
+}
