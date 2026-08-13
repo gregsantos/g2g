@@ -61,10 +61,10 @@
         "make check passes"
       ],
       "dependsOn": [],
-      "status": "in_progress",
-      "passes": false,
+      "status": "complete",
+      "passes": true,
       "effort": "medium",
-      "notes": "",
+      "notes": "Commit 34ef933. Rewrote only Phase 3 step 3 of plugin/commands/build.md, preserving the original goal/lock/mutex exclusion sentence verbatim and appending the PROBABLE-BUILDER-DEBRIS PREDICATE plus surfacing logic after it. Foreign untracked paths go on a SURFACED-FOREIGN list exempted on later turns like goal/lock; foreign tracked modifications route to Phase 5 (terminal partial). Genuine debris still stashed as g2g-crash-<task-id> with the stash ref passed to the next builder. One new bats test in tests/commands.bats ('turn-level tree check surfaces foreign paths instead of absorbing them'). make check exit 0, 1..164 all ok.",
       "attempts": 0
     },
     {
