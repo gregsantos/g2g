@@ -38,10 +38,10 @@
         "make check passes"
       ],
       "dependsOn": [],
-      "status": "in_progress",
-      "passes": false,
+      "status": "complete",
+      "passes": true,
       "effort": "small",
-      "notes": "",
+      "notes": "Commit 9d6657c. Modeled acquire/branch structure on build.md Phase 1 step 1 (exit-code branch table) and release discipline on its release-on-every-terminal-path pattern, but consolidated go's release into a single step (5a) reached by every downstream path, since go.md's procedure is a single linear funnel — satisfies the criterion while avoiding four near-duplicate release blocks. New steps use letter-suffixed numbering (0, 2a, 3a, 4a, 5a) following build.md's existing '3a' convention, so no existing step was renumbered or reworded; diff is pure additions (go.md +71, commands.bats +44, 0 deletions). Three new bats tests added to tests/commands.bats (tests 29-31). make check EXIT:0.",
       "attempts": 0
     },
     {
