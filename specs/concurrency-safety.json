@@ -107,7 +107,7 @@
       "dependsOn": [
         "T-003"
       ],
-      "status": "pending",
+      "status": "in_progress",
       "passes": false,
       "effort": "medium",
       "notes": "",
