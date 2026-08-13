@@ -30,7 +30,9 @@ them by reading the command files below and executing their procedures.
    the owner token and heartbeat) and PROCEED anyway, because Phase A
    only ever writes a fresh file under its own slug; on stale debris,
    report the age and note a future build's acquire will reclaim it,
-   and proceed.
+   and proceed. Also report the owner token and heartbeat the helper
+   printed for the stale-debris case, exactly as spec.md's step 3a
+   does.
 3. If spec generation aborted for any reason: STOP and report the abort
    reason. Never proceed to build without a validated spec file.
 

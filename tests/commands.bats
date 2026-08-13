@@ -547,6 +547,19 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
         || { echo "dev.md Phase A does not name the stale-debris case"; return 1; }
 }
 
+@test "safety: dev.md Phase A's stale-debris branch names the owner token and heartbeat" {
+    # T-004's criterion is "All three [spec.md, review.md, dev.md] report
+    # the owner token and heartbeat when a lock is present." spec.md and
+    # review.md already state this directly for stale-debris; dev.md
+    # previously met it only indirectly, via delegation to spec.md's step
+    # 3a. This pins that dev.md's own prose names both fields too.
+    stale_clause=$(grep -A4 'on stale debris' "$PLUGIN_DIR/commands/dev.md")
+    echo "$stale_clause" | grep -qi 'owner token' \
+        || { echo "dev.md's stale-debris branch does not name the owner token"; return 1; }
+    echo "$stale_clause" | grep -qi 'heartbeat' \
+        || { echo "dev.md's stale-debris branch does not name the heartbeat"; return 1; }
+}
+
 @test "safety: spec.md, review.md, and dev.md's Phase A never mutate the checkout lock" {
     # T-003's status query is strictly non-mutating; these three commands
     # are polite neighbors, not lock owners, so none may acquire,
