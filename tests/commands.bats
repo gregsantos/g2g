@@ -208,6 +208,31 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     grep -B2 -A6 'Tree check' "$PLUGIN_DIR/commands/build.md" | grep -q '.g2g-goal.lock'
 }
 
+@test "safety: turn-level tree check surfaces foreign paths instead of absorbing them" {
+    # F-065 (stash half): a dirty path this build has no claim to (e.g. a
+    # concurrent /g2g:review writing the tracked findings backlog with no
+    # lock) must never be swept into this build's crash stash under a
+    # misleading g2g-crash-<task-id> label. It must be surfaced, and the
+    # two surfaced sub-cases must each have a defined next step: a foreign
+    # untracked file is reported once and remembered so later turns don't
+    # restash or re-report it, and a foreign tracked modification routes
+    # to Phase 5 (terminal partial) rather than being stashed or ignored.
+    tree_check=$(grep -A45 'Tree check' "$PLUGIN_DIR/commands/build.md")
+    echo "$tree_check" | grep -qi 'PREDICATE' \
+        || { echo "no stated predicate for probable builder debris"; return 1; }
+    echo "$tree_check" | grep -qi 'surface' \
+        || { echo "no instruction to surface a path outside the predicate"; return 1; }
+    echo "$tree_check" | grep -q 'SURFACED-FOREIGN' \
+        || { echo "no remembered-exclusion mechanism for a surfaced untracked path"; return 1; }
+    echo "$tree_check" | grep -qi 'Phase 5' \
+        || { echo "foreign tracked modification has no route to Phase 5"; return 1; }
+    # Genuine builder debris must still be recoverable the same way as before.
+    echo "$tree_check" | grep -q 'g2g-crash-<task-id>' \
+        || { echo "genuine builder debris no longer stashed as g2g-crash-<task-id>"; return 1; }
+    echo "$tree_check" | grep -qi "task card as recovery context" \
+        || { echo "stash reference no longer passed to the next builder as recovery context"; return 1; }
+}
+
 @test "safety: heartbeat refresh is ownership-checked with a terminal path" {
     # An unconditional heartbeat overwrite would steal a reclaimed lock
     # back and leave two builds running. Refresh must go through the
@@ -306,6 +331,71 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     grep -q 'release-terminal' "$PLUGIN_DIR/commands/improve-cycle.md"
 }
 
+@test "safety: go acquires the checkout lock before creating a branch" {
+    # F-066: go used to create a branch in a shared checkout with no
+    # synchronization. The acquire call must appear before the branch
+    # creation instruction, not just be present somewhere in the file.
+    acquire_line=$(grep -n 'g2g-lock.sh acquire' "$PLUGIN_DIR/commands/go.md" | head -1 | cut -d: -f1)
+    branch_line=$(grep -n 'Create `g2g/go-<slug>`' "$PLUGIN_DIR/commands/go.md" | head -1 | cut -d: -f1)
+    [[ -n "$acquire_line" && -n "$branch_line" ]] \
+        || { echo "go.md missing acquire or branch-creation line (acquire=$acquire_line branch=$branch_line)"; return 1; }
+    [[ "$acquire_line" -lt "$branch_line" ]] \
+        || { echo "go.md must acquire the lock before creating the branch"; return 1; }
+    grep -q 'live-owner' "$PLUGIN_DIR/commands/go.md"
+}
+
+@test "safety: go releases the lock on abort paths, never with release-terminal" {
+    # go arms no .g2g-goal, so its release must be the lock-only form —
+    # release-terminal would delete a foreign build's goal file.
+    grep -q 'release-preflight' "$PLUGIN_DIR/commands/go.md"
+    grep -qi 'failure paths of verification' "$PLUGIN_DIR/commands/go.md"
+    grep -qi "acquisition itself failed\|acquisition-failure path" "$PLUGIN_DIR/commands/go.md"
+    if grep -qE '\brelease-terminal <owner-token>' "$PLUGIN_DIR/commands/go.md"; then
+        echo "go.md must never call release-terminal (would delete a foreign .g2g-goal)"
+        return 1
+    fi
+}
+
+@test "safety: go refreshes the heartbeat before push" {
+    # A go run is not reliably short; without a pre-push refresh a stale
+    # reclaim by another build could be pushed past silently.
+    refresh_lines=$(grep -n 'g2g-lock.sh refresh' "$PLUGIN_DIR/commands/go.md" | cut -d: -f1)
+    push_line=$(grep -n 'git push -u origin' "$PLUGIN_DIR/commands/go.md" | head -1 | cut -d: -f1)
+    [[ -n "$refresh_lines" && -n "$push_line" ]] \
+        || { echo "go.md missing refresh or push line"; return 1; }
+    found_before_push=0
+    for line in $refresh_lines; do
+        if [[ "$line" -lt "$push_line" ]]; then
+            found_before_push=1
+        fi
+    done
+    [[ "$found_before_push" -eq 1 ]] \
+        || { echo "go.md has no heartbeat refresh before the push"; return 1; }
+    grep -q 'ownership-lost' "$PLUGIN_DIR/commands/go.md"
+    grep -qi 'possibly contested' "$PLUGIN_DIR/commands/go.md"
+}
+
+@test "safety: go releases its lock on a step 1 preflight abort, not just step 3-5 failures" {
+    # T-001 follow-up: step 0's acquire happens BEFORE step 1's preflight
+    # (git-status/default-branch checks) and step 2's implementation, but
+    # the original release instruction (step 5a) only enumerated the
+    # failure paths of verification/commit/push/PR-creation. A dirty-tree
+    # or default-branch abort at step 1 (or an abandoned step 2) is a
+    # terminal path reached after a successful acquire with no release,
+    # which would block every subsequent /g2g:build, /g2g:go, and
+    # /g2g:review in the checkout as LIVE for the full stale threshold —
+    # a regression versus pre-lock /g2g:go, which took no lock at all.
+    # Model: build.md's LOCK RELEASE ON PREFLIGHT ABORT block.
+    grep -q 'LOCK RELEASE ON PREFLIGHT ABORT' "$PLUGIN_DIR/commands/go.md"
+    grep -qi "step 1's preflight aborts" "$PLUGIN_DIR/commands/go.md"
+    grep -qi "step 2's abandonment" "$PLUGIN_DIR/commands/go.md"
+    # The addition must not swallow step 0's own rule that acquisition
+    # failure (exit 4/2/6/7/8) never releases — that lock is someone
+    # else's.
+    grep -qi "acquisition itself failed\|acquisition-failure path" "$PLUGIN_DIR/commands/go.md"
+    grep -qi "acquisition failure specifically" "$PLUGIN_DIR/commands/go.md"
+}
+
 @test "models: routing pins agree with the config contract" {
     grep -q 'models.builder' "$PLUGIN_DIR/commands/build.md"
     grep -q 'models.verifier' "$PLUGIN_DIR/commands/build.md"
@@ -393,5 +483,93 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
             echo "runtime-banned nondeterministic API in $f"
             return 1
         fi
+    done
+}
+
+@test "safety: spec.md still aborts on an existing slug, and the guard is not duplicated" {
+    # spec.md step 4 already refuses to overwrite an existing spec file;
+    # T-004 (F-065, writer half) must not add a second copy of that guard
+    # while wiring in the new liveness check.
+    grep -q 'never overwrite an existing spec' "$PLUGIN_DIR/commands/spec.md"
+    count=$(grep -c 'never overwrite an existing spec' "$PLUGIN_DIR/commands/spec.md")
+    [[ "$count" -eq 1 ]] \
+        || { echo "expected exactly 1 overwrite-guard mention in spec.md, got $count"; return 1; }
+}
+
+@test "safety: spec.md queries the lock before writing its spec file, and warns-and-proceeds" {
+    # F-065 (writer half): a read-only liveness check must run before the
+    # write, and on a live owner spec.md's decision is WARN + proceed
+    # (it only ever writes a fresh file under its own slug), not refuse.
+    status_line=$(grep -n 'g2g-lock.sh status' "$PLUGIN_DIR/commands/spec.md" | head -1 | cut -d: -f1)
+    write_line=$(grep -n 'Write `specs/<slug>.json`' "$PLUGIN_DIR/commands/spec.md" | head -1 | cut -d: -f1)
+    [[ -n "$status_line" && -n "$write_line" ]] \
+        || { echo "spec.md missing status query or write step (status=$status_line write=$write_line)"; return 1; }
+    [[ "$status_line" -lt "$write_line" ]] \
+        || { echo "spec.md must query lock liveness before writing the spec file"; return 1; }
+    grep -q 'live-owner' "$PLUGIN_DIR/commands/spec.md"
+    grep -qi 'WARN' "$PLUGIN_DIR/commands/spec.md"
+    grep -q 'stale-debris' "$PLUGIN_DIR/commands/spec.md"
+    grep -qi 'owner token' "$PLUGIN_DIR/commands/spec.md"
+    grep -qi 'heartbeat' "$PLUGIN_DIR/commands/spec.md"
+}
+
+@test "safety: review.md queries the lock before writing, and refuses on a live owner" {
+    # F-065 (writer half): review's product is a read-modify-write merge
+    # of the tracked backlog, so concurrent review is unsupported by
+    # decision — unlike spec.md/dev.md Phase A, a live owner must REFUSE,
+    # not warn-and-proceed.
+    status_line=$(grep -n 'g2g-lock.sh status' "$PLUGIN_DIR/commands/review.md" | head -1 | cut -d: -f1)
+    write_line=$(grep -n 'Write `review-output/findings.json`' "$PLUGIN_DIR/commands/review.md" | head -1 | cut -d: -f1)
+    [[ -n "$status_line" && -n "$write_line" ]] \
+        || { echo "review.md missing status query or write step (status=$status_line write=$write_line)"; return 1; }
+    [[ "$status_line" -lt "$write_line" ]] \
+        || { echo "review.md must query lock liveness before writing the findings backlog"; return 1; }
+    grep -qi 'REFUSE' "$PLUGIN_DIR/commands/review.md"
+    grep -qi 'unsupported' "$PLUGIN_DIR/commands/review.md"
+    grep -q 'live-owner' "$PLUGIN_DIR/commands/review.md"
+    grep -q 'stale-debris' "$PLUGIN_DIR/commands/review.md"
+    grep -qi 'owner token' "$PLUGIN_DIR/commands/review.md"
+    grep -qi 'heartbeat' "$PLUGIN_DIR/commands/review.md"
+}
+
+@test "safety: dev.md Phase A instructs the pre-write liveness check, warn-and-proceed" {
+    # dev.md Phase A executes spec.md's procedure verbatim, but T-004
+    # requires dev.md to name the check explicitly too so a reader of
+    # dev.md alone sees the behavior and its justification.
+    phase_a=$(sed -n '/^## Phase A/,/^## Gate/p' "$PLUGIN_DIR/commands/dev.md")
+    echo "$phase_a" | grep -q 'g2g-lock.sh status' \
+        || { echo "dev.md Phase A does not mention the liveness query"; return 1; }
+    echo "$phase_a" | grep -qi 'WARN' \
+        || { echo "dev.md Phase A does not state the WARN-and-proceed choice"; return 1; }
+    echo "$phase_a" | grep -qi 'live owner\|live-owner' \
+        || { echo "dev.md Phase A does not name the live-owner case"; return 1; }
+    echo "$phase_a" | grep -qi 'stale' \
+        || { echo "dev.md Phase A does not name the stale-debris case"; return 1; }
+}
+
+@test "safety: dev.md Phase A's stale-debris branch names the owner token and heartbeat" {
+    # T-004's criterion is "All three [spec.md, review.md, dev.md] report
+    # the owner token and heartbeat when a lock is present." spec.md and
+    # review.md already state this directly for stale-debris; dev.md
+    # previously met it only indirectly, via delegation to spec.md's step
+    # 3a. This pins that dev.md's own prose names both fields too.
+    stale_clause=$(grep -A4 'on stale debris' "$PLUGIN_DIR/commands/dev.md")
+    echo "$stale_clause" | grep -qi 'owner token' \
+        || { echo "dev.md's stale-debris branch does not name the owner token"; return 1; }
+    echo "$stale_clause" | grep -qi 'heartbeat' \
+        || { echo "dev.md's stale-debris branch does not name the heartbeat"; return 1; }
+}
+
+@test "safety: spec.md, review.md, and dev.md's Phase A never mutate the checkout lock" {
+    # T-003's status query is strictly non-mutating; these three commands
+    # are polite neighbors, not lock owners, so none may acquire,
+    # refresh, or release the lock, or hand-create/delete the goal/mutex.
+    for f in spec.md review.md dev.md; do
+        for token in 'g2g-lock.sh acquire' 'g2g-lock.sh refresh' 'release-preflight' 'release-terminal'; do
+            if grep -qF "$token" "$PLUGIN_DIR/commands/$f"; then
+                echo "$f must never call: $token"
+                return 1
+            fi
+        done
     done
 }

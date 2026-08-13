@@ -12,6 +12,18 @@ read-analyze-write activity. Committing happens later: `/g2g:build`'s
 preflight commits a freshly generated spec on its work branch (Phase 1
 step 3a), whether reached directly or via the /g2g:dev pipeline.
 
+/g2g:spec participates in the checkout-lock protocol as a read-only
+observer only (F-065): before writing `specs/<slug>.json` it queries
+`${CLAUDE_PLUGIN_ROOT}/scripts/g2g-lock.sh status`, the helper's
+non-mutating liveness check — see step 3a — and never acquires,
+refreshes, releases, or creates/deletes `.g2g-goal`, `.g2g-goal.lock`,
+or `.g2g-goal.mutex`; it is a polite neighbor to the lock, never an
+owner of it.
+
+See `plugin/README.md`'s "Concurrency model" section for the full
+normative description of the checkout-lock protocol and why /g2g:spec
+warns and proceeds on a live owner rather than refusing.
+
 ## Input (exactly one source; zero or several → abort, printing this Input section as usage)
 - Bare text, or `-p "<text>"` → inline description of what to build.
 - `-f <path>` → requirements read from that file. Abort if unreadable.
@@ -39,6 +51,27 @@ step 3a), whether reached directly or via the /g2g:dev pipeline.
       spec — no verification commands found. Add verificationCommands
       to .claude/g2g.json or state them in the request." Never invent
       commands.
+3a. Concurrency liveness check (F-065, read-only): before writing the
+   spec file in step 4, run
+   `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-lock.sh status` — takes no owner
+   token, never creates, refreshes, reclaims, or deletes the lock,
+   goal, or mutex. Branch ONLY on its exit code:
+   - Exit 0 (`no-lock`) — proceed to step 4.
+   - Exit 4 (`live-owner`) — another build owns this checkout right
+     now. WARN prominently in your report, naming the owner token and
+     heartbeat the helper printed, and PROCEED to step 4 anyway:
+     /g2g:spec only ever writes a fresh file under its own slug (step
+     4's own overwrite guard already refuses a colliding slug), so it
+     cannot corrupt another build's in-flight artifacts.
+   - Exit 9 (`stale-debris`) — report the owner token, heartbeat, and
+     age the helper printed, note that this is stale debris (not a
+     live owner) and that a future build's `acquire` will reclaim it
+     automatically, then proceed to step 4. Do not refuse and do not
+     reclaim it yourself.
+   - Exit 7 or 8 — the lock state cannot be safely judged (malformed
+     state or an operational failure). WARN prominently, print the
+     helper's output verbatim, and proceed to step 4 with an explicit
+     caveat that liveness could not be determined.
 4. Write `specs/<slug>.json` — slug is the lowercase, hyphenated form
    of the spec's `project` field (the same derivation /g2g:build uses
    for its branch name). If that file already exists: ABORT and report

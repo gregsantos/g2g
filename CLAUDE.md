@@ -155,6 +155,14 @@ g2g/
   stops resolving. Merge commits keep them, and
   `git log --first-parent` reads the default branch at one line per PR
   when the per-task commits are noise.
+- **Every new write-capable command joins the checkout lock.** A new
+  `/g2g:*` command that writes anything to the checkout must either
+  hold the lock (acquire/refresh/release like `build.md`/`go.md`) or
+  query it read-only before writing (`g2g-lock.sh status`, like
+  `spec.md`/`review.md`/`dev.md` Phase A) — never write unconditionally
+  as if no other g2g command could be running. See
+  `plugin/README.md`'s "Concurrency model" section for the full
+  protocol and which existing commands do which.
 - Shell: bash, shellcheck-clean (`.shellcheckrc` at repo root). Tests:
   bats, one behavior per test, golden output where format is contractual.
 

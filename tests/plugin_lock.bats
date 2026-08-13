@@ -398,6 +398,55 @@ backdate() {
     [[ "$(awk 'NR==2' .g2g-goal.lock)" == "tok-a" ]] || return 1
 }
 
+@test "lock: status on a clean checkout reports no-lock and creates nothing" {
+    run "$LOCK_SH" status
+    [[ "$status" -eq 0 ]] || return 1
+    [[ "$output" == "g2g-lock: status=no-lock" ]] || return 1
+    [[ ! -e .g2g-goal.lock ]] || return 1
+    [[ ! -e .g2g-goal.mutex ]] || return 1
+}
+
+@test "lock: status on a live lock reports live-owner, leaves the lock byte-identical, and creates no mutex" {
+    "$LOCK_SH" acquire tok-a
+    cp .g2g-goal.lock before.lock
+
+    run "$LOCK_SH" status
+    [[ "$status" -eq 4 ]] || return 1
+    [[ "$output" == "g2g-lock: status=live-owner owner=tok-a heartbeat="*" age_seconds="* ]] || return 1
+    cmp -s before.lock .g2g-goal.lock || { echo "lock file bytes changed"; return 1; }
+    [[ ! -e .g2g-goal.mutex ]] || return 1
+}
+
+@test "lock: status on a lock backdated past the stale threshold reports stale-debris, not reclaimed" {
+    "$LOCK_SH" acquire tok-dead
+    echo "old goal condition" > .g2g-goal
+    backdate .g2g-goal.lock
+    before_bytes=$(cat .g2g-goal.lock)
+
+    run "$LOCK_SH" status
+    [[ "$status" -eq 9 ]] || return 1
+    [[ "$output" == "g2g-lock: status=stale-debris owner=tok-dead heartbeat="*" age_seconds="* ]] || return 1
+    # Reported, never reclaimed: the debris and the goal it would take
+    # with it on a real acquire both survive untouched.
+    [[ "$(cat .g2g-goal.lock)" == "$before_bytes" ]] || return 1
+    [[ -f .g2g-goal ]] || return 1
+    [[ "$(cat .g2g-goal)" == "old goal condition" ]] || return 1
+    [[ ! -e .g2g-goal.mutex ]] || return 1
+
+    # A subsequent real acquire still reclaims it — status never
+    # consumed or altered the staleness.
+    run "$LOCK_SH" acquire tok-new
+    [[ "$status" -eq 0 ]] || return 1
+    [[ "$output" == "g2g-lock: reclaimed stale_heartbeat="* ]] || return 1
+}
+
+@test "lock: status rejects extra arguments as a usage error" {
+    run "$LOCK_SH" status bogus-token extra
+    [[ "$status" -eq 2 ]] || return 1
+    [[ ! -e .g2g-goal.lock ]] || return 1
+    [[ ! -e .g2g-goal.mutex ]] || return 1
+}
+
 @test "lock: stale threshold is env-tunable for tests, default production-safe" {
     # With a tiny threshold, a just-written lock goes stale in seconds —
     # proving the knob works without waiting an hour.

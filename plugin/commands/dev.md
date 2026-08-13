@@ -21,9 +21,24 @@ them by reading the command files below and executing their procedures.
    procedure on that input — every rule applies (single input source,
    the skill, verificationCommands sourcing, no overwrite, evidence-
    script validation, tracking check, no commit). Skip only its closing
-   "next step" suggestion; this pipeline continues below instead.
+   "next step" suggestion; this pipeline continues below instead. This
+   INCLUDES spec.md's concurrency liveness check (its step 3a): before
+   writing the spec file, query
+   `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-lock.sh status` — read-only, no
+   owner token, never acquires/refreshes/releases/creates/deletes the
+   lock, goal, or mutex — and on a live owner WARN prominently (naming
+   the owner token and heartbeat) and PROCEED anyway, because Phase A
+   only ever writes a fresh file under its own slug; on stale debris,
+   report the age and note a future build's acquire will reclaim it,
+   and proceed. Also report the owner token and heartbeat the helper
+   printed for the stale-debris case, exactly as spec.md's step 3a
+   does.
 3. If spec generation aborted for any reason: STOP and report the abort
    reason. Never proceed to build without a validated spec file.
+
+See `plugin/README.md`'s "Concurrency model" section for the full
+normative description of the checkout-lock protocol this Phase A
+liveness check and Phase B's acquire/release both participate in.
 
 ## Gate — only when --review was passed
 Present the spec (project, task table, verificationCommands) and END

@@ -13,6 +13,30 @@
 #   release-preflight  remove the owned lock only (preserves any .g2g-goal
 #                      this run never armed)
 #   release-terminal   remove the owned goal/lock pair
+#   status             read-only liveness query — takes NO owner token
+#                      (`g2g-lock.sh status`, nothing else). Strictly
+#                      non-mutating: never creates, refreshes, reclaims, or
+#                      deletes the lock, goal, or mutex, and never acquires
+#                      the mutex, so it can be called freely from any
+#                      command's Phase A without perturbing an in-flight
+#                      build. Reports which of three states holds — no
+#                      lock, a live owner, or stale debris — plus the
+#                      owner token, heartbeat, and age so a caller can
+#                      branch and explain itself to a human:
+#                        no lock:      "status=no-lock" (exit 0)
+#                        live owner:   "status=live-owner owner=<token>
+#                                       heartbeat=<ts> age_seconds=<n>"
+#                                      (exit 4 — the same code acquire uses
+#                                      for the same condition)
+#                        stale debris: "status=stale-debris owner=<token
+#                                       or 'none' if unreadable>
+#                                       heartbeat=<ts or 'unreadable'>
+#                                       age_seconds=<n>" (exit 9 — reported
+#                                      only; the lock is left untouched for
+#                                      a future acquire to reclaim)
+#                      An unreadable mtime or an out-of-protocol lock shape
+#                      still report through the shared operational-error
+#                      (8) / malformed-state (7) outcomes below.
 #
 # Files (anchored to the enclosing git worktree root — `git rev-parse
 # --show-toplevel`, resolved once at startup — so a build started from a
@@ -50,6 +74,9 @@
 #                       unreadable, a mutation that failed partway);
 #                       state was NOT changed except where the detail
 #                       says a cleanup failed mid-way
+#   9  stale-debris     status only: a lock exists but its heartbeat is
+#                       past the stale threshold — reported, not reclaimed
+#                       or deleted
 #
 # Environment overrides (TEST-ONLY — production callers use the defaults):
 #   G2G_LOCK_STALE_SECONDS          heartbeat age before a lock is stale
@@ -362,26 +389,62 @@ cmd_release() {
     finish 0 "released-preflight"
 }
 
+cmd_status() {
+    # Read-only liveness query. Deliberately does NOT call acquire_mutex —
+    # the contract forbids depending on the mutex at all — so a concurrent
+    # writer's atomic mv (write_lock) means we only ever observe a whole
+    # old or whole new lock file, never a torn one. Every other cmd_*
+    # mutates through the mutex; this one only reads.
+    fail_unless_regular_lock
+    if [[ ! -e "$LOCK" ]]; then
+        finish 0 "status=no-lock"
+    fi
+    local holder heartbeat age
+    holder=$(lock_token)
+    heartbeat=$(lock_heartbeat)
+    age=$(age_seconds "$LOCK")
+    if [[ -z "$age" ]]; then
+        finish 8 "operational-error detail=lock-mtime-unreadable"
+    fi
+    if [[ -z "$holder" ]] || [[ "$age" -gt "$STALE_SECONDS" ]]; then
+        # Crash debris (empty/malformed token) or a heartbeat past the
+        # stale threshold — mirrors cmd_acquire's reclaim condition
+        # exactly, but only reports it: nothing is removed or replaced.
+        finish 9 "status=stale-debris owner=${holder:-none} heartbeat=${heartbeat:-unreadable} age_seconds=$age"
+    fi
+    finish 4 "status=live-owner owner=$holder heartbeat=$heartbeat age_seconds=$age"
+}
+
 CMD="${1:-}"
 TOKEN="${2:-}"
 
 case "$CMD" in
-    acquire|refresh|release-preflight|release-terminal) ;;
-    *) usage_fail "usage: g2g-lock.sh <acquire|refresh|release-preflight|release-terminal> <owner-token>" ;;
+    acquire|refresh|release-preflight|release-terminal|status) ;;
+    *) usage_fail "usage: g2g-lock.sh <acquire|refresh|release-preflight|release-terminal|status> [owner-token]" ;;
 esac
 
-if [[ -z "$TOKEN" ]]; then
-    usage_fail "owner token must be non-empty"
+if [[ "$CMD" == "status" ]]; then
+    # status takes no owner token; anything beyond the command name
+    # itself (including a stray token) is a caller error, not silently
+    # ignored input.
+    if [[ "$#" -gt 1 ]]; then
+        usage_fail "status takes no arguments"
+    fi
+else
+    if [[ -z "$TOKEN" ]]; then
+        usage_fail "owner token must be non-empty"
+    fi
+    case "$TOKEN" in
+        *$'\n'* | *$'\r'*)
+            usage_fail "owner token must be a single line"
+            ;;
+    esac
 fi
-case "$TOKEN" in
-    *$'\n'* | *$'\r'*)
-        usage_fail "owner token must be a single line"
-        ;;
-esac
 
 case "$CMD" in
     acquire) cmd_acquire ;;
     refresh) cmd_refresh ;;
     release-preflight) cmd_release preflight ;;
     release-terminal) cmd_release terminal ;;
+    status) cmd_status ;;
 esac

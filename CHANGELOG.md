@@ -1,5 +1,62 @@
 # Changelog
 
+## 0.6.5 (2026-08-13)
+
+Concurrency safety, phase 1 (F-065, F-066): every write-capable command
+now honors the checkout lock, the lock helper gained a read-only
+liveness query, the build's crash-stash no longer absorbs foreign
+files, and the concurrency model is documented normatively. No new
+isolation capability — safety only.
+
+### Added
+- `/g2g:go` now participates in the checkout-lock protocol (F-066,
+  T-001): it acquires via `g2g-lock.sh acquire` before creating its
+  branch, refreshes the heartbeat at phase boundaries (before
+  verification, commit, and push), and releases with
+  `release-preflight` on every terminal path reached after a
+  successful acquire — never `release-terminal`, since `/g2g:go` arms
+  no `.g2g-goal` and must never delete a foreign build's goal/lock
+  pair. A live `/g2g:build` or another live `/g2g:go` makes a new
+  `/g2g:go` abort with the helper's live-owner outcome.
+- `plugin/scripts/g2g-lock.sh` gained a strictly non-mutating `status`
+  subcommand (T-003): reports `no-lock` (exit 0), `live-owner` (exit
+  4), or `stale-debris` (exit 9), with the owner token, heartbeat, and
+  age where applicable, and never creates, refreshes, reclaims, or
+  deletes the lock, goal, or mutex.
+- `/g2g:spec`, `/g2g:review`, and `/g2g:dev` Phase A now query that
+  `status` subcommand before writing (T-004): `/g2g:spec` and
+  `/g2g:dev` Phase A warn prominently on a live owner and proceed
+  anyway (each only ever writes a fresh file under its own slug);
+  `/g2g:review` REFUSES outright on a live owner, since
+  `review-output/findings.json` is produced by a read-modify-write
+  merge against a moving baseline that two concurrent runs can never
+  reconcile through a file lock — concurrent review remains
+  unsupported by decision. All three report the owner and heartbeat,
+  and treat stale debris as reportable rather than blocking.
+- `plugin/README.md` gained a "Concurrency model" section (T-005): the
+  single normative description of how builds serialize per checkout,
+  why the lock is anchored to the enclosing worktree root (so separate
+  worktrees are independent), why the supported way to run several
+  builds at once is one worktree per build with a session started
+  inside it (no new configuration — there is no `isolateBuilds` option
+  and none is planned), how `/g2g:improve` already isolates every tick
+  in its own worktree, and how `/g2g:go`, `/g2g:spec`/`/g2g:review`/
+  `/g2g:dev` Phase A, and `/g2g:status` each participate. Command files
+  gained additive pointer lines to that section — no existing
+  procedural instruction was changed. `CLAUDE.md`'s plugin conventions
+  gained a bullet requiring every new write-capable command to hold
+  the lock or query it read-only before writing.
+
+### Fixed
+- `plugin/commands/build.md` Phase 3 step 3 (T-002) now states a
+  probable-builder-debris predicate before stashing untracked or
+  modified paths as `g2g-crash-<task-id>`: foreign untracked paths
+  (e.g. a concurrent `/g2g:review`'s `findings.json` writes) are
+  surfaced and carried as a remembered exclusion rather than stashed,
+  foreign tracked modifications route to Phase 5 as a terminal partial
+  instead of being silently absorbed, and genuine builder debris is
+  still stashed exactly as before.
+
 ## 0.6.4 (2026-08-12)
 
 Lock path anchoring (fixes F-064): the checkout-lock protocol now
