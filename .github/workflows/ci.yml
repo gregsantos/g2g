@@ -38,13 +38,16 @@ jobs:
     if: github.event_name == 'push'
     needs: lint-and-test
     runs-on: ubuntu-latest
-    # Serialize release jobs. The script is already race-safe on its own
-    # (concurrent runs resolve the same target commit), so this is defense
-    # in depth: it keeps two pushes from contending for the tag ref at all.
-    # Never cancel in progress — a cancelled run leaves a release untagged.
-    concurrency:
-      group: tag-release
-      cancel-in-progress: false
+    # Deliberately NOT in a concurrency group. `cancel-in-progress: false`
+    # protects only the RUNNING job: a group keeps one pending run and
+    # cancels it when a third enters, so a middle release could be canceled
+    # outright and left permanently untagged. `queue: max` would raise that
+    # ceiling to 100 rather than remove it. Neither is needed — the script
+    # is race-safe by construction: concurrent runs resolve the same target
+    # commit AND the same annotation (both derived from that commit, not
+    # from HEAD), so they compute byte-identical tags; the loser of the push
+    # re-fetches and verifies instead of assuming. Serialization here would
+    # buy nothing and can only lose releases.
     permissions:
       # Required to push the tag ref. This is the only write scope in this
       # workflow; keep it scoped to this job, never at the top level.

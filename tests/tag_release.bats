@@ -21,17 +21,33 @@ setup() {
     export TAG_RELEASE_REMOTE=origin
 }
 
-# Commit plugin.json at $1, with a CHANGELOG entry for it unless $2 is "no-changelog".
+# Commit plugin.json at $1. $2 selects what CHANGELOG.md carries in the
+# SAME commit: a matching entry (default), no entry at all, or a heading
+# with an empty section.
 release_commit() {
     local version="$1" mode="${2:-with-changelog}"
     printf '{\n  "name": "g2g",\n  "version": "%s"\n}\n' "$version" > plugin/.claude-plugin/plugin.json
-    if [[ "$mode" != "no-changelog" ]]; then
-        printf '# Changelog\n\n## %s (2026-01-01)\n\nBody for %s.\n' "$version" "$version" > CHANGELOG.md
-    elif [[ ! -f CHANGELOG.md ]]; then
-        printf '# Changelog\n' > CHANGELOG.md
-    fi
+    case "$mode" in
+        no-changelog)
+            [[ -f CHANGELOG.md ]] || printf '# Changelog\n' > CHANGELOG.md
+            ;;
+        empty-section)
+            printf '# Changelog\n\n## %s (2026-01-01)\n\n' "$version" > CHANGELOG.md
+            ;;
+        *)
+            printf '# Changelog\n\n## %s (2026-01-01)\n\nBody for %s.\n' "$version" "$version" > CHANGELOG.md
+            ;;
+    esac
     git add -A
     git commit -q -m "release $version"
+}
+
+# Rewrite the CHANGELOG section for $1 with body $2, in its own commit —
+# i.e. the paired-edit rule broken by splitting the pair across commits.
+changelog_commit() {
+    printf '# Changelog\n\n## %s (2026-01-01)\n\n%s\n' "$1" "$2" > CHANGELOG.md
+    git add -A
+    git commit -q -m "changelog for $1"
 }
 
 plain_commit() {
@@ -98,7 +114,7 @@ plain_commit() {
 
     run "$TAG_SH"
     [[ "$status" -ne 0 ]] || return 1
-    [[ "$output" == *"has no '## 0.1.0' heading"* ]] || { echo "$output"; return 1; }
+    [[ "$output" == *"no non-empty '## 0.1.0' section"* ]] || { echo "$output"; return 1; }
     run git rev-parse -q --verify refs/tags/g2g--v0.1.0
     [[ "$status" -ne 0 ]] || { echo "a tag was created despite the failure"; return 1; }
 }
@@ -119,6 +135,71 @@ plain_commit() {
     [[ "$status" -eq 0 ]] || { echo "$output"; return 1; }
     [[ "$(git rev-list -n1 g2g--v0.2.0)" == "$merge" ]] || {
         echo "tagged $(git rev-list -n1 g2g--v0.2.0), expected merge $merge"; return 1
+    }
+}
+
+@test "tag-release: takes the tag body from the target commit, not the working tree" {
+    release_commit 0.1.0
+    changelog_commit 0.1.0 "Rewritten AFTER the bump landed."
+
+    TAG_RELEASE_DRY_RUN=1 run "$TAG_SH"
+    [[ "$status" -eq 0 ]] || { echo "$output"; return 1; }
+    local notes; notes="$(git tag -l --format='%(contents)' g2g--v0.1.0)"
+    [[ "$notes" == *"Body for 0.1.0."* ]] || { echo "$notes"; return 1; }
+    [[ "$notes" != *"Rewritten AFTER"* ]] || {
+        echo "took notes from the working tree, not the target commit"; return 1
+    }
+}
+
+@test "tag-release: fails when only a later commit adds the CHANGELOG entry" {
+    # The batched push the same-commit guard is supposed to catch: the bump
+    # commit carries no entry, a following commit adds one. Reading the
+    # working tree would let this pass.
+    release_commit 0.1.0 no-changelog
+    changelog_commit 0.1.0 "Added a commit too late."
+
+    TAG_RELEASE_DRY_RUN=1 run "$TAG_SH"
+    [[ "$status" -ne 0 ]] || { echo "expected failure, got 0: $output"; return 1; }
+    run git rev-parse -q --verify refs/tags/g2g--v0.1.0
+    [[ "$status" -ne 0 ]] || { echo "a tag was created despite the failure"; return 1; }
+}
+
+@test "tag-release: fails when the target's CHANGELOG section is empty" {
+    release_commit 0.1.0 empty-section
+
+    TAG_RELEASE_DRY_RUN=1 run "$TAG_SH"
+    [[ "$status" -ne 0 ]] || { echo "expected failure, got 0: $output"; return 1; }
+    [[ "$output" == *"no non-empty '## 0.1.0' section"* ]] || { echo "$output"; return 1; }
+}
+
+@test "tag-release: keeps '###' subheadings in the annotation" {
+    # git's default tag cleanup deletes lines starting with '#' as
+    # commentary, which silently ate every subsection heading in the notes.
+    release_commit 0.1.0
+    changelog_commit 0.1.0 "$(printf '### Added\n- a thing')"
+    release_commit 0.2.0
+    printf '# Changelog\n\n## 0.2.0 (2026-01-01)\n\n### Added\n- a thing\n' > CHANGELOG.md
+    git add -A && git commit -q --amend --no-edit
+
+    TAG_RELEASE_DRY_RUN=1 run "$TAG_SH"
+    [[ "$status" -eq 0 ]] || { echo "$output"; return 1; }
+    local notes; notes="$(git tag -l --format='%(contents)' g2g--v0.2.0)"
+    [[ "$notes" == *"### Added"* ]] || { echo "subheading stripped: $notes"; return 1; }
+}
+
+@test "tag-release: warns without failing when an existing tag's annotation drifts" {
+    # A wrong TARGET dies; a wrong BODY on the right target only warns,
+    # because the tags predating this automation carry hand-written
+    # summaries and a published tag is never rewritten.
+    release_commit 0.1.0
+    git tag -a g2g--v0.1.0 HEAD -m "hand-written summary"
+
+    TAG_RELEASE_DRY_RUN=1 run "$TAG_SH"
+    [[ "$status" -eq 0 ]] || { echo "expected success, got $status: $output"; return 1; }
+    [[ "$output" == *"WARNING"* ]] || { echo "no warning emitted: $output"; return 1; }
+    [[ "$output" == *"already released"* ]] || { echo "$output"; return 1; }
+    [[ "$(git tag -l --format='%(contents)' g2g--v0.1.0)" == "hand-written summary" ]] || {
+        echo "the published annotation was rewritten"; return 1
     }
 }
 

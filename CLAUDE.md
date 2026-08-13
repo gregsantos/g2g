@@ -147,16 +147,27 @@ g2g/
   (run by the `tag-release` job in `.github/workflows/ci.yml` on every push
   to the default branch) tags `g2g--v<version>` from
   `plugin/.claude-plugin/plugin.json`, with the tag body lifted from that
-  version's `CHANGELOG.md` section. Three properties are load-bearing and
+  version's `CHANGELOG.md` section. Four properties are load-bearing and
   pinned by `tests/tag_release.bats`: the target is the OLDEST first-parent
   commit carrying the version — derived from history, never from HEAD, so a
   batched push whose bump is not the tip still tags the bump, and two
-  concurrent runs at different HEADs compute the same commit; an EXISTING
-  tag is verified rather than trusted, failing loudly when it points
-  somewhere else, because a release tag on the wrong commit is a corrupted
-  mapping no silent exit-0 should preserve; and a version with no matching
-  `CHANGELOG.md` heading FAILS, which is what makes the paired-edit rule
-  above enforced rather than remembered. Never create a release tag
+  concurrent runs at different HEADs compute the same commit; the body is
+  read from `CHANGELOG.md` AS OF THAT TARGET COMMIT (`git show`), never from
+  the working tree, so a bump whose notes arrive in a LATER commit fails
+  instead of being tagged with notes it did not contain — that is what makes
+  the paired-edit rule above enforced rather than remembered, and it is also
+  what makes racing runs produce byte-identical tags rather than merely
+  same-commit ones; an EXISTING tag's target is verified rather than
+  trusted, failing loudly when it points somewhere else, because a release
+  tag on the wrong commit is a corrupted mapping no silent exit-0 should
+  preserve; and a missing or EMPTY `## <version>` section FAILS rather than
+  cutting a tag with no notes. An existing tag's annotation is compared too
+  but only WARNS — the pre-automation tags carry hand-written summaries, and
+  the only "repair" would be deleting a published tag, so failing there
+  would trade cosmetic drift for a permanently red default branch. The job
+  runs in no concurrency group on purpose: a group cancels a pending run
+  when a third enters, which could leave a middle release untagged forever,
+  and the script needs no serialization. Never create a release tag
   manually and never add a second tag scheme — a hand-cut tag on the wrong
   commit now wedges the job by design. Tagging was a manual post-merge step
   until 0.6.5 and lapsed for four straight releases (0.6.2–0.6.5 were
