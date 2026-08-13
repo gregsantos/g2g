@@ -62,6 +62,7 @@ g2g/
 ├── specs/                            # Spec JSONs — must stay git-tracked
 ├── review-output/                    # Findings backlog — must stay git-tracked
 ├── docs/G2G_PLUGIN_REF.md            # Operator runbook
+├── scripts/tag-release.sh            # Repo CI only — release tags (never shipped)
 ├── tests/                            # bats suites + enforcement canary (canary/)
 └── .claude/                          # This repo's own g2g.json + settings.json
 ```
@@ -142,19 +143,24 @@ g2g/
   neither. Bump exactly once per PR, never per commit — in a multi-task
   spec, assign the bump to ONE task and tell the other builders it is
   taken, or every fresh context reads this rule and bumps again.
-- **Release tags are cut by CI, never by hand.** The `tag-release` job in
-  `.github/workflows/ci.yml` runs on every push to the default branch and
-  tags `g2g--v<version>` from `plugin/.claude-plugin/plugin.json`, with the
-  tag body lifted from that version's `CHANGELOG.md` section. It is
-  idempotent — a merge that bumps nothing finds its tag already present and
-  exits 0 — and it FAILS when `plugin.json` names a version `CHANGELOG.md`
-  has no heading for, which is what makes the paired-edit rule above
-  enforced rather than remembered. Never create a release tag manually and
-  never add a second tag scheme: the job is the only writer, and a
-  hand-cut tag silently becomes the one it will not replace. Tagging was a
-  manual post-merge step until 0.6.5 and lapsed for four straight releases
-  (0.6.2–0.6.5 were tagged retroactively) — that is the failure this
-  automation exists to prevent.
+- **Release tags are cut by CI, never by hand.** `scripts/tag-release.sh`
+  (run by the `tag-release` job in `.github/workflows/ci.yml` on every push
+  to the default branch) tags `g2g--v<version>` from
+  `plugin/.claude-plugin/plugin.json`, with the tag body lifted from that
+  version's `CHANGELOG.md` section. Three properties are load-bearing and
+  pinned by `tests/tag_release.bats`: the target is the OLDEST first-parent
+  commit carrying the version — derived from history, never from HEAD, so a
+  batched push whose bump is not the tip still tags the bump, and two
+  concurrent runs at different HEADs compute the same commit; an EXISTING
+  tag is verified rather than trusted, failing loudly when it points
+  somewhere else, because a release tag on the wrong commit is a corrupted
+  mapping no silent exit-0 should preserve; and a version with no matching
+  `CHANGELOG.md` heading FAILS, which is what makes the paired-edit rule
+  above enforced rather than remembered. Never create a release tag
+  manually and never add a second tag scheme — a hand-cut tag on the wrong
+  commit now wedges the job by design. Tagging was a manual post-merge step
+  until 0.6.5 and lapsed for four straight releases (0.6.2–0.6.5 were
+  tagged retroactively); that is the failure this automation prevents.
 - **Post-verifier-PASS changes amend the spec record.** Any commit on a
   `g2g/*` build branch after the verifier PASS that changes behavior an
   acceptance criterion describes must, in the same change, amend that
