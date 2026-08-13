@@ -21,6 +21,10 @@ one-off task. Never create, mutate, or delete `.g2g-goal.lock` or
 `.g2g-goal.mutex` by hand, and never compute staleness in prose — branch
 only on the helper's documented exit codes.
 
+See `plugin/README.md`'s "Concurrency model" section for the full
+normative description of the checkout-lock protocol and how /g2g:go
+fits into it alongside /g2g:build and the other commands.
+
 Procedure — deviations are failures:
 0. Checkout lock: choose an OWNER TOKEN (opaque, single-line, unique to
    this run — e.g. `g2g-$$-<epoch seconds>`) and run, from the repo

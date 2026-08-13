@@ -373,6 +373,76 @@ artifact-tracking check reports the exact rules to remove).
 This repo tracks `specs/`, `review-output/`, and
 `.claude/settings.json` for that reason.
 
+## Concurrency model
+
+This section is the single normative description of how g2g serializes
+writes to a checkout. Command files (`build.md`, `go.md`, `spec.md`,
+`review.md`, `dev.md`) point back here rather than restating it; if you
+change the model, change it here first.
+
+1. **Builds serialize per checkout by design.** `/g2g:build` acquires
+   `.g2g-goal.lock` via `plugin/scripts/g2g-lock.sh acquire` before
+   Phase 1 does anything else, and holds it until a terminal state
+   releases it. If a second `/g2g:build` (or a `/g2g:go`, see 5 below)
+   targets the same checkout while one is already live, `acquire`
+   returns the helper's live-owner outcome (exit 4) and the second run
+   aborts immediately, reporting the live owner and heartbeat. This is
+   the protocol working as designed, not a bug or a race to retry past.
+2. **The lock is anchored to the enclosing worktree root, not the
+   caller's working directory** (PR #14, F-064): `g2g-lock.sh` resolves
+   `git rev-parse --show-toplevel` (falling back to `$PWD` outside any
+   repository) and builds the `.g2g-goal` / `.g2g-goal.lock` /
+   `.g2g-goal.mutex` trio from that anchor. Serialization holds no
+   matter which subdirectory a session was started from — so separate
+   **worktrees** of the same repository each have their own lock and
+   never contend with one another.
+3. **The supported way to run several builds at once is therefore one
+   worktree per build, with a session started inside it** — e.g.
+   `git worktree add ../myrepo-taskA <branch>`, then a separate Claude
+   Code session whose cwd is inside that worktree, running
+   `/g2g:build` there. This needs **no new configuration**: there is no
+   `isolateBuilds` setting or equivalent, and none is planned. The
+   pattern is entirely operator-created worktrees plus the ordinary
+   lock behavior in 1–2 above; each worktree just happens to be its own
+   serialization domain.
+4. `/g2g:improve` already isolates every tick this way, automatically:
+   each tick gets its own unpredictable `mktemp -d` worktree (see
+   [Review & the improve flywheel](#review--the-improve-flywheel)), so
+   improve ticks never contend with each other or with an interactive
+   build running in the main checkout.
+5. `/g2g:go` participates in the same lock as `/g2g:build` (F-066): it
+   acquires before creating its branch, refreshes the heartbeat at
+   phase boundaries, and releases with `release-preflight` — never
+   `release-terminal`, since `/g2g:go` arms no `.g2g-goal` and must
+   never delete a foreign build's goal/lock pair. A live `/g2g:build`
+   or another live `/g2g:go` in the same checkout makes a new
+   `/g2g:go` abort with the same live-owner outcome as 1.
+6. `/g2g:spec`, `/g2g:review`, and `/g2g:dev` Phase A query the lock
+   **read-only** before writing, via `g2g-lock.sh status` (F-065) — a
+   strictly non-mutating check that never creates, refreshes, reclaims,
+   or deletes the lock, goal, or mutex, and reports `no-lock`,
+   `live-owner`, or `stale-debris` (plus owner token, heartbeat, and
+   age where applicable). `/g2g:spec` and `/g2g:dev` Phase A warn
+   prominently on a live owner and proceed anyway — each only ever
+   writes a fresh file under its own new slug, so it cannot corrupt
+   another build's in-flight artifacts. `/g2g:review` **refuses**
+   outright on a live owner: `review-output/findings.json` is produced
+   by a read-modify-write merge against a moving baseline (every open
+   finding is revalidated), which two concurrent runs can never
+   reconcile through a file lock — concurrent review is unsupported by
+   decision, and this refusal is how that decision is enforced.
+7. `/g2g:status` is read-only and always safe to run concurrently with
+   anything — it never touches the lock, the goal file, or any tracked
+   artifact.
+
+**Not supported, and not planned:** concurrent builds within a single
+checkout (behavior 1 above is exactly what prevents this); an
+`isolateBuilds` configuration option or anything like it (behavior 3's
+worktree pattern needs none); and any serialized or lock-protected
+merge of `review-output/findings.json` across concurrent `/g2g:review`
+runs (behavior 6's refusal is the whole mitigation — there is no merge
+algorithm backing it).
+
 ## Guardrails
 
 - **PR-gated, branch-first, never merges** — every writing command
@@ -417,21 +487,17 @@ This repo tracks `specs/`, `review-output/`, and
   gitignore both and never commit them. The lock (plus its transient
   `.g2g-goal.mutex/` directory, gitignored the same way) is managed
   exclusively by `plugin/scripts/g2g-lock.sh`, the executable,
-  behaviorally-tested implementation of the one-build-per-checkout
-  protocol: atomic acquisition, heartbeat refresh, stale-debris
-  reclaim, and ownership-checked release, all serialized on the
-  goal/lock/mutex trio, which is anchored to the enclosing git
-  worktree root rather than the caller's working directory — so two
-  concurrent builds can never both hold the same worktree's checkout,
-  no matter which subdirectory either was started from. The guarantee
-  is per worktree, not per repository: separate worktrees are
-  independent by design, which is exactly what lets concurrent builds
-  and worktree-isolated improve ticks proceed side by side. Host
-  migration note: repos onboarded before 0.2.5 have no ignore rules for
-  `.g2g-goal.lock` / `.g2g-goal.mutex/`; add them alongside
-  `.g2g-goal`. Builds still run without the rules — preflight treats
-  these paths as expected untracked files, not dirt — but ignoring
-  them keeps them out of `git status` noise.
+  behaviorally-tested implementation of the checkout-lock protocol:
+  atomic acquisition, heartbeat refresh, stale-debris reclaim, and
+  ownership-checked release. See
+  [Concurrency model](#concurrency-model) above for the full
+  serialization guarantee, the worktree anchoring, and which commands
+  participate versus which only observe. Host migration note: repos
+  onboarded before 0.2.5 have no ignore rules for `.g2g-goal.lock` /
+  `.g2g-goal.mutex/`; add them alongside `.g2g-goal`. Builds still run
+  without the rules — preflight treats these paths as expected
+  untracked files, not dirt — but ignoring them keeps them out of
+  `git status` noise.
 
 ## Running headless / unattended
 

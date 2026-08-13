@@ -20,6 +20,10 @@ refreshes, releases, or creates/deletes `.g2g-goal`, `.g2g-goal.lock`,
 or `.g2g-goal.mutex`; it is a polite neighbor to the lock, never an
 owner of it.
 
+See `plugin/README.md`'s "Concurrency model" section for the full
+normative description of the checkout-lock protocol and why /g2g:spec
+warns and proceeds on a live owner rather than refusing.
+
 ## Input (exactly one source; zero or several → abort, printing this Input section as usage)
 - Bare text, or `-p "<text>"` → inline description of what to build.
 - `-f <path>` → requirements read from that file. Abort if unreadable.

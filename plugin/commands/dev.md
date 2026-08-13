@@ -34,6 +34,10 @@ them by reading the command files below and executing their procedures.
 3. If spec generation aborted for any reason: STOP and report the abort
    reason. Never proceed to build without a validated spec file.
 
+See `plugin/README.md`'s "Concurrency model" section for the full
+normative description of the checkout-lock protocol this Phase A
+liveness check and Phase B's acquire/release both participate in.
+
 ## Gate — only when --review was passed
 Present the spec (project, task table, verificationCommands) and END
 YOUR TURN asking for approval. Proceed only after the user approves; if

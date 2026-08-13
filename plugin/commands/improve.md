@@ -12,6 +12,11 @@ anything yourself, and the cycle never runs in this session's checkout —
 a tick that cannot get its worktree FAILS with the error; there is no
 fallback.
 
+Because each tick gets its own worktree (Launch step 2 below), it never
+contends with the checkout lock a live /g2g:build or /g2g:go holds in
+the main checkout — see `plugin/README.md`'s "Concurrency model"
+section for the full picture.
+
 ## Opt-in gate — improve never runs by default
 0. Read `.claude/g2g.json` → `improve.enabled`. Unless it is exactly
    `true`, STOP without launching anything and explain: the improve

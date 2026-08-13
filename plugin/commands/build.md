@@ -33,6 +33,12 @@ marker below clears the goal outright). This pair is
 build.md's alone: no wrapper (improve-cycle) ever deletes a live,
 foreign-owned pair.
 
+See `plugin/README.md`'s "Concurrency model" section for the full
+normative description of this protocol — why builds serialize per
+checkout, why the lock is anchored to the enclosing worktree root, and
+the supported way to run several builds at once (one worktree per
+build).
+
 ## Phase 1 — Preflight (all hard requirements; abort with a clear message on any failure)
 1. One build per checkout — as the very first preflight action, before
    any other check, choose an OWNER TOKEN (opaque, single-line, unique

@@ -26,6 +26,10 @@ baseline), and two runs analyzing against a baseline that moved cannot
 be reconciled by any file lock — concurrent review is unsupported by
 decision, and this refusal is how that decision is enforced.
 
+See `plugin/README.md`'s "Concurrency model" section for the full
+normative description of the checkout-lock protocol and how
+/g2g:review's refusal fits alongside the other commands' behavior.
+
 ## Concurrency liveness check (F-065, read-only)
 0. Before dispatching any subagent or touching
    `review-output/findings.json`, run

@@ -6,6 +6,12 @@ model: haiku
 
 Report G2G state, read-only (change nothing):
 
+/g2g:status never touches the checkout lock, `.g2g-goal`, or any
+tracked artifact, so it is always safe to run concurrently with a live
+build, a live /g2g:go, or anything else — see `plugin/README.md`'s
+"Concurrency model" section for the full picture of how the other
+commands participate in the lock.
+
 1. Goal: check for a `.g2g-goal` file in the repo root. If it exists,
    read it as JSON and report the active goal as its fields — spec path,
    task total, turn and hours caps, build start, owner token. If it does
