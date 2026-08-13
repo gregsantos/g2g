@@ -423,7 +423,14 @@ case "$CMD" in
     *) usage_fail "usage: g2g-lock.sh <acquire|refresh|release-preflight|release-terminal|status> [owner-token]" ;;
 esac
 
-if [[ "$CMD" != "status" ]]; then
+if [[ "$CMD" == "status" ]]; then
+    # status takes no owner token; anything beyond the command name
+    # itself (including a stray token) is a caller error, not silently
+    # ignored input.
+    if [[ "$#" -gt 1 ]]; then
+        usage_fail "status takes no arguments"
+    fi
+else
     if [[ -z "$TOKEN" ]]; then
         usage_fail "owner token must be non-empty"
     fi

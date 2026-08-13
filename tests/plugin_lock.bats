@@ -440,9 +440,11 @@ backdate() {
     [[ "$output" == "g2g-lock: reclaimed stale_heartbeat="* ]] || return 1
 }
 
-@test "lock: status takes no owner token and rejects extra arguments the same as other subcommands" {
-    run "$LOCK_SH" status
-    [[ "$status" -eq 0 ]] || return 1
+@test "lock: status rejects extra arguments as a usage error" {
+    run "$LOCK_SH" status bogus-token extra
+    [[ "$status" -eq 2 ]] || return 1
+    [[ ! -e .g2g-goal.lock ]] || return 1
+    [[ ! -e .g2g-goal.mutex ]] || return 1
 }
 
 @test "lock: stale threshold is env-tunable for tests, default production-safe" {
