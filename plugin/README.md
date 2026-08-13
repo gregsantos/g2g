@@ -419,9 +419,15 @@ This repo tracks `specs/`, `review-output/`, and
   exclusively by `plugin/scripts/g2g-lock.sh`, the executable,
   behaviorally-tested implementation of the one-build-per-checkout
   protocol: atomic acquisition, heartbeat refresh, stale-debris
-  reclaim, and ownership-checked release, all serialized so two
-  concurrent builds can never both hold the checkout. Host migration
-  note: repos onboarded before 0.2.5 have no ignore rules for
+  reclaim, and ownership-checked release, all serialized on the
+  goal/lock/mutex trio, which is anchored to the enclosing git
+  worktree root rather than the caller's working directory — so two
+  concurrent builds can never both hold the same worktree's checkout,
+  no matter which subdirectory either was started from. The guarantee
+  is per worktree, not per repository: separate worktrees are
+  independent by design, which is exactly what lets concurrent builds
+  and worktree-isolated improve ticks proceed side by side. Host
+  migration note: repos onboarded before 0.2.5 have no ignore rules for
   `.g2g-goal.lock` / `.g2g-goal.mutex/`; add them alongside
   `.g2g-goal`. Builds still run without the rules — preflight treats
   these paths as expected untracked files, not dirt — but ignoring

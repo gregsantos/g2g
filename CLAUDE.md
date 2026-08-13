@@ -98,9 +98,14 @@ g2g/
 - **The lock script is the protocol.** `plugin/scripts/g2g-lock.sh` is
   the sole implementation of checkout-lock synchronization;
   `tests/plugin_lock.bats` pins its exit codes and outcome lines, and
-  build.md/improve-cycle.md branch on them. Never reintroduce lock
-  logic as command prose; change the contract only with the tests and
-  both commands updated together.
+  build.md/improve-cycle.md branch on them. The goal/lock/mutex trio
+  is anchored to the enclosing git worktree root (via `git rev-parse
+  --show-toplevel`, falling back to `$PWD` outside any repository) —
+  `g2g-stop.sh` and build.md's goal-write step must resolve that same
+  anchor, never the caller's working directory, or a build started
+  from a subdirectory arms a goal the hook can't find. Never
+  reintroduce lock logic as command prose; change the contract only
+  with the tests and both commands updated together.
 - **Templates are pinned by tests.** `tests/templates.bats` asserts the
   exact `defaultBudgets` values, the five `reviewFocus` categories, and
   `improve.enabled: false` in every `plugin/templates/*.json`.
