@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install shellcheck and bats-core
         run: sudo apt-get update && sudo apt-get install -y shellcheck bats
@@ -41,7 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           # Needed for the merge-base against the target branch.
           fetch-depth: 0
@@ -82,7 +82,7 @@ jobs:
       contents: write
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           # Full history AND tags: the script resolves the version-introducing
           # commit by walking first-parent, and distinguishes "already
