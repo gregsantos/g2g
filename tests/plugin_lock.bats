@@ -342,6 +342,62 @@ backdate() {
     [[ "$(awk 'NR==2' .g2g-goal.lock)" == "tok-a" ]] || return 1
 }
 
+@test "lock: acquire from a repository subdirectory finds the root's live lock (F-064)" {
+    # The paths must anchor to the enclosing worktree root, not the
+    # process CWD: a live lock at the root must be visible — and never
+    # duplicated — from a subdirectory.
+    git init -q .
+    "$LOCK_SH" acquire tok-root
+    mkdir -p sub/dir
+    cd sub/dir || return 1
+    run "$LOCK_SH" acquire tok-intruder
+    subdir_lock_created=0
+    [[ -e .g2g-goal.lock ]] && subdir_lock_created=1
+    cd ../.. || return 1
+    [[ "$status" -eq 4 ]] || return 1
+    [[ "$output" == "g2g-lock: live-owner "* ]] || return 1
+    [[ "$subdir_lock_created" -eq 0 ]] || { echo "a second lock was created in the subdirectory"; return 1; }
+    [[ -f .g2g-goal.lock ]] || return 1
+    [[ "$(awk 'NR==2' .g2g-goal.lock)" == "tok-root" ]] || return 1
+}
+
+@test "lock: two worktrees of the same repository acquire independently" {
+    # Worktree isolation must be preserved: the anchor is `git rev-parse
+    # --show-toplevel`, which reports the WORKTREE root, never the shared
+    # .git common dir — so each worktree's lock is its own.
+    root_dir="$PWD"
+    wt2_dir="$BATS_TEST_TMPDIR/wt2"
+    git init -q .
+    git -c user.email=test@example.com -c user.name=test commit -q --allow-empty -m init
+    git worktree add -q "$wt2_dir" -b wt2-branch >/dev/null
+
+    run "$LOCK_SH" acquire tok-main
+    [[ "$status" -eq 0 ]] || return 1
+    [[ "$output" == "g2g-lock: acquired" ]] || return 1
+
+    cd "$wt2_dir" || return 1
+    run "$LOCK_SH" acquire tok-wt2
+    cd "$root_dir" || return 1
+    [[ "$status" -eq 0 ]] || return 1
+    [[ "$output" == "g2g-lock: acquired" ]] || return 1
+
+    [[ -f .g2g-goal.lock ]] || return 1
+    [[ "$(awk 'NR==2' .g2g-goal.lock)" == "tok-main" ]] || return 1
+    [[ -f "$wt2_dir/.g2g-goal.lock" ]] || return 1
+    [[ "$(awk 'NR==2' "$wt2_dir/.g2g-goal.lock")" == "tok-wt2" ]] || return 1
+}
+
+@test "lock: with no enclosing repository, acquire still creates the lock in the CWD" {
+    run git rev-parse --show-toplevel
+    [[ "$status" -ne 0 ]] || return 1   # confirms the harness assumption this test relies on
+
+    run "$LOCK_SH" acquire tok-a
+    [[ "$status" -eq 0 ]] || return 1
+    [[ "$output" == "g2g-lock: acquired" ]] || return 1
+    [[ -f .g2g-goal.lock ]] || return 1
+    [[ "$(awk 'NR==2' .g2g-goal.lock)" == "tok-a" ]] || return 1
+}
+
 @test "lock: stale threshold is env-tunable for tests, default production-safe" {
     # With a tiny threshold, a just-written lock goes stale in seconds —
     # proving the knob works without waiting an hour.

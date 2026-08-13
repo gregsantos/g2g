@@ -47,6 +47,16 @@ run_hook() {
         "printf '%s' '{\"cwd\":\"$WORK\",\"transcript_path\":\"$transcript\",\"stop_hook_active\":false}' | bash '$HOOK'"
 }
 
+# Run the hook with a payload whose cwd is some OTHER directory (a
+# subdirectory of the worktree, or a directory outside any repository) --
+# exercises the anchor resolution (F-064) the plain run_hook above cannot,
+# since that always starts already at the worktree root.
+run_hook_from_cwd() {
+    local cwd="$1" transcript="${2:-$TRANSCRIPT}"
+    run env -u CLAUDE_PROJECT_DIR bash -c \
+        "printf '%s' '{\"cwd\":\"$cwd\",\"transcript_path\":\"$transcript\",\"stop_hook_active\":false}' | bash '$HOOK'"
+}
+
 assert_allowed() {
     [[ "$status" -eq 0 ]] || { echo "hook exited $status, expected 0"; return 1; }
     [[ -z "$output" ]] || { echo "expected allow (no output), got: $output"; return 1; }
@@ -231,6 +241,47 @@ EOF
     write_goal "$TOKEN" "specs/x.json" 40 6 "$NOW"
     complete_transcript
     run_hook
+    assert_allowed
+}
+
+# --- worktree anchor resolution (F-064) --------------------------------------
+#
+# g2g-lock.sh anchors the goal/lock/mutex trio on the enclosing worktree root
+# (`git rev-parse --show-toplevel`) rather than the caller's CWD, so a build
+# started from a subdirectory shares one lock with a build started at the
+# root. The Stop hook must resolve the SAME anchor from CLAUDE_PROJECT_DIR /
+# the payload's cwd, or a subdirectory session arms a goal the hook can never
+# see -- turning a closed lock hole into an unenforced goal. Empirically,
+# CLAUDE_PROJECT_DIR and the payload cwd are both just the directory the
+# session started FROM, never resolved to a repository root (see
+# g2g-stop.sh's resolve_anchor comment for how that was verified), so this is
+# a real fix, not a defensive no-op.
+
+@test "stop: a goal armed at the worktree root blocks the stop when the session starts in a subdirectory" {
+    # Distinguishing test: an incomplete build (armed, no evidence yet) BLOCKS
+    # when the goal is correctly located at the worktree root. If the hook
+    # instead looked for .g2g-goal inside the subdirectory (unresolved
+    # anchor), it would take the "no goal file" fast path and ALLOW -- the
+    # same outcome a correct resolution produces for a genuinely absent goal,
+    # so only an incomplete build can tell the two apart.
+    write_goal "$TOKEN" "specs/x.json" 40 6 "$NOW"
+    mkdir -p "$WORK/nested/deep"
+    arming_record > "$TRANSCRIPT"
+    run_hook_from_cwd "$WORK/nested/deep"
+    assert_blocked
+    [[ "$output" == *"EVIDENCE"* ]] \
+        || { echo "block reason does not name the missing evidence: $output"; return 1; }
+}
+
+@test "stop: an unresolvable anchor (no enclosing repository) still allows the stop" {
+    # resolve_anchor's `git rev-parse --show-toplevel` fails outside any git
+    # repository; the fallback to the starting directory itself is today's
+    # (pre-F-064) behavior and must never become a block -- arming
+    # uncertainty always allows, even when the anchor computation itself
+    # cannot resolve a worktree root.
+    outside_any_repo="$BATS_TEST_TMPDIR/not-a-repo"
+    mkdir -p "$outside_any_repo"
+    run_hook_from_cwd "$outside_any_repo"
     assert_allowed
 }
 

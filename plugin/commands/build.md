@@ -146,8 +146,18 @@ command (confirmed by spike). Instead:
    spec's total task count), `<TURN_CAP>`, `<HOURS_CAP>`, and
    `<BUILD_START>` (ISO 8601, the same value used for the turn line and
    the cap checks) filled in with their real values — to a file named
-   `.g2g-goal` in the repo root, using the Write tool. Exactly this
-   shape, and nothing else in the file:
+   `.g2g-goal`, using the Write tool. The location is THE ENCLOSING GIT
+   WORKTREE ROOT — the absolute path printed by
+   `git rev-parse --show-toplevel` run from your current directory, the
+   exact anchor `g2g-lock.sh` used for the lock in step 1 and the Stop
+   hook resolves independently when it reads this file back. If your
+   session's working directory is a subdirectory of that worktree
+   (rather than the root itself), write to the worktree root's absolute
+   path, not a path relative to your current directory and not a
+   `.g2g-goal` inside the subdirectory — the hook looks only at the
+   worktree root, and a goal armed anywhere else is invisible to it and
+   will never be enforced. Exactly this shape, and nothing else in the
+   file:
 
    {"version": 1, "ownerToken": "<owner-token>", "specPath": "<spec-path>",
     "taskTotal": <N>, "turnCap": <TURN_CAP>, "hoursCap": <HOURS_CAP>,

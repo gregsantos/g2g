@@ -1,5 +1,40 @@
 # Changelog
 
+## 0.6.4 (2026-08-12)
+
+Lock path anchoring (fixes F-064): the checkout-lock protocol now
+agrees on a single anchor for the goal/lock/mutex trio regardless of
+the working directory a build is started from.
+
+### Fixed
+- `plugin/scripts/g2g-lock.sh` gained `resolve_anchor()` — `git
+  rev-parse --show-toplevel`, falling back to `$PWD` on any failure,
+  empty output, or non-directory result — and the goal, lock, and
+  mutex paths are now built from that anchor instead of the caller's
+  `$PWD`. A build started from a repository subdirectory now sees the
+  same lock as one started at the root, so a live owner is detected
+  and the second build aborts as before; per-worktree independence,
+  the CWD fallback outside any repository, and behavior when already
+  at the worktree root are all unchanged.
+- `plugin/scripts/g2g-stop.sh` gained a matching `resolve_anchor()`
+  and now resolves the goal file, the ownership-lost lock read, and
+  its head-binding `git -C` calls at that same anchor, so the Stop
+  hook and the lock helper agree on where the goal lives no matter
+  which subdirectory the session started from — closing a real gap:
+  `CLAUDE_PROJECT_DIR`, `$(pwd)`, and the hook payload's `.cwd` were
+  all confirmed to resolve to the session's starting subdirectory, not
+  the worktree root. `plugin/commands/build.md`'s Phase 2 goal-write
+  step now names the enclosing worktree root explicitly instead of the
+  ambiguous "repo root". The hook's fail-open direction when
+  resolution is uncertain is unchanged.
+- `plugin/README.md`'s one-build-per-checkout passage and
+  `CLAUDE.md`'s "The lock script is the protocol" convention now state
+  the guarantee correctly: serialization is anchored to the enclosing
+  worktree root and holds regardless of the caller's working
+  directory, and is a per-worktree guarantee — separate worktrees
+  remain independent by design, which is what allows concurrent builds
+  and worktree-isolated improve ticks.
+
 ## 0.6.3 (2026-08-12)
 
 Record-integrity follow-ups from PR #11's review cycle (F-061, F-063):
