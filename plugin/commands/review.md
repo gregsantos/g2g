@@ -12,6 +12,42 @@ You change NOTHING except two artifacts: `review-output/findings.json`
 never commit and never create branches — inspect the results, commit
 them yourself, or let an improve cycle carry them inside its fix PR.
 
+/g2g:review participates in the checkout-lock protocol as a read-only
+observer only (F-065): before writing `review-output/findings.json` it
+queries `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-lock.sh status`, the
+helper's non-mutating liveness check — see the Concurrency liveness
+check below — and never acquires, refreshes, releases, or
+creates/deletes `.g2g-goal`, `.g2g-goal.lock`, or `.g2g-goal.mutex`; it
+is a polite neighbor to the lock, never an owner of it. Unlike
+/g2g:spec and /g2g:dev Phase A, /g2g:review REFUSES outright on a live
+owner: findings.json is produced by a read-modify-write merge of the
+tracked backlog (every open finding is revalidated against a moving
+baseline), and two runs analyzing against a baseline that moved cannot
+be reconciled by any file lock — concurrent review is unsupported by
+decision, and this refusal is how that decision is enforced.
+
+## Concurrency liveness check (F-065, read-only)
+0. Before dispatching any subagent or touching
+   `review-output/findings.json`, run
+   `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-lock.sh status` — takes no owner
+   token, never creates, refreshes, reclaims, or deletes the lock,
+   goal, or mutex. Branch ONLY on its exit code:
+   - Exit 0 (`no-lock`) — proceed to Scope resolution / Procedure
+     step 1.
+   - Exit 4 (`live-owner`) — REFUSE. Report the owner token and
+     heartbeat the helper printed, state the one-line justification
+     above (concurrent review is unsupported), and STOP. Change
+     nothing, dispatch no subagents.
+   - Exit 9 (`stale-debris`) — report the owner token, heartbeat, and
+     age the helper printed, note that this is stale debris (not a
+     live owner) and that a future build's `acquire` will reclaim it
+     automatically, then proceed. Do not refuse and do not reclaim it
+     yourself.
+   - Exit 7 or 8 — the lock state cannot be safely judged (malformed
+     state or an operational failure). Report the helper's output
+     verbatim and REFUSE out of caution — a review cannot rule out a
+     live owner it cannot see. Change nothing, dispatch no subagents.
+
 ## Scope resolution
 1. Categories: `--focus` (comma-separated) if given; else
    `.claude/g2g.json` → `reviewFocus` if non-empty; else all five:

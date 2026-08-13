@@ -464,3 +464,78 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
         fi
     done
 }
+
+@test "safety: spec.md still aborts on an existing slug, and the guard is not duplicated" {
+    # spec.md step 4 already refuses to overwrite an existing spec file;
+    # T-004 (F-065, writer half) must not add a second copy of that guard
+    # while wiring in the new liveness check.
+    grep -q 'never overwrite an existing spec' "$PLUGIN_DIR/commands/spec.md"
+    count=$(grep -c 'never overwrite an existing spec' "$PLUGIN_DIR/commands/spec.md")
+    [[ "$count" -eq 1 ]] \
+        || { echo "expected exactly 1 overwrite-guard mention in spec.md, got $count"; return 1; }
+}
+
+@test "safety: spec.md queries the lock before writing its spec file, and warns-and-proceeds" {
+    # F-065 (writer half): a read-only liveness check must run before the
+    # write, and on a live owner spec.md's decision is WARN + proceed
+    # (it only ever writes a fresh file under its own slug), not refuse.
+    status_line=$(grep -n 'g2g-lock.sh status' "$PLUGIN_DIR/commands/spec.md" | head -1 | cut -d: -f1)
+    write_line=$(grep -n 'Write `specs/<slug>.json`' "$PLUGIN_DIR/commands/spec.md" | head -1 | cut -d: -f1)
+    [[ -n "$status_line" && -n "$write_line" ]] \
+        || { echo "spec.md missing status query or write step (status=$status_line write=$write_line)"; return 1; }
+    [[ "$status_line" -lt "$write_line" ]] \
+        || { echo "spec.md must query lock liveness before writing the spec file"; return 1; }
+    grep -q 'live-owner' "$PLUGIN_DIR/commands/spec.md"
+    grep -qi 'WARN' "$PLUGIN_DIR/commands/spec.md"
+    grep -q 'stale-debris' "$PLUGIN_DIR/commands/spec.md"
+    grep -qi 'owner token' "$PLUGIN_DIR/commands/spec.md"
+    grep -qi 'heartbeat' "$PLUGIN_DIR/commands/spec.md"
+}
+
+@test "safety: review.md queries the lock before writing, and refuses on a live owner" {
+    # F-065 (writer half): review's product is a read-modify-write merge
+    # of the tracked backlog, so concurrent review is unsupported by
+    # decision — unlike spec.md/dev.md Phase A, a live owner must REFUSE,
+    # not warn-and-proceed.
+    status_line=$(grep -n 'g2g-lock.sh status' "$PLUGIN_DIR/commands/review.md" | head -1 | cut -d: -f1)
+    write_line=$(grep -n 'Write `review-output/findings.json`' "$PLUGIN_DIR/commands/review.md" | head -1 | cut -d: -f1)
+    [[ -n "$status_line" && -n "$write_line" ]] \
+        || { echo "review.md missing status query or write step (status=$status_line write=$write_line)"; return 1; }
+    [[ "$status_line" -lt "$write_line" ]] \
+        || { echo "review.md must query lock liveness before writing the findings backlog"; return 1; }
+    grep -qi 'REFUSE' "$PLUGIN_DIR/commands/review.md"
+    grep -qi 'unsupported' "$PLUGIN_DIR/commands/review.md"
+    grep -q 'live-owner' "$PLUGIN_DIR/commands/review.md"
+    grep -q 'stale-debris' "$PLUGIN_DIR/commands/review.md"
+    grep -qi 'owner token' "$PLUGIN_DIR/commands/review.md"
+    grep -qi 'heartbeat' "$PLUGIN_DIR/commands/review.md"
+}
+
+@test "safety: dev.md Phase A instructs the pre-write liveness check, warn-and-proceed" {
+    # dev.md Phase A executes spec.md's procedure verbatim, but T-004
+    # requires dev.md to name the check explicitly too so a reader of
+    # dev.md alone sees the behavior and its justification.
+    phase_a=$(sed -n '/^## Phase A/,/^## Gate/p' "$PLUGIN_DIR/commands/dev.md")
+    echo "$phase_a" | grep -q 'g2g-lock.sh status' \
+        || { echo "dev.md Phase A does not mention the liveness query"; return 1; }
+    echo "$phase_a" | grep -qi 'WARN' \
+        || { echo "dev.md Phase A does not state the WARN-and-proceed choice"; return 1; }
+    echo "$phase_a" | grep -qi 'live owner\|live-owner' \
+        || { echo "dev.md Phase A does not name the live-owner case"; return 1; }
+    echo "$phase_a" | grep -qi 'stale' \
+        || { echo "dev.md Phase A does not name the stale-debris case"; return 1; }
+}
+
+@test "safety: spec.md, review.md, and dev.md's Phase A never mutate the checkout lock" {
+    # T-003's status query is strictly non-mutating; these three commands
+    # are polite neighbors, not lock owners, so none may acquire,
+    # refresh, or release the lock, or hand-create/delete the goal/mutex.
+    for f in spec.md review.md dev.md; do
+        for token in 'g2g-lock.sh acquire' 'g2g-lock.sh refresh' 'release-preflight' 'release-terminal'; do
+            if grep -qF "$token" "$PLUGIN_DIR/commands/$f"; then
+                echo "$f must never call: $token"
+                return 1
+            fi
+        done
+    done
+}
