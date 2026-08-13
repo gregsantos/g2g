@@ -82,10 +82,10 @@
         "make check passes"
       ],
       "dependsOn": [],
-      "status": "in_progress",
-      "passes": false,
+      "status": "complete",
+      "passes": true,
       "effort": "medium",
-      "notes": "",
+      "notes": "Commit a7fb070. `status` reuses exit 4 (live-owner) to match acquire's semantics for the same condition, adds exit 9 (stale-debris) since 0/2/4/5/6/7/8 were taken, exit 0 for no-lock, and falls through to the existing operational-error (8) / malformed-state (7) outcomes for an unreadable mtime or out-of-protocol lock shape — sharing existing outcome text rather than inventing subcommand-specific strings. status never calls acquire_mutex; it relies on write_lock's atomic mv so a concurrent writer cannot expose a torn read. Exit codes and output shape documented in the usage block. Four new bats tests in tests/plugin_lock.bats (28-31) incl. byte-identical/no-mutex and backdated-not-reclaimed (which then proves the debris is still reclaimable by a real acquire). All 32 lock tests ok; make check exit 0, 1..168 all ok.",
       "attempts": 0
     },
     {
