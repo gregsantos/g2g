@@ -132,10 +132,10 @@
         "T-003",
         "T-004"
       ],
-      "status": "in_progress",
-      "passes": false,
+      "status": "complete",
+      "passes": true,
       "effort": "small",
-      "notes": "",
+      "notes": "Commit 46f5455. plugin/README.md gained a 'Concurrency model' section covering all seven behaviors and explicitly stating that within-checkout concurrent builds, an isolateBuilds setting, and a lock-protected findings.json merge are not supported and not planned. Version bumped 0.6.4 -> 0.6.5 with one matching CHANGELOG entry covering T-001 through T-005. CLAUDE.md gained the write-capable-command bullet. Two judgment calls: the pre-existing 0.6.4 CHANGELOG entry's sentence about concurrent builds via separate worktrees was left untouched as a prior record (it refers to cross-worktree concurrency, which remains correct); and a Guardrails paragraph in plugin/README.md that duplicated the new section in substance was condensed to a shorter mention plus a pointer — a README edit, not a command-file edit, so the additions-only constraint on command files did not apply. make check exit 0, 173 ok / 0 not ok.",
       "attempts": 0
     }
   ]
