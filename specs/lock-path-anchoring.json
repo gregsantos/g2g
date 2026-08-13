@@ -1,4 +1,9 @@
 {
+  "verifier": {
+    "verdict": "PASS",
+    "date": "2026-08-13",
+    "summary": "All 21 acceptance criteria hold against the diff and live execution: the subdirectory bypass is closed (exit 4, no second lock), worktree independence and the CWD fallback preserved, helper and hook agree behaviorally, the hook's fail-open direction and blocking branches byte-unchanged, both key new tests fail on main, make check exit 0 (160 ok)."
+  },
   "project": "Lock Path Anchoring",
   "description": "Fix-spec from finding F-064: anchor the checkout lock, the goal file, and the Stop hook's lookup to the enclosing worktree root so one-build-per-checkout cannot be bypassed from a subdirectory",
   "context": {
