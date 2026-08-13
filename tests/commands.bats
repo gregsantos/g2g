@@ -208,6 +208,31 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     grep -B2 -A6 'Tree check' "$PLUGIN_DIR/commands/build.md" | grep -q '.g2g-goal.lock'
 }
 
+@test "safety: turn-level tree check surfaces foreign paths instead of absorbing them" {
+    # F-065 (stash half): a dirty path this build has no claim to (e.g. a
+    # concurrent /g2g:review writing the tracked findings backlog with no
+    # lock) must never be swept into this build's crash stash under a
+    # misleading g2g-crash-<task-id> label. It must be surfaced, and the
+    # two surfaced sub-cases must each have a defined next step: a foreign
+    # untracked file is reported once and remembered so later turns don't
+    # restash or re-report it, and a foreign tracked modification routes
+    # to Phase 5 (terminal partial) rather than being stashed or ignored.
+    tree_check=$(grep -A45 'Tree check' "$PLUGIN_DIR/commands/build.md")
+    echo "$tree_check" | grep -qi 'PREDICATE' \
+        || { echo "no stated predicate for probable builder debris"; return 1; }
+    echo "$tree_check" | grep -qi 'surface' \
+        || { echo "no instruction to surface a path outside the predicate"; return 1; }
+    echo "$tree_check" | grep -q 'SURFACED-FOREIGN' \
+        || { echo "no remembered-exclusion mechanism for a surfaced untracked path"; return 1; }
+    echo "$tree_check" | grep -qi 'Phase 5' \
+        || { echo "foreign tracked modification has no route to Phase 5"; return 1; }
+    # Genuine builder debris must still be recoverable the same way as before.
+    echo "$tree_check" | grep -q 'g2g-crash-<task-id>' \
+        || { echo "genuine builder debris no longer stashed as g2g-crash-<task-id>"; return 1; }
+    echo "$tree_check" | grep -qi "task card as recovery context" \
+        || { echo "stash reference no longer passed to the next builder as recovery context"; return 1; }
+}
+
 @test "safety: heartbeat refresh is ownership-checked with a terminal path" {
     # An unconditional heartbeat overwrite would steal a reclaimed lock
     # back and leave two builds running. Refresh must go through the

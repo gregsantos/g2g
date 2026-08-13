@@ -260,10 +260,44 @@ condition is MET block the stop.
    dirt (without this
    exclusion a healthy build here would be misclassified as a builder
    crash every turn, and `git stash` would not even clear it — default
-   stash ignores untracked files). If `git status` is dirty beyond those
-   exclusions (a builder crashed), stash with message
-   `g2g-crash-<task-id>` and include the stash reference in the next
-   builder's task card as recovery context.
+   stash ignores untracked files). Also exempt any path already on the
+   SURFACED-FOREIGN list (an in-memory set this build carries turn to
+   turn; empty until step 3's foreign-untracked case below adds to it) —
+   it was already reported once and must not be re-reported or restashed.
+   For every dirty path still remaining, judge it against the
+   PROBABLE-BUILDER-DEBRIS PREDICATE — state and reuse this exact
+   definition wherever this classification is needed again, rather than
+   restating it: a path is probable builder debris only if it is a
+   modification to a file that was already tracked before this turn's
+   dispatch, or an untracked file created under a path this build's own
+   tasks plausibly write to (the source, test, and doc paths implicated
+   by the spec's task descriptions). A path with no plausible connection
+   to any task in this spec — most notably an artifact another g2g
+   command owns without holding this lock, such as the tracked findings
+   backlog `/g2g:review` writes — fails the predicate. An exact predicate
+   is not achievable here: the one writer that cannot report a manifest
+   is precisely a crashed builder, and a pre-declared file list would not
+   bind one that wandered anyway; judge plausibility, don't seek
+   certainty. Handle the remaining dirty paths in this order:
+   - Foreign TRACKED modification (fails the predicate, file already
+     tracked): report the path and why it fails the predicate, then go
+     to Phase 5 now (terminal partial) instead of continuing this turn —
+     an unattributed change to a tracked file means the single-writer
+     premise of this checkout no longer holds, and Phase 4 step 5's
+     rebase would fail on it regardless. Check for this case first, since
+     it ends the turn.
+   - Foreign UNTRACKED file (fails the predicate, file untracked): report
+     it once now, naming it as possibly another session's output, then
+     add its exact path to the SURFACED-FOREIGN list for the rest of this
+     build — every later turn's tree check exempts a path on that list
+     exactly like the goal/lock exclusions above, so it is neither
+     restashed nor reported again.
+   - Every path that MATCHES the predicate (probable builder debris, a
+     builder crashed) — stash them together with message
+     `g2g-crash-<task-id>` and include the stash reference in the next
+     builder's task card as recovery context. Do this even when the turn
+     also found foreign paths above, as long as no foreign tracked
+     modification routed the turn to Phase 5 first.
 4. Select the next task: status != blocked, passes != true, and every id
    in dependsOn has passes == true. If none exists and not all tasks pass:
    go to Phase 5 (terminal stop) — the same destination as step 2's
