@@ -30,6 +30,14 @@ fail() {
     exit 1
 }
 
+deregister_sandbox_plugin() {
+    # Make this a one-shot cleanup when invoked by the EXIT trap.
+    trap - EXIT
+    ( cd "$SB" && claude plugin uninstall g2g@g2g -s project --keep-data ) \
+        > /dev/null 2>&1 \
+        || echo "smoke: warn — could not deregister project-scope plugin row for $SB"
+}
+
 if [[ -z "$ASSERT_ONLY" ]]; then
     bash "$SCRIPT_DIR/make_sandbox.sh" "$SB" > /dev/null
     git init -q --bare "$WORK/origin.git"
@@ -47,6 +55,7 @@ echo "smoke: building specs/sandbox.json headlessly (caps: 80 turns / \$20, seve
 # cover an inner TURN_CAP of 4. The sandbox now runs at TURN_CAP 8 so the
 # verifier -> fix -> re-verify loop is reachable (see make_sandbox.sh), so
 # the outer budget doubles with it.
+trap deregister_sandbox_plugin EXIT
 (
     cd "$SB" && claude -p "/g2g:build specs/sandbox.json" \
         --plugin-dir "$PLUGIN_DIR" \
@@ -57,6 +66,15 @@ echo "smoke: building specs/sandbox.json headlessly (caps: 80 turns / \$20, seve
         --max-budget-usd 20 \
         > "$WORK/run.log" 2>&1
 ) || true
+
+# The run above resolves $SB's .claude/settings.json enabledPlugins entry,
+# which auto-registers a project-scope row for $SB in the global plugin
+# registry (~/.claude/plugins/installed_plugins.json). That row has no
+# functional effect on this or any other run (the build loads the plugin via
+# --plugin-dir), but nothing prunes it once $SB is deleted below, so it's
+# cleaned up here rather than left to accumulate across runs. --assert-only
+# never invokes claude, so a preserved PARTIAL sandbox doesn't need the row.
+deregister_sandbox_plugin
 fi
 
 SPEC="$SB/specs/sandbox.json"
