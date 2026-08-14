@@ -88,8 +88,17 @@ Inside Claude Code:
 /plugin install g2g@g2g
 ```
 
-For headless or CI use, skip the marketplace and pass the plugin
-directory (or a zip URL) directly:
+For headless or CI use where the plugin is already installed via the
+marketplace (above), no extra flag is needed — `claude -p` picks up
+installed plugins the same as an interactive session:
+
+```bash
+claude -p "/g2g:go 'fix the failing lint rules'"
+```
+
+Only when the runner has no marketplace install (e.g. an ephemeral CI
+image) skip the marketplace and pass the plugin directory (or a zip
+URL) directly instead:
 
 ```bash
 claude -p "/g2g:go 'fix the failing lint rules'" --plugin-dir /path/to/g2g/plugin
@@ -146,7 +155,6 @@ The proven invocation shape:
 
 ```bash
 claude -p "/g2g:build specs/feature.json" \
-  --plugin-dir /path/to/g2g/plugin \
   --permission-mode acceptEdits \
   --allowedTools "Agent,Bash,Read,Write,Edit,Glob,Grep" \
   --setting-sources project \
@@ -156,6 +164,15 @@ claude -p "/g2g:build specs/feature.json" \
 
 Notes:
 
+- **`--plugin-dir` is not part of this shape.** If the plugin was
+  installed the normal way (`/plugin marketplace add` +
+  `/plugin install g2g@g2g`), it's already registered for this user in
+  `~/.claude/plugins/installed_plugins.json` and any `claude -p`
+  invocation picks it up with no extra flag — headless or interactive.
+  Only pass `--plugin-dir /path/to/g2g/plugin` when the runner has no
+  such install (e.g. an ephemeral CI image, or a dev checkout you want
+  to test in place of the installed release); see "Developing the
+  plugin" below for that case.
 - The CLI retries transient API errors itself and exits nonzero on
   failure — no wrapper loop is needed; use your CI runner's retry for
   whole-process failures.
