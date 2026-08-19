@@ -38,6 +38,7 @@ New to the plugin in a fresh repo? Three steps:
 | `/g2g:review [--diff-base <ref>] [--full] [--focus <cats>] [--target <path>]` | Read-only codebase review — parallel category subagents merged into the tracked findings backlog |
 | `/g2g:improve [--wait]` | One bounded improve tick: headless review → fix-spec → build → PR in a fresh worktree; `--wait` blocks until done |
 | `/g2g:improve-cycle` | Internal — the unit of work `/g2g:improve` spawns; refuses to run outside a `g2g/improve-*` worktree |
+| `/g2g:compound [<spec-path>\|F-NNN]` | Turn one completed, verified build (or one addressed review finding) into exactly one grounded learning under `docs/learnings/`; no argument resolves the most recently verified spec |
 
 ## The workflow-backed build loop (experimental)
 
@@ -373,6 +374,39 @@ artifact-tracking check reports the exact rules to remove).
 This repo tracks `specs/`, `review-output/`, and
 `.claude/settings.json` for that reason.
 
+## Compound learnings
+
+`docs/learnings/<area>/<slug>.md` is the tracked store of durable
+knowledge a completed build or an addressed finding leaves behind —
+distinct from `review-output/findings.json` (what was broken and
+whether it got fixed) and from `specs/*.json` (what a build was asked
+to do): a learning records what we now know and why it must stay that
+way. The schema — stable `L-NNN` ids, the two-track (`bug` /
+`knowledge`) frontmatter, the body section template, the overlap rule,
+and the capture preconditions — is the CONTRACT in
+`plugin/skills/writing-g2g-learnings/SKILL.md`; read it before writing
+or reviewing any entry.
+
+`/g2g:compound [<spec-path>|F-NNN]` is the only command that writes
+this store. Given a spec path, it captures from that spec's
+`verifier`-`PASS` record; given an `F-NNN`, from that finding's
+`addressed` fix; given no argument, from the most recently modified
+`specs/*.json` whose `verifier` field records `PASS`. It refuses —
+never warns — when the resolved source has not actually settled (no
+`PASS` verdict, no landed fix), and writes exactly one learning file
+per run. Every write is validated with
+`${CLAUDE_PLUGIN_ROOT}/scripts/g2g-learning-check.sh`, the deterministic
+grounding checker: it verifies every path cited resolves in the
+working tree, every commit SHA cited resolves and is reachable from the
+upstream default branch, and no drafting scaffold (a stray `{{`, a bare
+`TODO`, a leftover "Learning 2" heading) survived into the file. Exit 0
+means clean; exit 4 means at least one flag needs human adjudication
+(fix the claim, annotate it as historical, or confirm it as an
+intentional known limitation) before the run can call itself done.
+`/g2g:compound` holds the checkout lock like `/g2g:build` and
+`/g2g:go` — see item 8 of the [Concurrency model](#concurrency-model)
+below.
+
 ## Concurrency model
 
 This section is the single normative description of how g2g serializes
@@ -434,6 +468,17 @@ change the model, change it here first.
 7. `/g2g:status` is read-only and always safe to run concurrently with
    anything — it never touches the lock, the goal file, or any tracked
    artifact.
+8. `/g2g:compound` **holds** the lock — it is a mutating participant
+   like `/g2g:build` and `/g2g:go`, not a read-only status query like
+   6 above, because it writes under `docs/learnings/`. It acquires
+   before resolving its source, refreshes the heartbeat at phase
+   boundaries, and releases with `release-terminal` (not
+   `release-preflight`) on every terminal path — it arms no `.g2g-goal`
+   of its own, so the only goal file that can exist once it holds the
+   lock is either absent or orphaned debris from a past aborted run,
+   which `release-terminal` is safe to clear. A live `/g2g:build`,
+   `/g2g:go`, or another live `/g2g:compound` in the same checkout makes
+   it abort with the same live-owner outcome as 1.
 
 **Not supported, and not planned:** concurrent builds within a single
 checkout (behavior 1 above is exactly what prevents this); an
