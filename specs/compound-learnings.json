@@ -121,9 +121,9 @@
       ],
       "status": "in_progress",
       "passes": false,
-      "attempts": 0,
+      "attempts": 1,
       "effort": "large",
-      "notes": ""
+      "notes": "Attempt 1 aborted: builder subagent terminated by an API error (host machine slept), not a task failure. It had written all three learnings under docs/learnings/ and was about to run the grounding validator; CLAUDE.md, plugin/README.md, plugin.json and CHANGELOG.md were untouched. Partial work preserved in git stash g2g-crash-T-004."
     }
   ]
 }
