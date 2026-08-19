@@ -10,8 +10,10 @@
 # caller's job. Same posture as g2g-evidence.sh and g2g-stop.sh: header
 # line, per-item lines, a single summary line, frozen exit codes, no writes.
 #
-# Usage: g2g-learning-check.sh [path-to-learning.md]
-#   With an argument, validates exactly that file.
+# Usage: g2g-learning-check.sh [path-to-learning.md|path-to-directory]
+#   With a file argument, validates exactly that file.
+#   With a directory argument, validates every *.md file found under it
+#   (recursively) — same expansion the no-argument form uses.
 #   With no argument, validates every *.md file under docs/learnings/.
 #
 # Mechanical checks per file:
@@ -40,8 +42,16 @@ TARGET="${1:-}"
 
 FILES=()
 if [[ -n "$TARGET" ]]; then
-    [[ -f "$TARGET" ]] || fail 2 "learning file not found: $TARGET"
-    FILES+=("$TARGET")
+    if [[ -f "$TARGET" ]]; then
+        FILES+=("$TARGET")
+    elif [[ -d "$TARGET" ]]; then
+        while IFS= read -r found_file; do
+            [[ -n "$found_file" ]] || continue
+            FILES+=("$found_file")
+        done < <(find "$TARGET" -type f -name '*.md' 2>/dev/null | sort)
+    else
+        fail 2 "learning file not found: $TARGET"
+    fi
 else
     while IFS= read -r found_file; do
         [[ -n "$found_file" ]] || continue
@@ -207,6 +217,11 @@ for learning_file in "${FILES[@]}"; do
         if [[ ! "$token" =~ ^[A-Za-z0-9._/-]+$ ]]; then
             continue
         fi
+        # An absolute path (leading slash) is never repo-relative — it is
+        # legitimately a system/toolchain path (e.g. `/opt/homebrew/bin/bash`)
+        # and resolving it against REPO_ROOT would misreport it as a missing
+        # repo path, pressuring authors to de-backtick real, verifiable paths.
+        [[ "$token" == /* ]] && continue
         if [[ -e "$REPO_ROOT/$token" ]]; then
             echo "path: \`$token\` -> ok"
         else

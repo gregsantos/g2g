@@ -348,6 +348,42 @@ EOF
     [[ "$output" == *"summary: 2 files | 0 invalid | 0 flagged | 2 clean"* ]]
 }
 
+@test "learning-check: a directory argument with clean learnings exits 0" {
+    write_good_knowledge "docs/learnings/scripts/one.md"
+    write_good_bug "docs/learnings/scripts/two.md"
+    run "$CHECK" docs/learnings/scripts
+    [[ "$status" -eq 0 ]] || { echo "$output"; return 1; }
+    [[ "$output" == *"summary: 2 files | 0 invalid | 0 flagged | 2 clean"* ]]
+}
+
+@test "learning-check: a directory argument with no learning files exits 3" {
+    mkdir -p docs/learnings/scripts/empty-subdir
+    run "$CHECK" docs/learnings/scripts/empty-subdir
+    [[ "$status" -eq 3 ]]
+    [[ "$output" == *"no learning files found to check"* ]]
+}
+
+@test "learning-check: docs/learnings/ itself as a directory argument behaves like no argument" {
+    write_good_knowledge "docs/learnings/scripts/one.md"
+    write_good_bug "docs/learnings/scripts/two.md"
+    run "$CHECK" docs/learnings
+    [[ "$status" -eq 0 ]] || { echo "$output"; return 1; }
+    [[ "$output" == *"summary: 2 files | 0 invalid | 0 flagged | 2 clean"* ]]
+}
+
+@test "learning-check: an absolute path in backticks does not raise a flag" {
+    write_good_knowledge "docs/learnings/scripts/abs-path.md"
+    {
+        echo ""
+        echo "## More evidence"
+        echo "System toolchain: \`/opt/homebrew/bin/bash\`."
+    } >> docs/learnings/scripts/abs-path.md
+    run "$CHECK" docs/learnings/scripts/abs-path.md
+    [[ "$status" -eq 0 ]] || { echo "$output"; return 1; }
+    [[ "$output" != *"/opt/homebrew/bin/bash"*"FLAG"* ]]
+    [[ "$output" != *"path: \`/opt/homebrew/bin/bash\`"* ]]
+}
+
 @test "learning-check: contains no model or network invocation" {
     run grep -Ei 'claude|curl|wget|http' "$CHECK"
     # The only match allowed is the case-pattern that SKIPS http(s) links
