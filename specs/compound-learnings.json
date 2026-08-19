@@ -65,11 +65,11 @@
       "dependsOn": [
         "T-001"
       ],
-      "status": "in_progress",
-      "passes": false,
+      "status": "complete",
+      "passes": true,
       "attempts": 0,
       "effort": "medium",
-      "notes": ""
+      "notes": "Added plugin/scripts/g2g-learning-check.sh to the Makefile lint file list — otherwise make lint silently skips the new script and that criterion passes vacuously. Only change outside the two new files. Reachability: resolves the upstream default branch via origin/HEAD symref, falling back to origin/main|origin/master; with no origin configured every resolvable SHA is conservatively reported head-only rather than passing silently. Path/link citation detection is scoped to backtick-quoted slash-bearing tokens and standard markdown links — a deliberate documented boundary avoiding false positives on enum values and command names. Frontmatter/body shape matches T-001 field-for-field, including the knowledge-track omit rule enforced as an invalid-frontmatter condition. Did not touch docs/learnings/ (T-004 seeds it). make check: 232 ok / 0 not ok."
     },
     {
       "id": "T-003",
