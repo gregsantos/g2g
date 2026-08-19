@@ -1,0 +1,134 @@
+{
+  "project": "Compound learnings store",
+  "description": "Add a durable, grounded learnings store to g2g: findings say what was broken, learnings say what we now know and why it must stay that way.",
+  "context": {
+    "currentState": "g2g accumulates FINDINGS (review-output/findings.json, stable F-IDs, dedup + stale/rejected lifecycle) but has no store for durable knowledge. The rationale behind hard-won invariants is therefore inlined into CLAUDE.md (F-059, F-060, F-061), where it is always-loaded, unindexed, unversioned against the code it describes, and grows without bound. A build produces a rich structured record — spec acceptanceCriteria, per-task notes with commit SHAs, the verifier verdict, and a deterministic evidence run — and that record is discarded once the PR merges.",
+    "targetState": "A tracked docs/learnings/ store with stable L-IDs, a two-track frontmatter schema that makes entries retrievable, a deterministic grounding validator that refuses to let unverified claims enter the store, and a /g2g:compound command that turns a completed build (or an addressed finding) into exactly one grounded learning. CLAUDE.md keeps every prohibition and its one-line why, and cites L-IDs for the long-form incident record instead of carrying it inline.",
+    "constraints": [
+      "Ships as installed plugin behavior: everything under plugin/ is subject to the version-bump rule. The bump is assigned to T-004 ONLY — builders on T-001, T-002 and T-003 must NOT bump plugin/.claude-plugin/plugin.json or add a CHANGELOG section.",
+      "/g2g:compound writes to the checkout, so it MUST join the checkout-lock protocol (acquire/refresh/release-terminal via g2g-lock.sh) exactly as build.md and go.md do. Never write unconditionally. See plugin/README.md 'Concurrency model'.",
+      "g2g-learning-check.sh is a deterministic script and must never call a model, never edit a file, and never auto-resolve a flag — it reports, a human or the command adjudicates. Same posture as g2g-evidence.sh and g2g-stop.sh.",
+      "Safety prohibitions stay always-loaded. The CLAUDE.md migration in T-004 removes NO prohibition and NO one-line rationale; only long-form incident detail moves out, replaced by an L-ID citation.",
+      "Shell is bash and must be shellcheck-clean against the repo .shellcheckrc. Tests are bats, one behavior per test, golden output where format is contractual.",
+      "Do not add a CONCEPTS.md or any third vocabulary store — CLAUDE.md and plugin/README.md already carry vocabulary, and a third store is the accretion problem this spec exists to fix.",
+      "Do not port session-history archaeology. g2g's spec + verifier record IS the source of truth; reconstructing history from transcripts is explicitly out of scope."
+    ],
+    "verificationCommands": [
+      "make check"
+    ]
+  },
+  "tasks": [
+    {
+      "id": "T-001",
+      "title": "Add the writing-g2g-learnings skill (schema and rules contract)",
+      "description": "Create plugin/skills/writing-g2g-learnings/SKILL.md as the single contract for the learnings store, mirroring how plugin/skills/writing-g2g-specs/SKILL.md contracts the spec format. It is lazy-loaded, so detail here costs almost nothing resident — put the full schema in it rather than in CLAUDE.md.\n\nIt must define: (1) store layout docs/learnings/<category>/<slug>.md and the stable L-ID convention (L-001, L-002, ... allocated as highest-existing + 1, never reused, mirroring the existing F-ID convention in review-output/findings.json); (2) a two-track YAML frontmatter schema — a BUG track (a defect that was diagnosed and fixed) and a KNOWLEDGE track (a convention, architectural decision, or workflow rule that must survive turnover) — sharing required fields and differing in which extra fields are required; (3) the body section template; (4) capture preconditions; (5) the overlap rule; (6) the five-outcome maintenance model reserved for the follow-up refresh command.\n\nEnum values must describe g2g's domain (commands, agents, scripts, hooks, templates, tests, evals, ci, config, docs), NOT a web framework's. Read plugin/skills/writing-g2g-specs/SKILL.md first and match its voice, length, and table style.\n\nDo NOT bump the plugin version or touch CHANGELOG.md — T-004 owns the bump for this whole spec.",
+      "acceptanceCriteria": [
+        "plugin/skills/writing-g2g-learnings/SKILL.md exists with YAML frontmatter carrying exactly a `name` and a `description` field, matching the frontmatter shape of plugin/skills/writing-g2g-specs/SKILL.md",
+        "The skill documents required frontmatter fields shared by both tracks: id (L-NNN), title, date (YYYY-MM-DD), track (bug|knowledge), area, severity, tags",
+        "The skill documents bug-track-only required fields (symptoms, rootCause, resolution) and states that the knowledge track requires none of them",
+        "Every enum the skill defines names g2g-domain values; the string 'rails' does not appear anywhere in the file (case-insensitive)",
+        "The skill states the L-ID allocation rule: highest existing L-ID plus one, never reused, and cites review-output/findings.json's F-ID convention as the precedent it mirrors",
+        "The skill states 'one learning per capture run' and explains that batching several learnings through one run is what leaks drafting scaffold such as 'Learning 3' into written docs",
+        "The skill states the overlap rule: before creating a new learning, check existing learnings sharing an area or tag, and update the existing one when overlap is high rather than adding a near-duplicate",
+        "The skill states 'delete, don't archive' — no _archived/ directory, git history is the archive, and `git log --diff-filter=D -- docs/learnings/` recovers a deleted learning",
+        "The skill documents the five maintenance outcomes (Keep, Update, Consolidate, Replace, Delete) with a one-line default action each, and states that Keep writes nothing (no review breadcrumbs)",
+        "The skill states the retrieval-value test for whether two learnings stay separate, and states that age alone is not a staleness signal",
+        "The skill states that a learning contradicting CLAUDE.md, plugin/README.md, or a pinned bats assertion is urgent rather than routine drift",
+        "plugin/.claude-plugin/plugin.json is unchanged by this task and CHANGELOG.md has no new section",
+        "make check passes"
+      ],
+      "dependsOn": [],
+      "status": "complete",
+      "passes": true,
+      "attempts": 0,
+      "effort": "medium",
+      "notes": "No conflicts found. Task was not previously implemented (skills dir had only reviewing-codebase and writing-g2g-specs before this change). Version bump and CHANGELOG left entirely to T-004 per spec constraint. The body-section template documents track-conditional headers (Root Cause/Resolution for bug, Decision/Rationale for knowledge), with a note that only the relevant headers appear in an actual instance file — a design choice within task discretion. T-002/T-003/T-004 builders should read this skill for the exact frontmatter/body shape. make check: 215 ok / 0 not ok, exit 0."
+    },
+    {
+      "id": "T-002",
+      "title": "Add g2g-learning-check.sh, the deterministic grounding validator",
+      "description": "Create plugin/scripts/g2g-learning-check.sh plus tests/plugin_learning_check.bats. This is the load-bearing piece: a learning that enters the store becomes trusted knowledge future agents act on WITHOUT re-verifying, so its claims are checked against the tree before they compound. Read plugin/scripts/g2g-evidence.sh first and follow its conventions — header line, per-item lines, a single summary line, frozen exit codes, no model call, no writes.\n\nUsage: `g2g-learning-check.sh <path-to-learning.md>` validates one file; with no argument it validates every file under docs/learnings/.\n\nMechanical checks: (a) frontmatter parses as YAML and carries every required field for its declared track, with enum values and a YYYY-MM-DD date; (b) every repo-relative path cited in the body exists in the working tree; (c) every 7-to-40-character hex commit SHA cited in the body resolves, AND is reachable from the upstream default branch — a SHA reachable only from HEAD is reported as a DISTINCT flag from one that does not resolve at all, because a local-only SHA is one squash-merge away from unreachable and g2g's merge-never-squash rule exists for exactly that reason; (d) no drafting scaffold remains (a `{{` mustache, a bare `TODO`, or the literal pattern `Learning <digit>`); (e) every relative markdown link target resolves.\n\nThe script REPORTS flags and never resolves them: it must not edit any file, and a flagged run is not a failure of the learning, because learnings legitimately cite deleted paths and pre-fix states. Adjudication is the caller's job (T-003).\n\nDo NOT bump the plugin version or touch CHANGELOG.md — T-004 owns the bump for this whole spec.",
+      "acceptanceCriteria": [
+        "plugin/scripts/g2g-learning-check.sh exists, is executable (mode 755), and starts with a bash shebang",
+        "`make lint` reports no shellcheck findings for the new script",
+        "Exit codes are exactly: 0 = all checks clean, 2 = a learning file is missing or its frontmatter is invalid, 3 = no learning files found to check, 4 = at least one flag raised requiring adjudication",
+        "tests/plugin_learning_check.bats exists and pins each of the four exit codes with a separate test",
+        "A test pins that a SHA reachable only from HEAD produces a different flag label than a SHA that resolves nowhere",
+        "A test pins that a cited repo-relative path which does not exist raises a flag",
+        "A test pins that drafting scaffold (`{{`, a bare TODO, or `Learning <digit>`) raises a flag",
+        "A test pins the exact header line and the exact summary line, golden-output style, matching how tests/plugin_evidence.bats pins g2g-evidence.sh's format",
+        "A test asserts the script leaves its input file byte-identical after a run that raises flags — the script never edits",
+        "The script contains no model or network invocation: `grep -Ei 'claude|curl|wget|http' plugin/scripts/g2g-learning-check.sh` returns no functional call site",
+        "plugin/.claude-plugin/plugin.json is unchanged by this task and CHANGELOG.md has no new section",
+        "make check passes"
+      ],
+      "dependsOn": [
+        "T-001"
+      ],
+      "status": "complete",
+      "passes": true,
+      "attempts": 0,
+      "effort": "medium",
+      "notes": "Added plugin/scripts/g2g-learning-check.sh to the Makefile lint file list — otherwise make lint silently skips the new script and that criterion passes vacuously. Only change outside the two new files. Reachability: resolves the upstream default branch via origin/HEAD symref, falling back to origin/main|origin/master; with no origin configured every resolvable SHA is conservatively reported head-only rather than passing silently. Path/link citation detection is scoped to backtick-quoted slash-bearing tokens and standard markdown links — a deliberate documented boundary avoiding false positives on enum values and command names. Frontmatter/body shape matches T-001 field-for-field, including the knowledge-track omit rule enforced as an invalid-frontmatter condition. Did not touch docs/learnings/ (T-004 seeds it). make check: 232 ok / 0 not ok."
+    },
+    {
+      "id": "T-003",
+      "title": "Add the /g2g:compound command (capture)",
+      "description": "Create plugin/commands/compound.md, a numbered imperative procedure in the house style — read plugin/commands/go.md first for the shortest complete example of the lock protocol, and plugin/commands/review.md for how a command reads a tracked record.\n\nArguments: `/g2g:compound [<spec-path>|F-NNN]`. With a spec path, the source of truth is that spec — its acceptanceCriteria, per-task notes, cited commit SHAs, and the top-level verifier field. With an F-NNN, the source is that finding in review-output/findings.json plus the commits that addressed it. With no argument, resolve the most recently modified spec under specs/ carrying a non-null verifier field.\n\nPhases: (1) acquire the checkout lock and refresh it, releasing via `g2g-lock.sh release-terminal <owner-token>` on EVERY terminal path including abort; (2) check preconditions — refuse when the work is not finished, and state that a spec with no verifier verdict is a refusal, not a warning; (3) read the source record, never the conversation, and never assert behavior from memory — read the defining source line before asserting it; (4) check overlap against existing learnings per the writing-g2g-learnings skill and update in place when overlap is high; (5) write EXACTLY ONE learning; (6) run `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-learning-check.sh` on the written file and adjudicate every flag with one of exactly three resolutions — fix the claim, annotate it as historical, or confirm it intentional — never an automatic pass and never an automatic rewrite; re-run until clean or every remaining flag is confirmed; (7) report.\n\nThe command must never write CLAUDE.md, plugin/README.md, or any other instruction file — a command that edits the repo's operating contract as a side effect is out of scope here.\n\nDo NOT bump the plugin version or touch CHANGELOG.md — T-004 owns the bump for this whole spec.",
+      "acceptanceCriteria": [
+        "plugin/commands/compound.md exists with frontmatter `description` and `argument-hint` that match the behavior the body specifies",
+        "The procedure acquires the checkout lock before its first write and calls `g2g-lock.sh release-terminal <owner-token>` on every terminal path, abort paths included",
+        "The procedure states that a spec whose top-level verifier field is null or absent is a refusal to capture, not a warning",
+        "The procedure runs ${CLAUDE_PLUGIN_ROOT}/scripts/g2g-learning-check.sh against the file it wrote, and names all three adjudication resolutions (fix, annotate, confirm intentional) while forbidding an automatic pass",
+        "The procedure states that it re-runs the check script after any body edit until the run is clean or every remaining flag is explicitly confirmed intentional",
+        "The procedure writes exactly one learning file per invocation and says so explicitly",
+        "The procedure explicitly forbids writing CLAUDE.md, plugin/README.md, or any other instruction file",
+        "The procedure instructs reading the defining source line before asserting code behavior, and preferring a PR number over a commit SHA when citing merged work",
+        "tests/commands.bats gains assertions for compound.md covering its frontmatter fields and its release-terminal call, following the pattern already used there for the other commands",
+        "plugin/.claude-plugin/plugin.json is unchanged by this task and CHANGELOG.md has no new section",
+        "make check passes"
+      ],
+      "dependsOn": [
+        "T-001",
+        "T-002"
+      ],
+      "status": "complete",
+      "passes": true,
+      "attempts": 0,
+      "effort": "medium",
+      "notes": "Uses release-terminal (not go.md release-preflight) per the explicit acceptance criterion. Builder verified from plugin/scripts/g2g-lock.sh that acquire reclaim always deletes goal+lock together and only build.md writes .g2g-goal after acquiring, so any .g2g-goal surviving a successful /g2g:compound acquire can only be dead orphaned debris, never a live build. Reasoning documented inline in compound.md so it need not be re-derived. Added 9 @test blocks to tests/commands.bats (tests 50-58). plugin/README.md Concurrency model NOT updated — out of scope here, covered by T-004. make check: 241 tests ok, exit 0."
+    },
+    {
+      "id": "T-004",
+      "title": "Seed the store from F-059/F-060/F-061, document it, and bump the version",
+      "description": "THIS TASK OWNS THE VERSION BUMP FOR THE ENTIRE SPEC. T-001, T-002 and T-003 were told not to bump; do it here exactly once.\n\nFour parts.\n\n(1) Seed docs/learnings/ with three real learnings, L-001 from F-059 (evidence head-binding), L-002 from F-060 (the bats enforcement canary and macOS bash 3.2 swallowing mid-test asserts), L-003 from F-061 (post-verifier-PASS changes amend the spec record). Take the long-form incident detail from CLAUDE.md, review-output/findings.json, CHANGELOG.md, and the commits that addressed each finding. Every one must pass plugin/scripts/g2g-learning-check.sh cleanly or with every flag confirmed intentional.\n\n(2) Migrate CLAUDE.md CONSERVATIVELY. Every prohibition and every one-line rationale STAYS — these are always-loaded safety rules and moving them into a lazily-loaded doc is the one thing this spec must not do. What moves is the long-form incident record only, and each affected bullet gains an L-ID citation next to its existing F-ID citation. Add one pointer line naming docs/learnings/ as the store and /g2g:compound as the way entries get written.\n\n(3) Document the command in plugin/README.md, including an entry in its 'Concurrency model' section recording that /g2g:compound holds the lock (as opposed to the read-only status query used by spec.md, review.md, and dev.md Phase A).\n\n(4) Bump plugin/.claude-plugin/plugin.json from 0.6.5 to 0.7.0 — a minor bump, since this adds a command, a skill, and a script rather than fixing behavior — and add the matching ## 0.7.0 section to CHANGELOG.md in the same commit, since scripts/tag-release.sh reads the notes as of the bump commit and fails on a bump whose notes arrive later.",
+      "acceptanceCriteria": [
+        "docs/learnings/ contains exactly three seeded learnings with ids L-001, L-002 and L-003, derived from F-059, F-060 and F-061 respectively",
+        "`plugin/scripts/g2g-learning-check.sh docs/learnings/` exits 0, or exits 4 with every remaining flag annotated in the learning body as intentional and historical",
+        "Each seeded learning cites its source finding id (F-059, F-060, F-061) in its frontmatter or body",
+        "No prohibition and no one-line rationale was removed from CLAUDE.md: every 'never' / 'must' sentence present in CLAUDE.md before this task is still present after it",
+        "The CLAUDE.md bullets that previously cited F-059, F-060 and F-061 now also cite the corresponding L-ID",
+        "CLAUDE.md gains exactly one pointer line naming docs/learnings/ as the learnings store and /g2g:compound as the command that writes it",
+        "CLAUDE.md is not longer than it was before this task, measured in characters",
+        "plugin/README.md documents /g2g:compound and lists it in the 'Concurrency model' section as a lock-holding command",
+        "plugin/.claude-plugin/plugin.json version is exactly 0.7.0",
+        "CHANGELOG.md has a ## 0.7.0 section, non-empty, added in the same commit as the version bump",
+        "`scripts/check-version-bump.sh` passes against the default branch",
+        "make check passes"
+      ],
+      "dependsOn": [
+        "T-003"
+      ],
+      "status": "complete",
+      "passes": true,
+      "attempts": 1,
+      "effort": "large",
+      "notes": "Attempt 2 (attempt 1 died to an API error, host slept). Recovered the g2g-crash-T-004 stash but reviewed rather than trusted it, finding two real defects: bug-track L-001/L-002 were missing the required symptoms/rootCause/resolution FRONTMATTER fields (present only as body headers), and the validator was flagging origin/main plus Homebrew bash fallback paths as missing repo-relative paths because they were backtick-quoted — de-backticked rather than misrepresented as verified repo paths. All cited SHAs (2151921, f2304fe, 29d850d, 522ef45, 999211b) independently verified to resolve and be reachable from origin/main. Verified T-001/T-002/T-003 left plugin.json at 0.6.5 before performing the sole bump. Validator: 3 files | 0 invalid | 0 flagged | 3 clean, exit 0. CLAUDE.md 15359 chars vs 15378 baseline; never/must sentence count 28 = 28. make check: 241 tests ok, exit 0."
+    }
+  ],
+  "verifier": {
+    "verdict": "PASS",
+    "date": "2026-08-19",
+    "summary": "All 4 tasks and 48 acceptance criteria verified against the branch diff; round 1 FAIL on a directory-argument defect in g2g-learning-check.sh was fixed in 37a8e4e and re-verified against independently built fixtures. make check: 245 tests, 0 not ok."
+  }
+}

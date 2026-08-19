@@ -1,5 +1,46 @@
 # Changelog
 
+## 0.7.0 (2026-08-18)
+
+Compound learnings store: a tracked `docs/learnings/` store with stable
+`L-NNN` ids, a two-track (`bug` / `knowledge`) frontmatter schema, a
+deterministic grounding validator, and a `/g2g:compound` command that
+turns one completed build or one addressed finding into exactly one
+grounded learning. `CLAUDE.md` now cites `L-NNN` ids for long-form
+incident detail instead of carrying it inline, with every prohibition
+and one-line rationale kept in place.
+
+### Added
+- `plugin/skills/writing-g2g-learnings/SKILL.md` — the CONTRACT for the
+  learnings store: L-ID allocation, the two-track frontmatter schema,
+  the body section template, the overlap rule, capture preconditions,
+  and the five maintenance outcomes for a future refresh pass.
+- `plugin/scripts/g2g-learning-check.sh` — the deterministic grounding
+  validator for `docs/learnings/`: verifies frontmatter against the
+  schema, that every cited path exists and every cited commit SHA
+  resolves and is reachable from the upstream default branch, and that
+  no drafting scaffold survived into the file. Exit 0 clean / 2
+  invalid frontmatter / 3 no learning files found / 4 flags needing
+  adjudication.
+- `plugin/commands/compound.md` (`/g2g:compound [<spec-path>|F-NNN]`) —
+  turns one verifier-`PASS` spec or one addressed finding into exactly
+  one grounded learning, refusing rather than warning on an unsettled
+  source. Joins the checkout-lock protocol (acquire/refresh/
+  release-terminal), documented in `plugin/README.md`'s Concurrency
+  model as a lock-holding command alongside `/g2g:build` and
+  `/g2g:go`.
+- `docs/learnings/` seeded with three learnings: L-001 (evidence
+  head-binding, F-059), L-002 (bash 3.2 assert-enforcement canary,
+  F-060), and L-003 (post-verifier-PASS spec amendment, F-061).
+
+### Changed
+- `CLAUDE.md` bullets that cite F-059, F-060, and F-061 now also cite
+  the corresponding L-ID, and gained one pointer line naming
+  `docs/learnings/` and `/g2g:compound`.
+- `plugin/README.md` documents `/g2g:compound` in the Commands table
+  and adds a "Compound learnings" section, plus item 8 in the
+  Concurrency model section.
+
 ## 0.6.5 (2026-08-13)
 
 Concurrency safety, phase 1 (F-065, F-066): every write-capable command

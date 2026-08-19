@@ -19,6 +19,7 @@ catalog at `.claude-plugin/marketplace.json` installs `./plugin`).
 
 Full command/config/guardrail reference: [plugin/README.md](plugin/README.md).
 Operator runbook: [docs/G2G_PLUGIN_REF.md](docs/G2G_PLUGIN_REF.md).
+Learnings store: [docs/learnings/](docs/learnings/), written by `/g2g:compound`.
 
 # Validation
 
@@ -29,7 +30,7 @@ markdown, or tests:
 - Tests: `make test` (requires bats-core and a bash >= 4:
   `brew install bats-core bash` — macOS system bash 3.2 silently
   swallows failing mid-test `[[ ]]` asserts, so the target refuses to
-  run without an enforcing bash; F-060)
+  run without an enforcing bash; F-060, L-002)
 - Lint: `make lint` (requires shellcheck: `brew install shellcheck`)
 - Behavioral: `make smoke` — real headless build against a throwaway
   sandbox; costs API dollars and minutes. Run as the merge gate for
@@ -84,11 +85,9 @@ g2g/
 - **The evidence script's output is frozen.** `tests/plugin_evidence.bats`
   pins `g2g-evidence.sh`'s header, footer, summary line, and exit codes
   (0 ok / 2 invalid spec / 3 no verificationCommands); `g2g-stop.sh` keys
-  its completion check on the verdict line and, for a proven-armed
-  session, also compares the paired block's `head:` line against
-  current repository state before allowing the stop (F-059). Change
-  output format only with the tests, `g2g-stop.sh`, and build.md
-  updated together.
+  its completion check on the verdict line and a head-binding check
+  gating proven-armed stops (F-059, L-001). Change output format only
+  with the tests, `g2g-stop.sh`, and build.md updated together.
 - **The Stop hook is deterministic — never make it a prompt again.**
   `plugin/scripts/g2g-stop.sh` is the sole implementation of goal
   enforcement; `hooks.json` only registers it. `tests/plugin_stop.bats`
@@ -115,11 +114,11 @@ g2g/
   `improve.enabled: false` in every `plugin/templates/*.json`.
 - **The test harness proves its own enforcement.** The Makefile `test`
   target resolves a bash whose errexit actually fails mid-test `[[ ]]`
-  asserts and requires `tests/canary/enforcement.bats` — a
-  deliberately failing assert — to report `not ok` before trusting the
-  suite. Never simplify the target back to bare `bats tests/`, and
+  asserts and requires `tests/canary/enforcement.bats` to report
+  `not ok` before trusting the suite. Never simplify the target back
+  to bare `bats tests/`, and
   never "fix" the canary so it passes: a green it can't refute is the
-  exact failure mode it exists to catch (F-060).
+  exact failure mode it exists to catch (F-060, L-002).
 - **Safety invariants — never weaken:** branch-first and PR-gated (no
   writes to the default branch, nothing merges itself, one push at PR
   time); caps on every autonomous run (turns, hours, dollars — no
@@ -216,7 +215,7 @@ g2g/
   criterion to the as-shipped design and append an amendment note to the
   task's notes citing the superseding commit(s); the spec's `verifier`
   field is never rewritten — it remains the record of the PASS against
-  the original criteria (F-061).
+  the original criteria (F-061, L-003).
 - **Merge `g2g/*` PRs, never squash them.** The rule above puts per-task
   commit SHAs in task notes; squashing makes every cited SHA unreachable
   from a fresh clone of the default branch, so the spec's own record
