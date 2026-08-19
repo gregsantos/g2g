@@ -13,7 +13,9 @@
       "Do not add a CONCEPTS.md or any third vocabulary store — CLAUDE.md and plugin/README.md already carry vocabulary, and a third store is the accretion problem this spec exists to fix.",
       "Do not port session-history archaeology. g2g's spec + verifier record IS the source of truth; reconstructing history from transcripts is explicitly out of scope."
     ],
-    "verificationCommands": ["make check"]
+    "verificationCommands": [
+      "make check"
+    ]
   },
   "tasks": [
     {
@@ -36,7 +38,7 @@
         "make check passes"
       ],
       "dependsOn": [],
-      "status": "pending",
+      "status": "in_progress",
       "passes": false,
       "attempts": 0,
       "effort": "medium",
@@ -60,7 +62,9 @@
         "plugin/.claude-plugin/plugin.json is unchanged by this task and CHANGELOG.md has no new section",
         "make check passes"
       ],
-      "dependsOn": ["T-001"],
+      "dependsOn": [
+        "T-001"
+      ],
       "status": "pending",
       "passes": false,
       "attempts": 0,
@@ -84,7 +88,10 @@
         "plugin/.claude-plugin/plugin.json is unchanged by this task and CHANGELOG.md has no new section",
         "make check passes"
       ],
-      "dependsOn": ["T-001", "T-002"],
+      "dependsOn": [
+        "T-001",
+        "T-002"
+      ],
       "status": "pending",
       "passes": false,
       "attempts": 0,
@@ -109,7 +116,9 @@
         "`scripts/check-version-bump.sh` passes against the default branch",
         "make check passes"
       ],
-      "dependsOn": ["T-003"],
+      "dependsOn": [
+        "T-003"
+      ],
       "status": "pending",
       "passes": false,
       "attempts": 0,
