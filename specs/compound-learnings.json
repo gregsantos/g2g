@@ -125,5 +125,10 @@
       "effort": "large",
       "notes": "Attempt 2 (attempt 1 died to an API error, host slept). Recovered the g2g-crash-T-004 stash but reviewed rather than trusted it, finding two real defects: bug-track L-001/L-002 were missing the required symptoms/rootCause/resolution FRONTMATTER fields (present only as body headers), and the validator was flagging origin/main plus Homebrew bash fallback paths as missing repo-relative paths because they were backtick-quoted — de-backticked rather than misrepresented as verified repo paths. All cited SHAs (2151921, f2304fe, 29d850d, 522ef45, 999211b) independently verified to resolve and be reachable from origin/main. Verified T-001/T-002/T-003 left plugin.json at 0.6.5 before performing the sole bump. Validator: 3 files | 0 invalid | 0 flagged | 3 clean, exit 0. CLAUDE.md 15359 chars vs 15378 baseline; never/must sentence count 28 = 28. make check: 241 tests ok, exit 0."
     }
-  ]
+  ],
+  "verifier": {
+    "verdict": "PASS",
+    "date": "2026-08-19",
+    "summary": "All 4 tasks and 48 acceptance criteria verified against the branch diff; round 1 FAIL on a directory-argument defect in g2g-learning-check.sh was fixed in 37a8e4e and re-verified against independently built fixtures. make check: 245 tests, 0 not ok."
+  }
 }
