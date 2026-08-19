@@ -38,11 +38,11 @@
         "make check passes"
       ],
       "dependsOn": [],
-      "status": "in_progress",
-      "passes": false,
+      "status": "complete",
+      "passes": true,
       "attempts": 0,
       "effort": "medium",
-      "notes": ""
+      "notes": "No conflicts found. Task was not previously implemented (skills dir had only reviewing-codebase and writing-g2g-specs before this change). Version bump and CHANGELOG left entirely to T-004 per spec constraint. The body-section template documents track-conditional headers (Root Cause/Resolution for bug, Decision/Rationale for knowledge), with a note that only the relevant headers appear in an actual instance file — a design choice within task discretion. T-002/T-003/T-004 builders should read this skill for the exact frontmatter/body shape. make check: 215 ok / 0 not ok, exit 0."
     },
     {
       "id": "T-002",
