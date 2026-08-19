@@ -92,11 +92,11 @@
         "T-001",
         "T-002"
       ],
-      "status": "in_progress",
-      "passes": false,
+      "status": "complete",
+      "passes": true,
       "attempts": 0,
       "effort": "medium",
-      "notes": ""
+      "notes": "Uses release-terminal (not go.md release-preflight) per the explicit acceptance criterion. Builder verified from plugin/scripts/g2g-lock.sh that acquire reclaim always deletes goal+lock together and only build.md writes .g2g-goal after acquiring, so any .g2g-goal surviving a successful /g2g:compound acquire can only be dead orphaned debris, never a live build. Reasoning documented inline in compound.md so it need not be re-derived. Added 9 @test blocks to tests/commands.bats (tests 50-58). plugin/README.md Concurrency model NOT updated — out of scope here, covered by T-004. make check: 241 tests ok, exit 0."
     },
     {
       "id": "T-004",
