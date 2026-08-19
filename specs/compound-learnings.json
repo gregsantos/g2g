@@ -65,7 +65,7 @@
       "dependsOn": [
         "T-001"
       ],
-      "status": "pending",
+      "status": "in_progress",
       "passes": false,
       "attempts": 0,
       "effort": "medium",
