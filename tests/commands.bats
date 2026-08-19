@@ -573,3 +573,83 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
         done
     done
 }
+
+@test "compound: has frontmatter with description and argument-hint matching its behavior" {
+    [[ -f "$PLUGIN_DIR/commands/compound.md" ]] \
+        || { echo "plugin/commands/compound.md does not exist"; return 1; }
+    run sed -n '1p' "$PLUGIN_DIR/commands/compound.md"
+    [[ "$output" == "---" ]] || { echo "compound.md missing opening frontmatter delimiter"; return 1; }
+    run grep -c '^description:' "$PLUGIN_DIR/commands/compound.md"
+    [[ "$output" -ge 1 ]] || { echo "compound.md missing description"; return 1; }
+    run grep -c '^argument-hint:' "$PLUGIN_DIR/commands/compound.md"
+    [[ "$output" -ge 1 ]] || { echo "compound.md missing argument-hint"; return 1; }
+    # The argument-hint must name both accepted argument shapes the body
+    # describes: a spec path or an F-NNN finding id.
+    grep -q 'spec-path' "$PLUGIN_DIR/commands/compound.md"
+    grep -q 'F-NNN' "$PLUGIN_DIR/commands/compound.md"
+    # The description must match the capture behavior the body specifies
+    # — not a generic label.
+    grep -qi 'learning' "$PLUGIN_DIR/commands/compound.md"
+}
+
+@test "safety: compound acquires the checkout lock before its first write" {
+    acquire_line=$(grep -n 'g2g-lock.sh acquire' "$PLUGIN_DIR/commands/compound.md" | head -1 | cut -d: -f1)
+    write_line=$(grep -n 'Write EXACTLY ONE learning' "$PLUGIN_DIR/commands/compound.md" | head -1 | cut -d: -f1)
+    [[ -n "$acquire_line" && -n "$write_line" ]] \
+        || { echo "compound.md missing acquire or write-step line (acquire=$acquire_line write=$write_line)"; return 1; }
+    [[ "$acquire_line" -lt "$write_line" ]] \
+        || { echo "compound.md must acquire the lock before writing the learning"; return 1; }
+    grep -q 'live-owner' "$PLUGIN_DIR/commands/compound.md"
+}
+
+@test "safety: compound releases the lock with release-terminal on every terminal path, abort paths included" {
+    # Unlike go.md, compound arms no .g2g-goal of its own but the task
+    # contract requires release-terminal specifically (never
+    # release-preflight) on every terminal path reached after a
+    # successful acquire.
+    count=$(grep -c 'release-terminal' "$PLUGIN_DIR/commands/compound.md")
+    [[ "$count" -ge 3 ]] || { echo "only $count release-terminal calls in compound.md (need 3+)"; return 1; }
+    grep -qi "every terminal path" "$PLUGIN_DIR/commands/compound.md"
+    grep -qi "abort paths included" "$PLUGIN_DIR/commands/compound.md"
+    grep -qi "acquisition itself failed\|acquisition-failure path" "$PLUGIN_DIR/commands/compound.md"
+    if grep -qE '\brelease-preflight <owner-token>' "$PLUGIN_DIR/commands/compound.md"; then
+        echo "compound.md must not use release-preflight — the task contract requires release-terminal"
+        return 1
+    fi
+}
+
+@test "safety: compound states a null verifier is a refusal, not a warning" {
+    refusal_clause=$(grep -A3 -i "top-level .verifier. field is null" "$PLUGIN_DIR/commands/compound.md")
+    echo "$refusal_clause" | grep -qi 'refusal' \
+        || { echo "compound.md does not state that a missing verifier verdict is a refusal"; return 1; }
+    grep -qi 'not a warning\|not.*warning' "$PLUGIN_DIR/commands/compound.md"
+}
+
+@test "safety: compound runs g2g-learning-check.sh and names all three adjudication resolutions" {
+    grep -q '\${CLAUDE_PLUGIN_ROOT}/scripts/g2g-learning-check.sh' "$PLUGIN_DIR/commands/compound.md"
+    grep -qi 'Fix the claim' "$PLUGIN_DIR/commands/compound.md"
+    grep -qi 'Annotate as historical' "$PLUGIN_DIR/commands/compound.md"
+    grep -qi 'Confirm intentional' "$PLUGIN_DIR/commands/compound.md"
+    grep -qi 'never an automatic pass' "$PLUGIN_DIR/commands/compound.md"
+}
+
+@test "safety: compound re-runs the grounding check until clean or every flag is confirmed" {
+    grep -qi 're-run the exact same check command\|re-run the SAME check command' "$PLUGIN_DIR/commands/compound.md"
+    grep -qi 'until the script exits 0, or every' "$PLUGIN_DIR/commands/compound.md"
+}
+
+@test "contract: compound writes exactly one learning file per invocation and says so" {
+    grep -qi 'EXACTLY ONE learning' "$PLUGIN_DIR/commands/compound.md"
+    grep -qi 'exactly one file changed' "$PLUGIN_DIR/commands/compound.md"
+}
+
+@test "safety: compound forbids writing CLAUDE.md, plugin/README.md, or any instruction file" {
+    grep -q 'CLAUDE.md' "$PLUGIN_DIR/commands/compound.md"
+    grep -qi 'plugin/README.md' "$PLUGIN_DIR/commands/compound.md"
+    grep -qi 'never writes.*CLAUDE.md\|out of scope here' "$PLUGIN_DIR/commands/compound.md"
+}
+
+@test "contract: compound reads the defining source line and prefers a PR number over a SHA" {
+    grep -qi 'defining source line' "$PLUGIN_DIR/commands/compound.md"
+    grep -qi 'prefer.*PR number\|cite the PR number' "$PLUGIN_DIR/commands/compound.md"
+}
