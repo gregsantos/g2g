@@ -12,12 +12,47 @@ jobs:
   lint-and-test:
     name: Lint + tests (claude-independent)
     runs-on: ubuntu-latest
+    # Every job here carries a timeout. A hung job is worse than a failing
+    # one: it holds the merge behind an indefinite `pending` check, which
+    # reads as progress rather than as something to re-run. This job's
+    # baseline is ~60s, so ten minutes is a wedge detector, not a budget.
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v5
 
-      - name: Install shellcheck and bats-core
-        run: sudo apt-get update && sudo apt-get install -y shellcheck bats
+      # shellcheck already ships with the ubuntu-latest image (0.9.0 as of
+      # 2026-08), so only bats is actually fetched — install what is missing
+      # rather than naming both, and the step self-heals if a future image
+      # drops either one.
+      #
+      # `apt-get update` reaches Ubuntu mirrors and has hung outright once
+      # (run 32211576802, 2026-08-19): the azure mirror returned Ign for
+      # every repo, the fallback to archive.ubuntu.com stalled, and the job
+      # sat for 45 minutes until it was cancelled by hand. Bound each
+      # attempt so a stalled mirror fails fast. The timeout is the
+      # load-bearing half: that failure was a HANG, not a non-zero exit, so
+      # retries alone would have waited behind the same stall three times.
+      - name: Install test toolchain
+        run: |
+          need=()
+          command -v shellcheck >/dev/null || need+=(shellcheck)
+          command -v bats       >/dev/null || need+=(bats)
+          if [ ${#need[@]} -eq 0 ]; then
+            echo "toolchain already present; nothing to install"
+            exit 0
+          fi
+          echo "installing: ${need[*]}"
+          for attempt in 1 2 3; do
+            if sudo timeout 120 apt-get update \
+               && sudo timeout 120 apt-get install -y "${need[@]}"; then
+              exit 0
+            fi
+            echo "apt attempt $attempt failed or timed out; retrying" >&2
+            sleep 5
+          done
+          echo "apt failed after 3 attempts" >&2
+          exit 1
 
       - name: make lint
         run: make lint
@@ -39,6 +74,9 @@ jobs:
     name: Version bump for plugin changes
     if: github.event_name == 'pull_request'
     runs-on: ubuntu-latest
+    # Baseline ~6s plus a full-history checkout; see lint-and-test for why
+    # every job is bounded.
+    timeout-minutes: 10
     steps:
       - name: Checkout
         uses: actions/checkout@v5
@@ -66,6 +104,12 @@ jobs:
     if: github.event_name == 'push'
     needs: lint-and-test
     runs-on: ubuntu-latest
+    # Bounded like the others, and it matters most here: this job runs after
+    # the merge, so a hang leaves the default branch showing an unfinished
+    # release with no tag cut. Failing fast is what makes the next push's
+    # backfill reconcile it — the script already tags every untagged
+    # transition since the baseline, oldest first.
+    timeout-minutes: 10
     # Deliberately NOT in a concurrency group. `cancel-in-progress: false`
     # protects only the RUNNING job: a group keeps one pending run and
     # cancels it when a third enters, so a middle release could be canceled
