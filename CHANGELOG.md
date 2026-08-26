@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.7.1 (2026-08-26)
+
+Fixes the subagent-dispatch contract in `/g2g:build` (#19). The procedure
+required dispatching builders and the verifier SYNCHRONOUSLY, which no
+harness with an asynchronous Agent tool can honor. The orchestrator's turn
+ended mid-build, the armed Stop hook correctly blocked, and the run spun —
+burning a turn against `TURN_CAP` per cycle and filling the transcript with
+`Condition not met:` blocks that read like failures.
+
+### Changed
+- `plugin/commands/build.md` — new `## BLOCKING WAIT` section states the
+  real invariant (never end your turn while a subagent runs) and names the
+  mechanism that achieves it on an async dispatch: arm a bounded watch on
+  the branch tip, then hold the turn open with a blocking read on THAT
+  watch, re-blocking if it times out. All four dispatch/wait steps cite it.
+- `plugin/commands/build.md` — a subagent that dies before emitting its
+  report marker is now explicitly the malformed/FAILED case, so an API
+  error or killed process is one failed attempt rather than an abandoned
+  run.
+
+### Added
+- `plugin/commands/build.md` — a hazard note: never block on, Read, or
+  tail a subagent's own task id or output file. For a local agent that
+  file is the full subagent JSONL transcript, and pulling it into the
+  orchestrator overflows the context window and loses the build.
+- `tests/commands.bats` — five tests pinning the corrected contract,
+  including one asserting the stale `SYNCHRONOUSLY` claim cannot return.
+
+The Stop hook is unchanged and was never at fault: it blocked precisely
+because the goal was armed and unmet.
+
+
 ## 0.7.0 (2026-08-18)
 
 Compound learnings store: a tracked `docs/learnings/` store with stable
