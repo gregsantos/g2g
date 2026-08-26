@@ -653,3 +653,37 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     grep -qi 'defining source line' "$PLUGIN_DIR/commands/compound.md"
     grep -qi 'prefer.*PR number\|cite the PR number' "$PLUGIN_DIR/commands/compound.md"
 }
+
+# Issue #19: build.md used to require SYNCHRONOUS subagent dispatch, which
+# no harness with an async Agent tool can honor. The orchestrator's turn
+# then ended mid-build, the armed Stop hook correctly blocked, and the run
+# spun — burning a turn against TURN_CAP per cycle. These pin the corrected
+# contract so the stale claim cannot come back.
+
+@test "contract: build.md does not claim subagent dispatch is synchronous" {
+    # The invariant is "do not end your turn", not "the tool is synchronous".
+    ! grep -q 'SYNCHRONOUSLY' "$PLUGIN_DIR/commands/build.md"
+}
+
+@test "contract: build.md documents the BLOCKING WAIT section" {
+    grep -q '^## BLOCKING WAIT' "$PLUGIN_DIR/commands/build.md"
+    grep -qi 'must not end your turn while a subagent runs' "$PLUGIN_DIR/commands/build.md"
+}
+
+@test "contract: every subagent dispatch in build.md cites BLOCKING WAIT" {
+    # Two dispatches (builder, verifier) and two waits must all point at it,
+    # plus the section heading itself: five references in total.
+    run grep -c 'BLOCKING WAIT' "$PLUGIN_DIR/commands/build.md"
+    [[ "$output" -ge 5 ]] || { echo "only $output BLOCKING WAIT references"; return 1; }
+}
+
+@test "safety: build.md forbids reading a subagent's own output file" {
+    # Reading it overflows the orchestrator context and loses the build.
+    grep -qi 'NEVER block on, Read, or tail the SUBAGENT' "$PLUGIN_DIR/commands/build.md"
+    grep -qi 'JSONL transcript' "$PLUGIN_DIR/commands/build.md"
+}
+
+@test "contract: build.md treats a subagent that dies without a report as FAILED" {
+    grep -qi 'dies without\|died without' "$PLUGIN_DIR/commands/build.md"
+    grep -qi 'not a reason to abandon' "$PLUGIN_DIR/commands/build.md"
+}
