@@ -72,13 +72,24 @@ warns and proceeds on a live owner rather than refusing.
      state or an operational failure). WARN prominently, print the
      helper's output verbatim, and proceed to step 4 with an explicit
      caveat that liveness could not be determined.
-4. Write `specs/<slug>.json` — slug is the output of
-   `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-slug.sh "<project>"` (the sole
-   implementation of the derivation, the same one /g2g:build uses for its
-   branch name; F-035). Exit 2 means the project name has nothing
-   slug-worthy in it: choose a different name, never a hand-made slug.
-   If that file already exists: ABORT and report
-   the collision — never overwrite an existing spec.
+4. Write `specs/<slug>.json`, deriving the slug FROM THE JSON, never
+   from pasted text (F-035; the project name may be lifted from
+   requirement text, and anything pasted into a shell argument is
+   expanded by Bash — `$(…)`, backticks — before any helper sees it):
+   a. Run `mktemp -d` and note the directory it printed (`<draft-dir>`,
+      outside the checkout). Write the complete spec JSON to
+      `<draft-dir>/spec.json` with the Write tool.
+   b. Slug: `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-slug.sh --spec <draft-dir>/spec.json`
+      — the sole implementation of the derivation, the same one
+      /g2g:build uses for its branch name. Exit 2 means the project
+      name has nothing slug-worthy in it: change the `project` field in
+      the draft and re-run; never hand-make a slug and never pass the
+      name as a literal.
+   c. If `specs/<slug>.json` already exists: ABORT and report the
+      collision — never overwrite an existing spec. Otherwise
+      `mv <draft-dir>/spec.json specs/<slug>.json && rmdir <draft-dir>`
+      (the slug is charset-safe by construction, so this path needs no
+      quoting beyond the usual).
 5. Validate by running
    `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-evidence.sh specs/<slug>.json`
    and printing its real output. Exit 2 or 3 → fix the spec file and

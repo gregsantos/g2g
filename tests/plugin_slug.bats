@@ -97,3 +97,17 @@ SLUG="$BATS_TEST_DIRNAME/../plugin/scripts/g2g-slug.sh"
     run "$SLUG" "$project"
     [[ "$output" == "$expected" ]] || { echo "helper gives [$output], smoke expects [$expected]"; return 1; }
 }
+
+@test "slug: --spec never evaluates the project text as shell, even when it contains command substitutions" {
+    # Codex review of PR #35: a caller that pastes project text into a
+    # double-quoted argument lets Bash expand $(...) and backticks before
+    # the helper runs. The --spec form reads the value from JSON, so the
+    # same text is inert. The marker would appear on stderr if anything
+    # evaluated it.
+    jq -n '{project: "Audit $(printf F035_EXPANDED >&2) `printf F035_BACKTICK >&2` done", tasks: []}' > "$BATS_TEST_TMPDIR/hostile.json"
+    run "$SLUG" --spec "$BATS_TEST_TMPDIR/hostile.json"
+    [[ "$status" -eq 0 ]] || { echo "exit $status: $output"; return 1; }
+    [[ "$output" != *"F035_"* ]] || { echo "project text was evaluated: $output"; return 1; }
+    [[ "$output" == "audit-printf-f035-expanded-2-printf-f035-backtick-2-done" ]] || { echo "got: $output"; return 1; }
+}
+

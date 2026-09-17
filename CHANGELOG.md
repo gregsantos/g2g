@@ -37,8 +37,16 @@ did not.
   project name enters a commit message or PR title (the spec commit, the
   clean PR, the conflicts PR, the partial PR) — never carried across
   tool calls and pasted into the command text.
-- `/g2g:spec` step 4 and `/g2g:go` step 1 derive their slugs via the
-  helper instead of restating the rule; `/g2g:improve-cycle` no longer
+- `/g2g:spec` step 4 writes the draft spec to a `mktemp -d` directory
+  outside the checkout, derives the slug with `g2g-slug.sh --spec` on
+  that file, checks for a collision, and moves it into `specs/` — the
+  project name is read from JSON and never pasted into a shell argument
+  (Codex adversarial review of PR #35: a double-quoted paste lets Bash
+  expand `$(…)` and backticks before the helper runs). `/g2g:go` step 1
+  shows the single-quoted-literal form for its model-composed summary and
+  restricts the summary to a charset that cannot end the literal early. A
+  pin in `tests/commands.bats` fails if any command shows a double-quoted
+  `g2g-slug.sh "…"` template. `/g2g:improve-cycle` no longer
   says to adjust "the slug" by hand, since it follows from the project
   name. Every existing tracked spec's project field slugs to its current
   filename under the helper except the two whose filenames never followed

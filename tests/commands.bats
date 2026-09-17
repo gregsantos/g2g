@@ -352,6 +352,24 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     done
 }
 
+@test "safety: no command pastes slug input into a double-quoted shell argument" {
+    # Codex review of PR #35: `g2g-slug.sh "<project>"` invites the model
+    # to paste requirement-derived text into shell source, where $(...)
+    # and backticks expand BEFORE the helper sanitizes anything. spec.md
+    # must use the --spec form (the name is read from the JSON it just
+    # wrote); go.md's model-composed summary must be a single-quoted
+    # literal, which Bash never expands.
+    grep -q 'g2g-slug.sh --spec' "$PLUGIN_DIR/commands/spec.md" \
+        || { echo "spec.md does not derive its slug from the written JSON via --spec"; return 1; }
+    grep -q "g2g-slug.sh '" "$PLUGIN_DIR/commands/go.md" \
+        || { echo "go.md does not show the single-quoted literal form"; return 1; }
+    for cmd in build spec go improve-cycle dev; do
+        if grep -q 'g2g-slug.sh "' "$PLUGIN_DIR/commands/$cmd.md"; then
+            echo "$cmd.md pastes slug input into a double-quoted argument"; return 1
+        fi
+    done
+}
+
 @test "safety: build passes the project name to git and gh as one argument, never pasted into the command" {
     # The project field is spec-controlled text. Every place it enters a
     # commit message or PR title must read it into a variable (control
