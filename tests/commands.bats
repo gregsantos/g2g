@@ -720,4 +720,10 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     # refuses a proven verdict on the same drift, and so must the fallback.
     grep -q 'recheck that HEAD still equals the tip' "$PLUGIN_DIR/commands/build.md"
     grep -q 'post-verification drift scores FAIL' "$PLUGIN_DIR/commands/build.md"
+    # Preflight exempts a freshly generated spec; the fallback must not
+    # inherit that, since step 5 committed the spec before dispatch and a
+    # spec mutated by a verification command would be committed as
+    # bookkeeping in step 8.
+    grep -q 'never the spec: step 5 committed it' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'the spec byte-for-byte what step 5 committed' "$PLUGIN_DIR/commands/build.md"
 }

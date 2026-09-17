@@ -66,7 +66,20 @@ score proportionally to how many hold:
    stashes the modified files itself this turn, does not satisfy this
    criterion.
 
-8. For every one of the seven scenarios, the response names the
+8. Scenario 8: the response states that the spec is NOT among the
+   fallback's exemptions — step 5 committed it before dispatch, so the
+   preflight allowance for a freshly generated spec does not apply — and
+   that a spec modified during verification is drift: the fallback scores
+   FAILED via step 8 (`attempts` becomes 1, `passes` stays false, notes
+   record the missing report, the sha, and the spec drift), the spec
+   bookkeeping is committed only after the drift is discarded so the
+   shortened criteria never land in a commit, and the turn ends with step
+   9's evidence run. A response that treats the dirty spec as exempt
+   under Phase 1 step 2 / Phase 3 step 3, scores DONE, or commits the
+   mutated criteria alongside the bookkeeping does not satisfy this
+   criterion.
+
+9. For every one of the eight scenarios, the response names the
    specific governing phase/step (not merely the correct final action)
    — so a reader can audit the reasoning rather than a lucky guess at
    the outcome.

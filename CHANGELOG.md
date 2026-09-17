@@ -20,14 +20,20 @@ task whose correct commit was already on the branch.
   it cannot establish, a dirty tree, or HEAD/tree drift after the
   verification commands ran (the same drift the evidence script refuses
   a proven verdict on) scores FAILED and increments `attempts` as before.
+  The fallback's tree exemptions are the goal/lock/mutex trio and the
+  SURFACED-FOREIGN list only — never the spec, which step 5 committed
+  before dispatch; preflight's freshly-generated-spec allowance does not
+  carry into the fallback, so a verification command that rewrites
+  criteria or flags is drift, not bookkeeping to commit.
   Notes record the missing report, the sha, and
   per-criterion PASS/FAIL lines so a fallback DONE is auditable like a
   reported one.
 - `plugin/commands/build.md` — step 8 names both routes into DONE and
   FAILED.
-- `plugin/evals/build-orchestration-decisions/` — scenarios 5, 6, and 7
+- `plugin/evals/build-orchestration-decisions/` — scenarios 5 through 8
   exercise the missing-marker branch (HEAD moved / HEAD unchanged /
-  verification passed but modified tracked files).
+  verification passed but modified tracked files / verification passed
+  but modified only the spec).
 
 ### Added
 - `tests/commands.bats` — four tests pinning the fallback: the branch-tip

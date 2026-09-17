@@ -349,10 +349,14 @@ condition is MET block the stop.
    - HEAD unchanged: the builder produced nothing. Score it FAILED as
      written in step 8 — silence plus no commit is still a failed attempt.
    - HEAD moved: the builder committed, and what is missing is the
-     report, not the work. Do not score it FAILED on that alone. If the
-     tree is dirty beyond the paths step 3 exempts, the builder did not finish
-     — score FAILED without verifying; the next turn's tree check stashes
-     the debris. Otherwise verify the new commit(s) yourself against the
+     report, not the work. Do not score it FAILED on that alone. The
+     FALLBACK EXEMPTIONS are the goal/lock/mutex trio and the
+     SURFACED-FOREIGN list — never the spec: step 5 committed it, so a
+     modified spec here is drift, not preflight's freshly-generated case.
+     If the tree is dirty beyond the FALLBACK EXEMPTIONS, the builder did
+     not finish — score FAILED without verifying; the next turn's tree
+     check stashes the debris. Otherwise verify the new commit(s) yourself
+     against the
      task's `acceptanceCriteria`, READ-ONLY: inspect the diff
      (`git show --stat <baseline>..HEAD`, targeted reads) and run the
      commands the criteria and `context.verificationCommands` name,
@@ -364,9 +368,15 @@ condition is MET block the stop.
      as everywhere else in this protocol. The results are conclusive only
      if the checkout they describe IS the commit under judgment: after
      the last command, recheck that HEAD still equals the tip you are
-     judging and that the tree is still clean beyond the paths step 3
-     exempts. A verification command that regenerates tracked files and
-     exits 0 has described a modified checkout, not the commit — the
+     judging and that the tree is still clean beyond the
+     FALLBACK EXEMPTIONS, the spec byte-for-byte what step 5 committed. A
+     verification command that regenerates tracked files — or rewrites
+     the spec's criteria or flags — and exits 0 has described a modified
+     checkout, not the commit. If the spec itself drifted, restore it
+     from HEAD (`git checkout -- <spec-path>`) BEFORE writing step 8's
+     bookkeeping — the spec is yours to write, and committing the
+     mutation alongside `attempts` would hand every later turn altered
+     criteria. The
      evidence script refuses a proven verdict on exactly this drift — so
      any post-verification drift scores FAIL like an unestablished
      criterion. Every criterion PASS with no drift → score
