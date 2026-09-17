@@ -146,7 +146,21 @@ score proportionally to how many hold:
     the criteria alone, or commits with `-a` does not satisfy this
     criterion.
 
-13. For every one of the twelve scenarios, the response names the
+13. Scenario 13: the response routes to OWNERSHIP LOST on the refresh's
+    exit 5 (BLOCKING WAIT step 5, the POST-WAIT REFRESH) BEFORE reading
+    the report, running step 8's entry gate, or restoring the spec — the
+    spec difference from `a1b2c3d` is the reclaiming build's progress,
+    not builder corruption, and is not this build's to repair. It writes
+    and deletes NOTHING (no `git restore`, no bookkeeping commit, no goal
+    or lock release, no push), prints the exact standalone line
+    `G2G OWNERSHIP LOST <owner-token>`, reports the helper's outcome line
+    and which tasks had completed before the stall, and treats the run as
+    a failed terminal state. A response that scores the report DONE or
+    FAILED, restores the spec from the baseline, commits anything, or
+    reaches OWNERSHIP LOST only at the next turn's step 1 refresh does
+    not satisfy this criterion.
+
+14. For every one of the thirteen scenarios, the response names the
    specific governing phase/step (not merely the correct final action)
    — so a reader can audit the reasoning rather than a lucky guess at
    the outcome.

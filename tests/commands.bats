@@ -792,3 +792,23 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     # Notes must carry the reported result and sha as recovery context.
     grep -q 'the result and `commit:` it reported' "$PLUGIN_DIR/commands/build.md"
 }
+
+# PR #32 adversarial review (high): the heartbeat refreshes only at the
+# start of a turn, and a builder or verifier wait is inside the turn, so
+# a wait longer than the lock's stale threshold lets another build
+# reclaim the checkout and advance the spec. Step 8's restore would then
+# rewrite the replacement build's spec from this build's baseline. The
+# refresh must therefore run again after the wait, before anything the
+# subagent produced is scored and before anything is written.
+
+@test "safety: every subagent wait ends with an ownership-checked refresh before scoring or writing" {
+    grep -q 'POST-WAIT REFRESH' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'anything the subagent produced and before writing anything' "$PLUGIN_DIR/commands/build.md"
+    # Defined once, in BLOCKING WAIT, which applies to every dispatch;
+    # step 7 and Phase 4 step 2 must reference it, not restate it.
+    run grep -c 'POST-WAIT REFRESH' "$PLUGIN_DIR/commands/build.md"
+    [[ "$output" -ge 3 ]] || { echo "only $output POST-WAIT REFRESH references"; return 1; }
+    # OWNERSHIP LOST must acknowledge this new entry so its
+    # "reached only from" claim stays true.
+    grep -q 'the POST-WAIT REFRESH' "$PLUGIN_DIR/commands/build.md"
+}

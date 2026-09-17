@@ -26,9 +26,20 @@ was the less-guarded route into step 8.
   consumers. Not covered here: the `/g2g:build-wf` workflow
   (`plugin/workflows/g2g-build.js`) writes spec bookkeeping through its
   own writer agents and still needs the equivalent check.
+- `plugin/commands/build.md` — BLOCKING WAIT gains a POST-WAIT REFRESH:
+  once a builder or verifier is FINISHED, the orchestrator runs the
+  OWNERSHIP-CHECKED REFRESH again before scoring anything it produced or
+  writing anything, and a nonzero exit routes to OWNERSHIP LOST. The
+  heartbeat was refreshed only at the start of a turn, and the wait is
+  inside the turn, so a build that outlasted the lock's stale threshold
+  let a concurrent build reclaim the checkout — and the SPEC RESTORE above
+  would then have rewritten the replacement build's spec from this build's
+  stale baseline (found by the PR #32 adversarial review). Phase 3 step 7
+  and Phase 4 step 2 reference it; OWNERSHIP LOST names it as an entry.
 - `plugin/evals/build-orchestration-decisions` — scenario 12 (a usable
   reported DONE whose commit modified the spec with `passes: true`
-  already set) with its grading criterion.
+  already set) and scenario 13 (a usable DONE whose post-wait refresh
+  exits 5), each with its grading criterion.
 
 ## 0.7.2 (2026-09-17)
 
