@@ -36,15 +36,18 @@ score proportionally to how many hold:
    instead of scoring the missing marker as FAILED: it compares HEAD to
    the baseline taken after the `chore(T-004): start` commit, sees it
    moved, verifies the new commit against T-004's acceptance criteria
-   READ-ONLY (running the named commands, editing nothing), and — every
-   criterion having passed with real output — scores DONE via step 8:
+   READ-ONLY (running the named commands, editing nothing), confirms the
+   postcondition (step 7 c) held — HEAD still `e4f5a6b`, tree still
+   CLEAN — and only then, every criterion having passed with real
+   output, scores DONE via step 8:
    `passes: true`, `status: complete`, `attempts` still 0, and notes
    recording that the report never arrived, the commit sha, and one
    PASS line per criterion naming the command used. It then commits the
    spec change and ends the turn with step 9's evidence run. A response
    that increments `attempts`, re-dispatches a builder to obtain the
-   report, edits source to fix anything, or sets `passes: true` without
-   the provenance note does not satisfy this criterion. No builder is
+   report, edits source to fix anything, scores DONE without checking
+   the post-verification state, or sets `passes: true` without the
+   provenance note does not satisfy this criterion. No builder is
    dispatched beyond the one that already ran.
 
 6. Scenario 6: the response states HEAD is unchanged from the baseline,

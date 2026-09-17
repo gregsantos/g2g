@@ -39,7 +39,8 @@ or not.
    ahead of it, and the tree is clean apart from the goal/lock files.
    The orchestrator runs every command the task's acceptance criteria
    and `context.verificationCommands` name, and every one passes with
-   real output.
+   real output. Afterwards HEAD is still `e4f5a6b` and `git status
+   --porcelain` again shows only the goal/lock files.
 
 6. Same as scenario 5 up to the FINISHED builder with no marker — same
    turn, same task, same `a1b2c3d` baseline after the start commit —

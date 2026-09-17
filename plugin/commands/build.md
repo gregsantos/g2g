@@ -336,8 +336,12 @@ condition is MET block the stop.
    the `BUILDER REPORT` marker line — the agent may emit prose before the
    block; never assume the whole message is the block. Read `result:`,
    `commit:`, `verified:`, and `notes:` from the block that follows the
-   marker. A marker whose block is unreadable is a malformed report: same
-   handling as FAILED in step 8.
+   marker. A readable `result: FAILED` is FAILED even if the other fields
+   are garbled — the builder said so. But if `result:` cannot be read as
+   `DONE` or `FAILED` — the message truncated inside the block, the field
+   missing — the report is what is missing, not the work: treat the
+   report as absent and apply the NO-REPORT FALLBACK below exactly as if
+   the marker had never arrived.
    The marker is NEVER FOUND once the builder is FINISHED — its
    completion notification arrived without the marker, or the harness
    reports it idle/complete and no further message from it carries the
@@ -432,10 +436,12 @@ condition is MET block the stop.
         reference does for crash debris.
 8. On result DONE (reported, or established by step 7's NO-REPORT
    FALLBACK): verify the builder's commit exists, set passes: true,
-   status: complete, copy its notes; commit the spec change as a
+   status: complete, copy its notes (for a fallback DONE, write the
+   notes step 7 f requires — there is no report to copy from); commit
+   the spec change as a
    BOOKKEEPING COMMIT (`chore(<task-id>): complete`, spec path only, as
    step 5 defines).
-   On result FAILED (a reported FAILED, a malformed report, or a
+   On result FAILED (a reported FAILED, or a
    NO-REPORT FALLBACK that found HEAD unchanged, a dirty tree, a
    criterion FAIL, or post-verification drift): increment the task's
    `attempts` field (treat as 0 if absent, then increment); if attempts

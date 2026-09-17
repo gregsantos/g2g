@@ -11,8 +11,10 @@ task whose correct commit was already on the branch.
 
 ### Changed
 - `plugin/commands/build.md` — Phase 3 step 7 now defines when the marker
-  is "never found" (the builder is FINISHED with no marker in any message)
-  and adds the NO-REPORT FALLBACK: compare HEAD to the baseline taken
+  is "never found" (the builder is FINISHED with no marker in any
+  message), treats a block whose `result:` cannot be read as DONE or
+  FAILED — a message truncated inside the block — as a missing report
+  rather than a FAILED attempt, and adds the NO-REPORT FALLBACK: compare HEAD to the baseline taken
   after the `chore(<task-id>): start` commit. Unchanged → FAILED as
   before. Moved → the orchestrator verifies the new commit against the
   task's acceptance criteria read-only, with real command output; every
