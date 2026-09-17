@@ -56,6 +56,7 @@ g2g/
 │   ├── hooks/hooks.json              # Stop hook registration → g2g-stop.sh
 │   ├── scripts/g2g-evidence.sh       # Deterministic evidence generator
 │   ├── scripts/g2g-lock.sh           # Checkout-lock protocol (sole implementation)
+│   ├── scripts/g2g-slug.sh           # Branch/spec-file slug derivation (sole implementation)
 │   ├── scripts/g2g-stop.sh           # Stop-hook goal enforcement (sole implementation)
 │   ├── templates/                    # /g2g:init config starters (g2g-*.json)
 │   ├── routines/                     # Scheduled-run templates

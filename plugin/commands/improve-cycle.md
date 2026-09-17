@@ -76,8 +76,8 @@ Execute the full procedure in `${CLAUDE_PLUGIN_ROOT}/commands/review.md`
    (Read it) with the input
    `--from-findings "$RUNDIR/selected.json"`. Name the spec's
    `project` field "Improve <today YYYY-MM-DD>"; if
-   `specs/improve-<date>.json` already exists, append `-<HHMM>` to the
-   project name and slug.
+   `specs/improve-<date>.json` already exists, append ` <HHMM>` to the
+   project name (the slug follows from it via `g2g-slug.sh`).
 3. Commit the review artifacts NOW:
    `git add review-output && git commit -m "chore: review backlog for improve cycle"`
    — build.md's preflight requires a clean tree apart from the target

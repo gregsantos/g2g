@@ -69,8 +69,15 @@ Procedure — deviations are failures:
     must never be touched; this note covers only paths reached AFTER a
     successful acquire.
 1. Preflight: `git status` must be clean; you must NOT be on the default
-   branch when committing. Create `g2g/go-<slug>` (slug: lowercase task
-   summary, hyphenated, ≤5 words) from the current HEAD.
+   branch when committing. Create `g2g/go-<slug>` from the current HEAD,
+   where slug is the output of
+   `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-slug.sh 'Add shout flag'` — a
+   SINGLE-QUOTED literal holding a summary YOU compose (≤5 words, ASCII
+   letters, digits, spaces, hyphens; no quotes), never text copied from
+   the task input: single quotes are the one form Bash never expands,
+   and the charset rule keeps the literal from ending early. The helper
+   is the sole implementation of the derivation (F-035); exit 2 means the
+   summary has nothing slug-worthy in it, so reword it.
 2. Implement the task fully. No stubs. Follow repo conventions (CLAUDE.md).
    Never weaken tests, lint, or CI.
 2a. Heartbeat before verification: run
