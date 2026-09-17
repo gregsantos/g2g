@@ -116,7 +116,18 @@ score proportionally to how many hold:
     or writes `attempts` into the spec as the builder left it does not
     satisfy this criterion.
 
-11. For every one of the ten scenarios, the response names the
+11. Scenario 11: the response states the report is NOT USABLE — step 7
+    requires a DONE to carry a `commit:` that resolves, and none arrived
+    — so it does NOT take step 8's reported-DONE path on the strength of
+    `result: DONE`, and does NOT score it FAILED as malformed either: it
+    treats the report as absent and applies the NO-REPORT FALLBACK,
+    judging the TIP `e4f5a6b` by the (a)-(f) procedure (precondition,
+    read-only verification, postcondition) before any DONE or FAILED is
+    recorded. A response that sets `passes: true` because `result: DONE`
+    was readable, or that increments `attempts` without judging the
+    commit, does not satisfy this criterion.
+
+12. For every one of the eleven scenarios, the response names the
    specific governing phase/step (not merely the correct final action)
    — so a reader can audit the reasoning rather than a lucky guess at
    the outcome.

@@ -337,11 +337,17 @@ condition is MET block the stop.
    block; never assume the whole message is the block. Read `result:`,
    `commit:`, `verified:`, and `notes:` from the block that follows the
    marker. A readable `result: FAILED` is FAILED even if the other fields
-   are garbled — the builder said so. But if `result:` cannot be read as
-   `DONE` or `FAILED` — the message truncated inside the block, the field
-   missing — the report is what is missing, not the work: treat the
-   report as absent and apply the NO-REPORT FALLBACK below exactly as if
-   the marker had never arrived.
+   are garbled — the builder said so. But a report is USABLE only if
+   `result:` reads as `DONE` or `FAILED` AND, for DONE, `commit:` reads
+   as a sha that `git cat-file -e <sha>^{commit}` resolves — step 8's
+   DONE path exists to check that commit, and cannot with no sha to
+   check. If either fails — the message truncated inside the block
+   (the builder emits `result:` before `commit:`, so a cut right after
+   `result: DONE` is the common shape), the field missing or garbled —
+   the report is what is missing, not the work: treat the
+   report as absent and apply the NO-REPORT FALLBACK below exactly as
+   if the marker had never arrived. The fallback judges the TIP, which
+   is the commit the builder would have named.
    The marker is NEVER FOUND once the builder is FINISHED — its
    completion notification arrived without the marker, or the harness
    reports it idle/complete and no further message from it carries the

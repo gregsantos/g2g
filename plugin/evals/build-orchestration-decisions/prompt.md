@@ -6,9 +6,9 @@ missing-report fallback, verifier FAIL handling, and the terminal-stop
 path), not from memory and not from this prompt:
 this case exists to detect regressions in the shipped procedure text.
 
-Given each of the following ten independent scenarios, state exactly
+Given each of the following eleven independent scenarios, state exactly
 what the orchestrator does next. Answer scenario-by-scenario (label
-your answers 1-10), and for each one give: (a) which phase/step of
+your answers 1-11), and for each one give: (a) which phase/step of
 `build.md` governs (cite it), (b) the concrete next action(s) in order,
 and (c) whether a builder or verifier subagent is dispatched this turn
 or not.
@@ -75,3 +75,10 @@ or not.
     `git diff --quiet a1b2c3d -- <spec-path>` exits 1: the builder's
     commit itself modified the target spec, setting T-004's
     `passes` to `true`. No verification command has been run.
+
+11. The builder for T-004 (`attempts: 0`) is FINISHED. Its final message
+    contains the `BUILDER REPORT` marker followed by `task: T-004` and
+    `result: DONE` — and then nothing: no `commit:`, `verified:`, or
+    `notes:` lines. HEAD moved from the baseline `a1b2c3d` to
+    `e4f5a6b`, one commit; the tree is clean apart from the goal/lock
+    files.

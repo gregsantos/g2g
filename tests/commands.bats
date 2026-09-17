@@ -700,8 +700,11 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     grep -q 'HEAD moved' "$PLUGIN_DIR/commands/build.md"
     # A block truncated after the marker (the incident's own shape) is a
     # missing report too, not a FAILED attempt.
-    grep -q 'treat the\|treat the report as absent' "$PLUGIN_DIR/commands/build.md"
     grep -q 'report as absent and apply the NO-REPORT FALLBACK' "$PLUGIN_DIR/commands/build.md"
+    # A DONE whose commit: is unreadable is a missing report too: step 8's
+    # DONE path checks that commit and cannot with no sha to check.
+    grep -q 'for DONE, `commit:` reads' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'cannot with no sha to' "$PLUGIN_DIR/commands/build.md"
 }
 
 @test "contract: the no-report baseline is HEAD after the start commit, never a message grep" {

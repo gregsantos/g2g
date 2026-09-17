@@ -12,9 +12,10 @@ task whose correct commit was already on the branch.
 ### Changed
 - `plugin/commands/build.md` — Phase 3 step 7 now defines when the marker
   is "never found" (the builder is FINISHED with no marker in any
-  message), treats a block whose `result:` cannot be read as DONE or
-  FAILED — a message truncated inside the block — as a missing report
-  rather than a FAILED attempt, and adds the NO-REPORT FALLBACK: compare HEAD to the baseline taken
+  message), treats a block that is not USABLE — `result:` unreadable, or
+  a DONE whose `commit:` does not resolve, the shape a message truncated
+  inside the block produces — as a missing report rather than a FAILED
+  attempt or a trusted DONE, and adds the NO-REPORT FALLBACK: compare HEAD to the baseline taken
   after the `chore(<task-id>): start` commit. Unchanged → FAILED as
   before. Moved → the orchestrator verifies the new commit against the
   task's acceptance criteria read-only, with real command output; every
@@ -43,11 +44,12 @@ task whose correct commit was already on the branch.
   reported one.
 - `plugin/commands/build.md` — step 8 names both routes into DONE and
   FAILED.
-- `plugin/evals/build-orchestration-decisions/` — scenarios 5 through 10
-  exercise the missing-marker branch (HEAD moved / HEAD unchanged /
+- `plugin/evals/build-orchestration-decisions/` — scenarios 5 through 11
+  exercise the missing-report branch (HEAD moved / HEAD unchanged /
   verification passed but modified tracked files / verification staged a
   spec mutation / verification committed a spec mutation / the builder's
-  own commit modified the spec).
+  own commit modified the spec / a block truncated right after
+  `result: DONE`).
 
 ### Added
 - `tests/commands.bats` — five tests pinning the fallback: the branch-tip
