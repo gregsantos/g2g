@@ -736,6 +736,9 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     grep -q 'never the spec: step 5 committed it' "$PLUGIN_DIR/commands/build.md"
     grep -q 'the spec byte-for-byte what step 5 committed' "$PLUGIN_DIR/commands/build.md"
     grep -q 'staged, unstaged, and untracked alike' "$PLUGIN_DIR/commands/build.md"
+    # Plain `git status --porcelain` honors status.showUntrackedFiles=no,
+    # which hides exactly the files CLEAN exists to catch.
+    grep -q 'git status --porcelain --untracked-files=all' "$PLUGIN_DIR/commands/build.md"
 }
 
 @test "safety: the no-report fallback repairs only the spec, from the baseline, and commits only the spec" {

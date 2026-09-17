@@ -377,12 +377,15 @@ condition is MET block the stop.
      Definitions used throughout: the FALLBACK EXEMPTIONS are the
      goal/lock/mutex trio and the SURFACED-FOREIGN list —
      never the spec: step 5 committed it, so a modified spec here is
-     drift, not preflight's freshly-generated case. CLEAN means `git status
-     --porcelain` lists nothing beyond the FALLBACK EXEMPTIONS —
-     staged, unstaged, and untracked alike (a test file the builder
-     wrote but never `git add`ed makes the tree pass and the commit
-     fail) — AND `git diff --quiet <baseline> -- <spec-path>` exits 0,
-     the spec byte-for-byte what step 5 committed.
+     drift, not preflight's freshly-generated case. CLEAN means
+     `git status --porcelain --untracked-files=all` lists nothing beyond
+     the FALLBACK EXEMPTIONS — staged, unstaged, and untracked alike (a
+     test file the builder wrote but never `git add`ed makes the tree
+     pass and the commit fail; the explicit flag is what makes the
+     check hold on a host whose `status.showUntrackedFiles=no` would
+     otherwise hide exactly those files, and it is not a default you
+     may rely on) — AND `git diff --quiet <baseline> -- <spec-path>`
+     exits 0, the spec byte-for-byte what step 5 committed.
      a. Precondition: the tree is CLEAN. If not, the builder did not
         finish (or touched the spec, which its rules forbid) — score
         FAILED without verifying, name in notes what failed CLEAN (the

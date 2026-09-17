@@ -35,6 +35,10 @@ task whose correct commit was already on the branch.
   fallback outcome, including a builder commit that itself touched the
   spec and the HEAD-unchanged case, and touches nothing else; a commit
   made during verification is recorded, not undone.
+  The cleanliness check names `git status --porcelain
+  --untracked-files=all` explicitly, since a host's
+  `status.showUntrackedFiles=no` would otherwise hide the very files it
+  exists to catch.
 - `plugin/commands/build.md` — every spec bookkeeping commit (steps 5 and
   8) is now explicitly limited to the spec path (`git commit ... --
   <spec-path>`, never `-a`), so a path some other writer staged cannot
