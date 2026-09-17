@@ -127,7 +127,51 @@ score proportionally to how many hold:
     was readable, or that increments `attempts` without judging the
     commit, does not satisfy this criterion.
 
-12. For every one of the eleven scenarios, the response names the
+12. Scenario 12: the response does NOT take step 8's reported-DONE path
+    on the strength of a usable report: step 8's entry gate runs the
+    SPEC RESTORE rule (step 7 d) on EVERY entry, reported or fallback,
+    and `git diff --quiet a1b2c3d -- <spec-path>` exiting 1 means the
+    builder modified the spec against g2g-builder.md rule 6. It restores
+    the spec from the DISPATCH BASELINE `a1b2c3d` into index and working
+    tree (`git restore --source=a1b2c3d --staged --worktree --
+    <spec-path>`), confirms both `git diff --quiet` forms exit 0, and
+    scores the attempt FAILED regardless of `result: DONE`: `attempts`
+    becomes 1, `passes` stays false, notes record that the builder
+    modified the spec, the reported DONE and sha `e4f5a6b`, and the
+    commit between baseline and HEAD. It writes that as a spec-path-only
+    BOOKKEEPING COMMIT and ends the turn with step 9's evidence run. A
+    response that sets `passes: true` because the report was usable,
+    keeps the builder's `passes: true` in place, restores with
+    `git checkout -- <spec-path>`, verifies the commit and scores DONE on
+    the criteria alone, or commits with `-a` does not satisfy this
+    criterion.
+
+13. Scenario 13: the response routes to OWNERSHIP LOST on the refresh's
+    exit 5 (BLOCKING WAIT step 5, the POST-WAIT REFRESH) BEFORE reading
+    the report, running step 8's entry gate, or restoring the spec — the
+    spec difference from `a1b2c3d` is the reclaiming build's progress,
+    not builder corruption, and is not this build's to repair. It writes
+    and deletes NOTHING (no `git restore`, no bookkeeping commit, no goal
+    or lock release, no push), prints the exact standalone line
+    `G2G OWNERSHIP LOST <owner-token>`, reports the helper's outcome line
+    and which tasks had completed before the stall, and treats the run as
+    a failed terminal state. A response that scores the report DONE or
+    FAILED, restores the spec from the baseline, commits anything, or
+    reaches OWNERSHIP LOST only at the next turn's step 1 refresh does
+    not satisfy this criterion.
+
+14. Scenario 14: the response routes to OWNERSHIP LOST on the refresh's
+    exit 5 exactly as in scenario 13, and does NOT enter the NO-REPORT
+    FALLBACK on the way: no HEAD-vs-baseline comparison is scored, no
+    CLEAN check, no verification command, and no SPEC RESTORE (step 7 d)
+    — BLOCKING WAIT step 4 ends at detecting FINISHED, and step 5's
+    refresh is the only handoff into step 7. It writes and deletes
+    nothing and prints the standalone `G2G OWNERSHIP LOST <owner-token>`
+    line. A response that applies the fallback, restores the spec, or
+    scores the attempt FAILED before (or instead of) routing to OWNERSHIP
+    LOST does not satisfy this criterion.
+
+15. For every one of the fourteen scenarios, the response names the
    specific governing phase/step (not merely the correct final action)
    — so a reader can audit the reasoning rather than a lucky guess at
    the outcome.

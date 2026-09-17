@@ -763,3 +763,61 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     run grep -c 'BOOKKEEPING COMMIT' "$PLUGIN_DIR/commands/build.md"
     [[ "$output" -ge 3 ]] || { echo "only $output BOOKKEEPING COMMIT references"; return 1; }
 }
+
+# Issue #31: the REPORTED DONE/FAILED paths reached step 8 with no check
+# that the builder left the spec alone, so a builder that edited the spec
+# against g2g-builder.md rule 6 and then reported normally had its
+# mutation committed as bookkeeping — while the NO-REPORT FALLBACK already
+# restored the spec and scored the attempt FAILED. Reporting must not be
+# the less-guarded route into step 8.
+
+@test "safety: step 8 applies the SPEC RESTORE rule on every entry, reported or fallback" {
+    grep -q 'every entry into this step' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'as much as a fallback verdict' "$PLUGIN_DIR/commands/build.md"
+    # The restore mechanics stay defined ONCE, in step 7 (d); step 8 must
+    # reference that rule, not restate a second copy that can drift.
+    grep -q 'apply the SPEC RESTORE rule (step 7 d)' "$PLUGIN_DIR/commands/build.md"
+    # Step 5's baseline is now consumed by step 8 too, and the text must
+    # say so or a reader of step 8 has no idea where <baseline> came from.
+    grep -q 'DISPATCH BASELINE steps 7 and 8 compare' "$PLUGIN_DIR/commands/build.md"
+}
+
+@test "safety: a reported builder that modified the spec scores FAILED regardless of its result line" {
+    # Option 2 from #31: a builder that broke rule 6 has an untrustworthy
+    # report on the other rules too, and this is the only verdict
+    # consistent with the fallback's precondition (a), which already
+    # scores a spec-touching builder FAILED without verifying.
+    grep -q 'FAILED regardless of its reported result' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'broke rule 6' "$PLUGIN_DIR/commands/build.md"
+    # Notes must carry the reported result and sha as recovery context.
+    grep -q 'the result and `commit:` it reported' "$PLUGIN_DIR/commands/build.md"
+}
+
+# PR #32 adversarial review (high): the heartbeat refreshes only at the
+# start of a turn, and a builder or verifier wait is inside the turn, so
+# a wait longer than the lock's stale threshold lets another build
+# reclaim the checkout and advance the spec. Step 8's restore would then
+# rewrite the replacement build's spec from this build's baseline. The
+# refresh must therefore run again after the wait, before anything the
+# subagent produced is scored and before anything is written.
+
+@test "safety: every subagent wait ends with an ownership-checked refresh before scoring or writing" {
+    grep -q 'POST-WAIT REFRESH' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'anything the subagent produced and before writing anything' "$PLUGIN_DIR/commands/build.md"
+    # Defined once, in BLOCKING WAIT, which applies to every dispatch;
+    # step 7 and Phase 4 step 2 must reference it, not restate it.
+    run grep -c 'POST-WAIT REFRESH' "$PLUGIN_DIR/commands/build.md"
+    [[ "$output" -ge 3 ]] || { echo "only $output POST-WAIT REFRESH references"; return 1; }
+    # OWNERSHIP LOST must acknowledge this new entry so its
+    # "reached only from" claim stays true.
+    grep -q 'the POST-WAIT REFRESH' "$PLUGIN_DIR/commands/build.md"
+}
+
+@test "safety: BLOCKING WAIT hands off to scoring only from the post-wait refresh, never from step 4" {
+    # PR #32 re-review: step 4 ended "then score it by that step", a
+    # handoff that reached step 7's fallback and step 8's restore before
+    # step 5's refresh ran. Step 4 must end at detecting FINISHED; step 5
+    # is the sole handoff, after exit 0.
+    ! grep -q 'then score it by that step' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'the ONLY handoff out of this section' "$PLUGIN_DIR/commands/build.md"
+}
