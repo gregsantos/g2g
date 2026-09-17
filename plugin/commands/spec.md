@@ -72,9 +72,12 @@ warns and proceeds on a live owner rather than refusing.
      state or an operational failure). WARN prominently, print the
      helper's output verbatim, and proceed to step 4 with an explicit
      caveat that liveness could not be determined.
-4. Write `specs/<slug>.json` — slug is the lowercase, hyphenated form
-   of the spec's `project` field (the same derivation /g2g:build uses
-   for its branch name). If that file already exists: ABORT and report
+4. Write `specs/<slug>.json` — slug is the output of
+   `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-slug.sh "<project>"` (the sole
+   implementation of the derivation, the same one /g2g:build uses for its
+   branch name; F-035). Exit 2 means the project name has nothing
+   slug-worthy in it: choose a different name, never a hand-made slug.
+   If that file already exists: ABORT and report
    the collision — never overwrite an existing spec.
 5. Validate by running
    `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-evidence.sh specs/<slug>.json`

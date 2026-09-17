@@ -1,5 +1,53 @@
 # Changelog
 
+## 0.7.5 (2026-09-17)
+
+Gives the slug derivation an explicit charset and a single executable
+home (F-035). `/g2g:build`, `/g2g:spec`, and `/g2g:go` derived branch
+names and spec filenames from an informal "lowercase, hyphenated form"
+rule with no character whitelist, and `/g2g:build` interpolated the
+spec's `project` field verbatim into a commit message and PR titles. A
+project value carrying `..`, `/`, a `.lock` suffix, a leading `-`, or
+shell metacharacters could yield an unexpected ref or, if the executing
+agent composed the git/gh command as a shell string, argument injection.
+The improve path names its project safely; `-f <file>` and bare prompts
+did not.
+
+### Added
+- `plugin/scripts/g2g-slug.sh` — the sole implementation of the slug
+  rule: ASCII-lowercase, every run of characters outside `[a-z0-9]`
+  becomes one hyphen, leading/trailing hyphens trimmed, cut to 60
+  characters. The output always matches
+  `^[a-z0-9]([a-z0-9-]*[a-z0-9])?$`, which git accepts as a ref component
+  and every filesystem as a file name. `g2g-slug.sh <text>` slugs a
+  string; `g2g-slug.sh --spec <path>` slugs the spec's `.project` so the
+  untrusted value never enters a command line the orchestrator composes.
+  Exit 2 on a missing argument, an unreadable spec, a missing or
+  non-string project field, or an input with nothing slug-worthy in it.
+  Runs under the macOS system bash 3.2. Pinned by
+  `tests/plugin_slug.bats`, including a hostile-input set checked with
+  `git check-ref-format`, and a test that the helper reproduces the branch
+  name `tests/smoke.sh` expects for the sandbox spec.
+
+### Changed
+- `/g2g:build` Phase 1 step 3 derives the branch slug via
+  `g2g-slug.sh --spec <spec-path>` and aborts on exit 2; it also captures
+  `PROJECT_NAME` (control characters stripped) inside the same Bash
+  command that uses it and passes it as one quoted argument wherever the
+  project name enters a commit message or PR title (the spec commit, the
+  clean PR, the conflicts PR, the partial PR) — never carried across
+  tool calls and pasted into the command text.
+- `/g2g:spec` step 4 and `/g2g:go` step 1 derive their slugs via the
+  helper instead of restating the rule; `/g2g:improve-cycle` no longer
+  says to adjust "the slug" by hand, since it follows from the project
+  name. Every existing tracked spec's project field slugs to its current
+  filename under the helper except the two whose filenames never followed
+  the old rule either (`example.json`, `compound-learnings.json`), both
+  long complete.
+- Slug collisions (two names, one slug) are unchanged: `/g2g:spec`'s
+  overwrite guard and `/g2g:build`'s branch-exists abort already refuse
+  them.
+
 ## 0.7.4 (2026-09-17)
 
 Enforces the spec dependency graph at runtime (F-037). `/g2g:build`

@@ -97,8 +97,19 @@ build).
    per step 1's abort rule). If the spec file is dirty this way, step 3a
    commits it once you are on the work branch.
 3. Current branch is NOT the default branch, or you create
-   `g2g/<slug-from-spec-project>` now (slug: lowercase, hyphenated form of
-   the spec's `project` field). If the branch already exists: abort unless
+   `g2g/<slug>` now, where slug is the output of
+   `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-slug.sh --spec <spec-path>` — the
+   sole implementation of the derivation (F-035); never derive it by hand.
+   Exit 2 (no string `project` field, or nothing slug-worthy in it):
+   ABORT quoting the helper's message. The `--spec` form is deliberate:
+   the project text is spec-controlled and never enters a command line
+   you compose. Wherever below a commit message or PR title carries the
+   project name, read it INSIDE the same Bash command that uses it —
+   `PROJECT_NAME=$(jq -r '.project | gsub("[[:cntrl:]]"; " ")' <spec-path>) && <command> "…$PROJECT_NAME…"`
+   — passing `"$PROJECT_NAME"` as ONE quoted argument. Shell state does
+   not survive between Bash calls, and carrying the value in your own
+   context and pasting it into the command text is exactly the
+   interpolation this step forbids. If the branch already exists: abort unless
    `--continue-branch` was passed (then check it out and resume — tasks with
    passes:true are skipped naturally).
 3a. If the target spec file was untracked or modified in step 2: when it
@@ -107,7 +118,7 @@ build).
    worktrees and fresh clones; point at the plugin README's "Artifact
    tracking" section for the one-line migration. Otherwise commit the
    spec file alone, now, on the work branch:
-   `git add <spec-path> && git commit -m "chore: add spec for <project>"`.
+   `PROJECT_NAME=$(jq -r '.project | gsub("[[:cntrl:]]"; " ")' <spec-path>) && git add <spec-path> && git commit -m "chore: add spec for $PROJECT_NAME"`.
 4. Spec parses and has a non-empty tasks array.
 5. Run `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-evidence.sh <spec>` once.
    Exit 3 means verificationCommands is empty: ABORT — unverifiable
@@ -647,7 +658,9 @@ finish line and burn the whole remaining budget before surfacing partial work.
    so; any other nonzero exit: report the helper's output verbatim and
    leave the files for a human), `git rebase --abort`, then push and
    open a draft PR titled
-   "g2g: <project> (conflicts)" describing them. Never auto-resolve. The
+   `--title "g2g: $PROJECT_NAME (conflicts)"` (with the `PROJECT_NAME`
+   capture prefixed in the same command, per Phase 1 step 3) describing
+   them. Never auto-resolve. The
    PR title and body must contain no attribution lines (no 'Generated
    with Claude Code', no Co-Authored-By trailers). Mention the release
    outcome in your final message.
@@ -659,7 +672,8 @@ finish line and burn the whole remaining budget before surfacing partial work.
    about to be pushed, rather than a commit the rebase has since moved
    past.
 7. Push ONCE (`git push -u origin <branch>`), then
-   `gh pr create` — title "g2g: <project>", body = evidence block +
+   `gh pr create --title "g2g: $PROJECT_NAME"` (with the `PROJECT_NAME`
+   capture prefixed in the same command, per Phase 1 step 3), body = evidence block +
    task table + verifier summary. The PR title and body must contain no
    attribution lines (no 'Generated with Claude Code', no Co-Authored-By
    trailers). NEVER merge. Now that the build has reached a successful
@@ -680,7 +694,9 @@ finish line and burn the whole remaining budget before surfacing partial work.
    a released checkout is up for grabs, and a reclaiming build could
    advance this branch between the release and the push.
 2. Push the branch once (`git push -u origin <branch>`) and open a
-   DRAFT PR labeled `g2g:partial` — title "g2g: <project> (partial)",
+   DRAFT PR labeled `g2g:partial` — `--title "g2g: $PROJECT_NAME (partial)"`
+   (with the `PROJECT_NAME` capture prefixed in the same command, per
+   Phase 1 step 3),
    body = the latest evidence block + which tasks are blocked/pending
    and why. When Phase 4 step 3 routed here because the re-verification
    round cap was reached, also list the verifier's outstanding findings

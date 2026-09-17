@@ -309,9 +309,9 @@ karpathy/autoresearch's recon on prompt hill-climbing:
   referencing the measured candidate commit.
 - **Target-surface split.** The human-edited layer —
   `plugin/commands/build.md`, `plugin/commands/improve-cycle.md`, the
-  Stop hook (`plugin/scripts/g2g-stop.sh`), and the evidence/lock
+  Stop hook (`plugin/scripts/g2g-stop.sh`), and the evidence/lock/slug
   scripts (`plugin/scripts/g2g-evidence.sh`,
-  `plugin/scripts/g2g-lock.sh`) — is out of the loop's target surface
+  `plugin/scripts/g2g-lock.sh`, `plugin/scripts/g2g-slug.sh`) — is out of the loop's target surface
   entirely; per CLAUDE.md these are frozen contracts and orchestration
   prose, not tunable parameters. The loop's candidates target only the
   narrower builder/verifier prompt and skill surface (agent

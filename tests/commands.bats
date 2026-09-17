@@ -331,6 +331,40 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     grep -q 'release-terminal' "$PLUGIN_DIR/commands/improve-cycle.md"
 }
 
+@test "safety: every slug-deriving command calls the slug helper instead of restating the rule" {
+    # F-035: the branch name and spec filename used to be derived from an
+    # informal "lowercase, hyphenated form" rule with no charset, so a
+    # project value carrying `..`, `/`, or shell metacharacters could reach
+    # `git checkout -b` and `gh pr create`. The derivation now lives in one
+    # executable helper (tests/plugin_slug.bats proves its semantics);
+    # the commands' job is only to call it.
+    for cmd in build spec go; do
+        grep -q 'g2g-slug.sh' "$PLUGIN_DIR/commands/$cmd.md" \
+            || { echo "$cmd.md does not call g2g-slug.sh"; return 1; }
+    done
+    [[ -x "$PLUGIN_DIR/scripts/g2g-slug.sh" ]] || { echo "g2g-slug.sh is not executable"; return 1; }
+    # `! cmd` never trips bats' errexit, so negative guards must be
+    # explicit if-blocks to actually enforce anything.
+    for cmd in build spec; do
+        if grep -q 'lowercase, hyphenated form' "$PLUGIN_DIR/commands/$cmd.md"; then
+            echo "$cmd.md still restates the slug rule in prose"; return 1
+        fi
+    done
+}
+
+@test "safety: build passes the project name to git and gh as one argument, never pasted into the command" {
+    # The project field is spec-controlled text. Every place it enters a
+    # commit message or PR title must read it into a variable (control
+    # characters stripped) and pass "$VAR" as a single argument.
+    grep -q 'PROJECT_NAME' "$PLUGIN_DIR/commands/build.md" \
+        || { echo "build.md has no PROJECT_NAME capture"; return 1; }
+    grep -q 'gsub("\[\[:cntrl:\]\]"' "$PLUGIN_DIR/commands/build.md" \
+        || { echo "build.md does not strip control characters from the project name"; return 1; }
+    if grep -q 'title "g2g: <project>' "$PLUGIN_DIR/commands/build.md"; then
+        echo "build.md still interpolates <project> verbatim into a PR title"; return 1
+    fi
+}
+
 @test "safety: go acquires the checkout lock before creating a branch" {
     # F-066: go used to create a branch in a shared checkout with no
     # synchronization. The acquire call must appear before the branch
