@@ -763,3 +763,32 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     run grep -c 'BOOKKEEPING COMMIT' "$PLUGIN_DIR/commands/build.md"
     [[ "$output" -ge 3 ]] || { echo "only $output BOOKKEEPING COMMIT references"; return 1; }
 }
+
+# Issue #31: the REPORTED DONE/FAILED paths reached step 8 with no check
+# that the builder left the spec alone, so a builder that edited the spec
+# against g2g-builder.md rule 6 and then reported normally had its
+# mutation committed as bookkeeping — while the NO-REPORT FALLBACK already
+# restored the spec and scored the attempt FAILED. Reporting must not be
+# the less-guarded route into step 8.
+
+@test "safety: step 8 applies the SPEC RESTORE rule on every entry, reported or fallback" {
+    grep -q 'every entry into this step' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'as much as a fallback verdict' "$PLUGIN_DIR/commands/build.md"
+    # The restore mechanics stay defined ONCE, in step 7 (d); step 8 must
+    # reference that rule, not restate a second copy that can drift.
+    grep -q 'apply the SPEC RESTORE rule (step 7 d)' "$PLUGIN_DIR/commands/build.md"
+    # Step 5's baseline is now consumed by step 8 too, and the text must
+    # say so or a reader of step 8 has no idea where <baseline> came from.
+    grep -q 'DISPATCH BASELINE steps 7 and 8 compare' "$PLUGIN_DIR/commands/build.md"
+}
+
+@test "safety: a reported builder that modified the spec scores FAILED regardless of its result line" {
+    # Option 2 from #31: a builder that broke rule 6 has an untrustworthy
+    # report on the other rules too, and this is the only verdict
+    # consistent with the fallback's precondition (a), which already
+    # scores a spec-touching builder FAILED without verifying.
+    grep -q 'FAILED regardless of its reported result' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'broke rule 6' "$PLUGIN_DIR/commands/build.md"
+    # Notes must carry the reported result and sha as recovery context.
+    grep -q 'the result and `commit:` it reported' "$PLUGIN_DIR/commands/build.md"
+}

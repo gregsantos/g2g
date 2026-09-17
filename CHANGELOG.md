@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.7.3 (2026-09-17)
+
+Closes the gap #31 found while landing #29: `/g2g:build` Phase 3 step 8
+committed the spec as bookkeeping immediately after a *reported* `DONE` or
+`FAILED`, with nothing between the builder's return and that commit
+checking whether the builder had modified the spec. A builder that edited
+the spec against `g2g-builder.md` rule 6 and then reported normally had
+its mutation committed as `chore(<id>): complete` or `attempt N` — and in
+the DONE case alongside `passes: true` — while the NO-REPORT FALLBACK
+already restored the spec and scored the same builder FAILED. Reporting
+was the less-guarded route into step 8.
+
+### Changed
+- `plugin/commands/build.md` — Phase 3 step 8 opens with an entry gate
+  that applies step 7 (d)'s SPEC RESTORE rule on EVERY entry, a reported
+  DONE or FAILED as much as a fallback verdict: if the spec differs from
+  the DISPATCH BASELINE in the index or the working tree, restore it from
+  the baseline, confirm, and score the attempt FAILED regardless of the
+  reported result — the verdict the fallback's precondition (a) already
+  gives a spec-touching builder whose report is missing — with notes
+  recording the spec mutation, the reported result and `commit:`, and the
+  sha(s) between baseline and HEAD. The restore mechanics stay defined
+  once, in step 7 (d); step 5 now names steps 7 and 8 as the baseline's
+  consumers. Not covered here: the `/g2g:build-wf` workflow
+  (`plugin/workflows/g2g-build.js`) writes spec bookkeeping through its
+  own writer agents and still needs the equivalent check.
+- `plugin/evals/build-orchestration-decisions` — scenario 12 (a usable
+  reported DONE whose commit modified the spec with `passes: true`
+  already set) with its grading criterion.
+
 ## 0.7.2 (2026-09-17)
 
 Fixes how `/g2g:build` scores a builder whose `BUILDER REPORT` never

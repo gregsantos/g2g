@@ -315,7 +315,7 @@ condition is MET block the stop.
    to hold. Every Phase 3 bookkeeping commit (this step and step 8) has
    this shape; it is what keeps a path some other writer staged from
    riding into your commit.
-   Record the resulting HEAD: it is the DISPATCH BASELINE step 7 compares
+   Record the resulting HEAD: it is the DISPATCH BASELINE steps 7 and 8 compare
    against.
 6. Dispatch ONE `g2g:g2g-builder` subagent via the Agent tool. The
    invariant is that YOU MUST NOT END YOUR TURN WHILE A BUILDER RUNS —
@@ -443,14 +443,33 @@ condition is MET block the stop.
         a reported one, and a fallback FAILED leaves the sha as recovery
         context in the next builder's task card, the way a stash
         reference does for crash debris.
-8. On result DONE (reported, or established by step 7's NO-REPORT
-   FALLBACK): verify the builder's commit exists, set passes: true,
+8. Entry gate — on every entry into this step, a reported DONE or FAILED
+   as much as a fallback verdict, before acting on the result and before
+   writing anything: apply the SPEC RESTORE rule (step 7 d) against the
+   DISPATCH BASELINE. On a fallback entry it already ran and both
+   `git diff --quiet` forms exit 0, so the gate changes nothing. On a
+   REPORTED entry it is the only check between the builder's return and
+   your bookkeeping — the tree check (step 3) runs at the start of the
+   NEXT turn, after this step's commit has landed — so if either form
+   exits nonzero the builder modified the spec, against g2g-builder.md
+   rule 6: restore per (d), confirm both forms exit 0, and score the
+   attempt FAILED regardless of its reported result, `commit:` included.
+   A builder that broke rule 6 has an untrustworthy report on the other
+   rules too, and FAILED is the verdict the fallback's precondition (a)
+   already gives the same builder when its report is missing; reporting
+   must never be the more lenient route in. Notes MUST record that the
+   builder modified the spec, the result and `commit:` it reported, and
+   the sha(s) between the baseline and HEAD, so the next builder's task
+   card carries the recovery context step 7 f gives a fallback FAILED.
+   Then, on result DONE (reported and not overruled by the gate above,
+   or established by step 7's NO-REPORT FALLBACK): verify the builder's commit exists, set passes: true,
    status: complete, copy its notes (for a fallback DONE, write the
    notes step 7 f requires — there is no report to copy from); commit
    the spec change as a
    BOOKKEEPING COMMIT (`chore(<task-id>): complete`, spec path only, as
    step 5 defines).
-   On result FAILED (a reported FAILED, or a
+   On result FAILED (a reported FAILED, a reported DONE this step's
+   entry gate overruled, or a
    NO-REPORT FALLBACK that found HEAD unchanged, a dirty tree, a
    criterion FAIL, or post-verification drift): increment the task's
    `attempts` field (treat as 0 if absent, then increment); if attempts

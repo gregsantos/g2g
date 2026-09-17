@@ -2,13 +2,14 @@ Read `plugin/commands/build.md` — the shipped `/g2g:build` orchestrator
 procedure in this repository — and answer as that orchestrator. Every
 rule you apply must come from that file as it exists on disk (the cap
 check, task selection, builder result handling including the
-missing-report fallback, verifier FAIL handling, and the terminal-stop
+missing-report fallback and the spec-integrity gate on reported
+results, verifier FAIL handling, and the terminal-stop
 path), not from memory and not from this prompt:
 this case exists to detect regressions in the shipped procedure text.
 
-Given each of the following eleven independent scenarios, state exactly
+Given each of the following twelve independent scenarios, state exactly
 what the orchestrator does next. Answer scenario-by-scenario (label
-your answers 1-11), and for each one give: (a) which phase/step of
+your answers 1-12), and for each one give: (a) which phase/step of
 `build.md` governs (cite it), (b) the concrete next action(s) in order,
 and (c) whether a builder or verifier subagent is dispatched this turn
 or not.
@@ -82,3 +83,12 @@ or not.
     `notes:` lines. HEAD moved from the baseline `a1b2c3d` to
     `e4f5a6b`, one commit; the tree is clean apart from the goal/lock
     files.
+
+12. The builder for T-004 (`attempts: 0`) is FINISHED. Its final message
+    carries a complete `BUILDER REPORT`: `result: DONE`,
+    `commit: e4f5a6b`, one PASS line per criterion, and notes. HEAD
+    moved from the baseline `a1b2c3d` to `e4f5a6b`, one commit, and
+    `git cat-file -e e4f5a6b^{commit}` succeeds. `git status --porcelain`
+    shows only the goal/lock files. But `git diff --quiet a1b2c3d --
+    <spec-path>` exits 1: the builder's commit itself modified the
+    target spec, and it already carries `passes: true` for T-004.

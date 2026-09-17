@@ -127,7 +127,26 @@ score proportionally to how many hold:
     was readable, or that increments `attempts` without judging the
     commit, does not satisfy this criterion.
 
-12. For every one of the eleven scenarios, the response names the
+12. Scenario 12: the response does NOT take step 8's reported-DONE path
+    on the strength of a usable report: step 8's entry gate runs the
+    SPEC RESTORE rule (step 7 d) on EVERY entry, reported or fallback,
+    and `git diff --quiet a1b2c3d -- <spec-path>` exiting 1 means the
+    builder modified the spec against g2g-builder.md rule 6. It restores
+    the spec from the DISPATCH BASELINE `a1b2c3d` into index and working
+    tree (`git restore --source=a1b2c3d --staged --worktree --
+    <spec-path>`), confirms both `git diff --quiet` forms exit 0, and
+    scores the attempt FAILED regardless of `result: DONE`: `attempts`
+    becomes 1, `passes` stays false, notes record that the builder
+    modified the spec, the reported DONE and sha `e4f5a6b`, and the
+    commit between baseline and HEAD. It writes that as a spec-path-only
+    BOOKKEEPING COMMIT and ends the turn with step 9's evidence run. A
+    response that sets `passes: true` because the report was usable,
+    keeps the builder's `passes: true` in place, restores with
+    `git checkout -- <spec-path>`, verifies the commit and scores DONE on
+    the criteria alone, or commits with `-a` does not satisfy this
+    criterion.
+
+13. For every one of the twelve scenarios, the response names the
    specific governing phase/step (not merely the correct final action)
    — so a reader can audit the reasoning rather than a lucky guess at
    the outcome.
