@@ -116,3 +116,6 @@ buildable spec:
 - **Testable criteria**: at least one criterion per task should be a
   command the builder can run.
 - **dependsOn discipline**: only real ordering constraints; no cycles.
+  Enforced, not just advised: `g2g-evidence.sh` exits 2 (invalid spec)
+  on a `dependsOn` id that names no task or on a cycle, so `/g2g:build`
+  aborts in preflight instead of opening a zero-task partial PR (F-037).

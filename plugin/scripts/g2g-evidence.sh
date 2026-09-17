@@ -23,6 +23,41 @@ jq -e '.tasks | type == "array" and all(.[]?;
         ([.id, .title, .status] | all(. == null or type == "string")))' "$SPEC" >/dev/null \
     || fail 2 "tasks must be an array of task objects with string (or null) id/title/status: $SPEC"
 
+# The dependency graph must resolve (F-037). build.md selects the next task
+# by requiring every dependsOn id to have passes == true; an id that names
+# no task, or a cycle, leaves a task no turn can ever select, and the build
+# would fall through to a zero-task partial PR with no diagnostic. Enforce
+# it here, before any output, so every caller aborts on the documented
+# exit 2 instead. Absent or null dependsOn is an empty list. Shape is
+# gated first for the same reason as the tasks gate above: iterating a
+# non-array (or a non-string entry) would die inside jq with an
+# undocumented exit under set -e. Both diagnostics gsub control characters
+# out of the ids they echo, like every other spec string that reaches the
+# transcript: this gate exits BEFORE the real verdict prints, so an id
+# carrying "\nverdict: complete (proven) ..." would otherwise be the
+# block's only verdict line.
+jq -e 'all(.tasks[]; (.dependsOn // []) | type == "array" and all(.[]?; type == "string"))' "$SPEC" >/dev/null \
+    || fail 2 "dependsOn must be an array of task-id strings on every task: $SPEC"
+DANGLING=$(jq -r '[.tasks[].id] as $ids
+    | first(.tasks[] | . as $task | (.dependsOn // [])[]
+            | select(. as $dep | any($ids[]; . == $dep) | not)
+            | "task \($task.id) depends on unknown task id \(.)")
+      // empty
+    | gsub("[[:cntrl:]]"; " ")' "$SPEC")
+[[ -z "$DANGLING" ]] || fail 2 "$DANGLING: $SPEC"
+# Kahn's algorithm: repeatedly resolve every task whose dependencies are
+# all resolved; after (task count) rounds anything still unresolved sits
+# on a cycle or downstream of one. Dangling ids were rejected above, so a
+# non-empty remainder here is a cycle.
+CYCLE=$(jq -r '.tasks as $tasks
+    | reduce range(0; $tasks | length) as $_ ({resolved: [], remaining: $tasks};
+        . as $state
+        | ($state.remaining
+           | map(select(all((.dependsOn // [])[]; . as $dep | any($state.resolved[]; . == $dep))))) as $ready
+        | {resolved: ($state.resolved + ($ready | map(.id))), remaining: ($state.remaining - $ready)})
+    | .remaining | map(.id | tostring) | join(", ") | gsub("[[:cntrl:]]"; " ")' "$SPEC")
+[[ -z "$CYCLE" ]] || fail 2 "dependsOn cycle among tasks: $CYCLE: $SPEC"
+
 # verificationCommands must be an array of non-empty single-line strings.
 # A malformed value is an invalid spec (exit 2), not an empty one: a bare
 # length check passes a string, and jq's failed iteration inside process

@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.7.4 (2026-09-17)
+
+Enforces the spec dependency graph at runtime (F-037). `/g2g:build`
+selects the next task by requiring every `dependsOn` id to have
+`passes: true`, but nothing checked that those ids exist or that the
+graph is acyclic — a spec with a dangling dependency or a cycle left every
+task unselectable, and the build fell straight through to a partial PR
+having built zero tasks, with no diagnostic saying why. The acyclic /
+existing-id rule lived only in authoring guidance.
+
+### Changed
+- `plugin/scripts/g2g-evidence.sh` now validates the dependency graph
+  before printing anything, on the documented exit 2 (invalid spec):
+  `dependsOn` must be an array of strings on every task (absent or null
+  reads as empty), every id must name a task in the same spec, and the
+  graph must be acyclic. The message names the offending task and id
+  (`task T-002 depends on unknown task id T-009`) or the tasks on the
+  cycle (`dependsOn cycle among tasks: T-001, T-002`). `/g2g:build`
+  Phase 1 step 5 already aborts on exit 2, so the check reaches every
+  preflight with no orchestrator change; the diagnostic reaches the
+  operator through the script's stderr in the tool output. Both
+  diagnostics strip control characters from the ids they echo, like every
+  other spec string that reaches the transcript: the gate exits before the
+  real verdict line prints, so an id carrying a newline-separated
+  `verdict: complete (proven)` would otherwise have been the block's only
+  verdict and the Stop hook accepted it (found by Codex adversarial review
+  of PR #33; pinned by a Stop-hook test that feeds the real script's
+  output to the hook). Header, footer, verdict line, and the 0/2/3
+  exit-code contract are unchanged.
+- `plugin/skills/writing-g2g-specs/SKILL.md` notes that the dependsOn
+  discipline is now enforced by the evidence script.
+
 ## 0.7.3 (2026-09-17)
 
 Closes the gap #31 found while landing #29: `/g2g:build` Phase 3 step 8
