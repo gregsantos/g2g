@@ -17,20 +17,24 @@ task whose correct commit was already on the branch.
   before. Moved → the orchestrator verifies the new commit against the
   task's acceptance criteria read-only, with real command output; every
   PASS scores DONE with `attempts` unchanged, while any FAIL, a criterion
-  it cannot establish, or a dirty tree scores FAILED and increments
-  `attempts` as before. Notes record the missing report, the sha, and
+  it cannot establish, a dirty tree, or HEAD/tree drift after the
+  verification commands ran (the same drift the evidence script refuses
+  a proven verdict on) scores FAILED and increments `attempts` as before.
+  Notes record the missing report, the sha, and
   per-criterion PASS/FAIL lines so a fallback DONE is auditable like a
   reported one.
 - `plugin/commands/build.md` — step 8 names both routes into DONE and
   FAILED.
-- `plugin/evals/build-orchestration-decisions/` — scenarios 5 and 6
-  exercise the missing-marker branch (HEAD moved / HEAD unchanged).
+- `plugin/evals/build-orchestration-decisions/` — scenarios 5, 6, and 7
+  exercise the missing-marker branch (HEAD moved / HEAD unchanged /
+  verification passed but modified tracked files).
 
 ### Added
-- `tests/commands.bats` — three tests pinning the fallback: the branch-tip
+- `tests/commands.bats` — four tests pinning the fallback: the branch-tip
   check precedes FAILED, the baseline is post-start-commit (never a
-  commit-message grep, which matches the orchestrator's own commit), and
-  uncertainty still scores toward failure with the orchestrator read-only.
+  commit-message grep, which matches the orchestrator's own commit),
+  uncertainty still scores toward failure with the orchestrator read-only,
+  and HEAD/tree are rechecked after the verification commands run.
 
 The Stop hook is unchanged: completion still requires a `VERIFIER REPORT`
 PASS from a dispatched verifier, independent of per-task `passes`.

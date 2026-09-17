@@ -713,3 +713,11 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     grep -qi 'never edit a file and never fix a shortfall' "$PLUGIN_DIR/commands/build.md"
     grep -q 'committed wrong work is a genuine failed attempt' "$PLUGIN_DIR/commands/build.md"
 }
+
+@test "safety: the no-report fallback rechecks HEAD and tree cleanliness after verifying" {
+    # A verification command that regenerates tracked files and exits 0
+    # describes the modified checkout, not the commit; g2g-evidence.sh
+    # refuses a proven verdict on the same drift, and so must the fallback.
+    grep -q 'recheck that HEAD still equals the tip' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'post-verification drift scores FAIL' "$PLUGIN_DIR/commands/build.md"
+}

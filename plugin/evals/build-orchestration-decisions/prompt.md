@@ -6,9 +6,9 @@ missing-report fallback, verifier FAIL handling, and the terminal-stop
 path), not from memory and not from this prompt:
 this case exists to detect regressions in the shipped procedure text.
 
-Given each of the following six independent scenarios, state exactly
+Given each of the following seven independent scenarios, state exactly
 what the orchestrator does next. Answer scenario-by-scenario (label
-your answers 1-6), and for each one give: (a) which phase/step of
+your answers 1-7), and for each one give: (a) which phase/step of
 `build.md` governs (cite it), (b) the concrete next action(s) in order,
 and (c) whether a builder or verifier subagent is dispatched this turn
 or not.
@@ -45,3 +45,10 @@ or not.
    turn, same task, same `a1b2c3d` baseline after the start commit —
    except HEAD is still `a1b2c3d` and T-004's `attempts` field was 1
    before this dispatch. Nothing has been run or inspected yet.
+
+7. Same as scenario 5 — FINISHED builder, no marker, HEAD moved from
+   `a1b2c3d` to `e4f5a6b`, clean tree, `attempts: 0`, every named
+   command exits 0 with real output — except that after the last
+   command `git status --short` shows two tracked files modified
+   (generated artifacts the test command rewrote) and HEAD is still
+   `e4f5a6b`.

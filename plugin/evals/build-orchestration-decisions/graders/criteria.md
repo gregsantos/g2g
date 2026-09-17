@@ -55,7 +55,18 @@ score proportionally to how many hold:
    criteria here, treats silence with no commit as inconclusive, or
    leaves `attempts` at 1 does not satisfy this criterion.
 
-7. For every one of the six scenarios, the response names the
+7. Scenario 7: the response states that the fallback's post-verification
+   recheck fails — the tree is no longer clean beyond the paths step 3
+   exempts, so the passing results describe a modified checkout rather
+   than commit `e4f5a6b` — and therefore scores FAILED via step 8, not
+   DONE: `attempts` becomes 1, `passes` stays false, notes record the
+   missing report, the sha, and the drift, the spec change is committed,
+   and the turn ends with step 9's evidence run. A response that records
+   DONE because every command exited 0, or that edits, reverts, or
+   stashes the modified files itself this turn, does not satisfy this
+   criterion.
+
+8. For every one of the seven scenarios, the response names the
    specific governing phase/step (not merely the correct final action)
    — so a reader can audit the reasoning rather than a lucky guess at
    the outcome.
