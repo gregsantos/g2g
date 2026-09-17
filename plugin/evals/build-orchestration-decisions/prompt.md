@@ -6,9 +6,9 @@ missing-report fallback, verifier FAIL handling, and the terminal-stop
 path), not from memory and not from this prompt:
 this case exists to detect regressions in the shipped procedure text.
 
-Given each of the following eight independent scenarios, state exactly
+Given each of the following ten independent scenarios, state exactly
 what the orchestrator does next. Answer scenario-by-scenario (label
-your answers 1-8), and for each one give: (a) which phase/step of
+your answers 1-10), and for each one give: (a) which phase/step of
 `build.md` governs (cite it), (b) the concrete next action(s) in order,
 and (c) whether a builder or verifier subagent is dispatched this turn
 or not.
@@ -56,6 +56,21 @@ or not.
 8. Same as scenario 5 — FINISHED builder, no marker, HEAD moved from
    `a1b2c3d` to `e4f5a6b`, `attempts: 0`, every named command exits 0
    with real output — except that after the last command the ONLY
-   dirty path is the target spec file itself: `git diff` shows T-004's
-   `acceptanceCriteria` array shortened by one entry. HEAD is still
+   dirty path is the target spec file itself, and the change is STAGED:
+   `git diff` is empty, `git diff --cached` shows T-004's
+   `acceptanceCriteria` array shortened by one entry, and `git status
+   --porcelain` shows the spec as `M ` (index modified). HEAD is still
    `e4f5a6b`; no other file changed.
+
+9. Same as scenario 5 up to the verification commands, except that
+   after the last command HEAD is `f7a8b9c` — a commit that did not
+   exist before the commands ran, whose diff touches only the target
+   spec file (T-004's `acceptanceCriteria` shortened by one entry) —
+   and the working tree is otherwise clean.
+
+10. FINISHED builder for T-004 (`attempts: 0`), no marker. HEAD moved
+    from the baseline `a1b2c3d` to `e4f5a6b`, one commit. `git status
+    --porcelain` shows only the goal/lock files. But
+    `git diff --quiet a1b2c3d -- <spec-path>` exits 1: the builder's
+    commit itself modified the target spec, setting T-004's
+    `passes` to `true`. No verification command has been run.

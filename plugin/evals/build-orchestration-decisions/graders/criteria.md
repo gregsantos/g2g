@@ -68,18 +68,52 @@ score proportionally to how many hold:
 
 8. Scenario 8: the response states that the spec is NOT among the
    fallback's exemptions — step 5 committed it before dispatch, so the
-   preflight allowance for a freshly generated spec does not apply — and
-   that a spec modified during verification is drift: the fallback scores
-   FAILED via step 8 (`attempts` becomes 1, `passes` stays false, notes
-   record the missing report, the sha, and the spec drift), the spec
-   bookkeeping is committed only after the drift is discarded so the
-   shortened criteria never land in a commit, and the turn ends with step
-   9's evidence run. A response that treats the dirty spec as exempt
-   under Phase 1 step 2 / Phase 3 step 3, scores DONE, or commits the
-   mutated criteria alongside the bookkeeping does not satisfy this
+   preflight allowance for a freshly generated spec does not apply — so
+   the postcondition (step 7 c) fails and the verification scores FAIL
+   regardless of the commands' exit codes. It restores the spec from the
+   DISPATCH BASELINE `a1b2c3d` into BOTH the index and the working tree
+   (`git restore --source=a1b2c3d --staged --worktree -- <spec-path>`,
+   step 7 d), confirms with `git diff --quiet` against the baseline for
+   worktree and `--cached`, and only then writes the FAILED bookkeeping
+   (`attempts` becomes 1, `passes` stays false, notes record the missing
+   report, the sha, and the staged spec drift) as a spec-path-only
+   BOOKKEEPING COMMIT, then ends the turn with step 9's evidence run. A
+   response that uses `git checkout -- <spec-path>` (which restores from
+   the index, so the staged mutation survives), treats the dirty spec as
+   exempt under Phase 1 step 2 / Phase 3 step 3, scores DONE, or commits
+   with `-a` or without the spec pathspec does not satisfy this
    criterion.
 
-9. For every one of the eight scenarios, the response names the
+9. Scenario 9: the response states that HEAD moving during verification
+   fails the postcondition (step 7 c) — the results describe a checkout
+   that is no longer the TIP `e4f5a6b` — so the verification scores FAIL
+   regardless of exit codes. It does NOT reset, revert, or otherwise undo
+   `f7a8b9c` (step 7 d: touch nothing but the spec; record the foreign
+   sha in notes and leave the commit for the tree check and the
+   verifier); it restores the spec from the DISPATCH BASELINE `a1b2c3d`
+   into index and working tree — not from the current HEAD, which now
+   carries the mutation — confirms, then writes the FAILED bookkeeping
+   (`attempts` becomes 1) as a spec-path-only BOOKKEEPING COMMIT and ends
+   the turn with step 9's evidence run. A response that restores from
+   HEAD, resets the branch to `e4f5a6b`, or scores DONE does not satisfy
+   this criterion.
+
+10. Scenario 10: the response states that the tree is NOT CLEAN despite
+    the clean status — CLEAN also requires the spec to match the
+    DISPATCH BASELINE (step 7's definitions) — so the PREcondition
+    (step 7 a) fails and no verification command is run. It does not
+    trust the `passes: true` the builder wrote. It applies the SPEC
+    RESTORE rule (step 7 d) even though nothing was verified: restores
+    the spec from `a1b2c3d` into index and working tree, confirms, then
+    writes the FAILED bookkeeping (`attempts` becomes 1, `passes` false,
+    notes recording the missing report, the sha `e4f5a6b`, and that the
+    builder's commit modified the spec) as a spec-path-only BOOKKEEPING
+    COMMIT, and ends the turn with step 9's evidence run. A response
+    that runs verification, scores DONE, leaves `passes: true` in place,
+    or writes `attempts` into the spec as the builder left it does not
+    satisfy this criterion.
+
+11. For every one of the ten scenarios, the response names the
    specific governing phase/step (not merely the correct final action)
    — so a reader can audit the reasoning rather than a lucky guess at
    the outcome.

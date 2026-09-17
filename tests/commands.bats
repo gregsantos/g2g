@@ -711,19 +711,45 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     grep -q 'silence plus no commit is still a failed attempt' "$PLUGIN_DIR/commands/build.md"
     grep -q 'cannot establish with real output counts' "$PLUGIN_DIR/commands/build.md"
     grep -qi 'never edit a file and never fix a shortfall' "$PLUGIN_DIR/commands/build.md"
-    grep -q 'committed wrong work is a genuine failed attempt' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'committed wrong work, or work' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'you could not judge, is a genuine failed attempt' "$PLUGIN_DIR/commands/build.md"
 }
 
 @test "safety: the no-report fallback rechecks HEAD and tree cleanliness after verifying" {
     # A verification command that regenerates tracked files and exits 0
     # describes the modified checkout, not the commit; g2g-evidence.sh
     # refuses a proven verdict on the same drift, and so must the fallback.
-    grep -q 'recheck that HEAD still equals the tip' "$PLUGIN_DIR/commands/build.md"
-    grep -q 'post-verification drift scores FAIL' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'Postcondition: after the last command, HEAD still equals the TIP' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'regardless of how the commands exited' "$PLUGIN_DIR/commands/build.md"
     # Preflight exempts a freshly generated spec; the fallback must not
     # inherit that, since step 5 committed the spec before dispatch and a
     # spec mutated by a verification command would be committed as
-    # bookkeeping in step 8.
+    # bookkeeping in step 8. CLEAN must also cover untracked paths: a
+    # test file never git-added makes the tree pass and the commit fail.
     grep -q 'never the spec: step 5 committed it' "$PLUGIN_DIR/commands/build.md"
     grep -q 'the spec byte-for-byte what step 5 committed' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'staged, unstaged, and untracked alike' "$PLUGIN_DIR/commands/build.md"
+}
+
+@test "safety: the no-report fallback repairs only the spec, from the baseline, and commits only the spec" {
+    # `git checkout -- <path>` restores from the INDEX, so a staged
+    # mutation survives it and rides into the bookkeeping commit. The
+    # restore must come from the dispatch baseline for index and worktree
+    # both, and every bookkeeping commit must be limited to the spec path
+    # so nothing else a verification command staged is swept in.
+    grep -q 'git restore --source=<baseline> --staged --worktree -- <spec-path>' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'SPEC RESTORE rule' "$PLUGIN_DIR/commands/build.md"
+    # The restore must run on every fallback outcome, not only after a
+    # drifted verification: a builder commit that touched the spec fails
+    # the PREcondition with a clean status, and step 8 would otherwise
+    # write attempts into the mutated spec.
+    grep -q 'on ANY' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'fallback outcome ((a), (c), or HEAD unchanged)' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'is NOT this: it restores from the index' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'Touch nothing else: no reset, no' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'BOOKKEEPING COMMIT' "$PLUGIN_DIR/commands/build.md"
+    grep -qF -- '-- <spec-path>` — never `-a`' "$PLUGIN_DIR/commands/build.md"
+    # Both step-8 branches must commit that way.
+    run grep -c 'BOOKKEEPING COMMIT' "$PLUGIN_DIR/commands/build.md"
+    [[ "$output" -ge 3 ]] || { echo "only $output BOOKKEEPING COMMIT references"; return 1; }
 }

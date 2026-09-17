@@ -24,23 +24,36 @@ task whose correct commit was already on the branch.
   SURFACED-FOREIGN list only — never the spec, which step 5 committed
   before dispatch; preflight's freshly-generated-spec allowance does not
   carry into the fallback, so a verification command that rewrites
-  criteria or flags is drift, not bookkeeping to commit.
+  criteria or flags is drift, not bookkeeping to commit. "Clean" covers
+  staged, unstaged, and untracked paths alike. On drift the orchestrator
+  repairs only the spec — index and working tree, from the dispatch
+  baseline via `git restore --source=<baseline> --staged --worktree`,
+  never `git checkout --` (which restores from the index) — on EVERY
+  fallback outcome, including a builder commit that itself touched the
+  spec and the HEAD-unchanged case, and touches nothing else; a commit
+  made during verification is recorded, not undone.
+- `plugin/commands/build.md` — every spec bookkeeping commit (steps 5 and
+  8) is now explicitly limited to the spec path (`git commit ... --
+  <spec-path>`, never `-a`), so a path some other writer staged cannot
+  ride into the orchestrator's commit.
   Notes record the missing report, the sha, and
   per-criterion PASS/FAIL lines so a fallback DONE is auditable like a
   reported one.
 - `plugin/commands/build.md` — step 8 names both routes into DONE and
   FAILED.
-- `plugin/evals/build-orchestration-decisions/` — scenarios 5 through 8
+- `plugin/evals/build-orchestration-decisions/` — scenarios 5 through 10
   exercise the missing-marker branch (HEAD moved / HEAD unchanged /
-  verification passed but modified tracked files / verification passed
-  but modified only the spec).
+  verification passed but modified tracked files / verification staged a
+  spec mutation / verification committed a spec mutation / the builder's
+  own commit modified the spec).
 
 ### Added
-- `tests/commands.bats` — four tests pinning the fallback: the branch-tip
+- `tests/commands.bats` — five tests pinning the fallback: the branch-tip
   check precedes FAILED, the baseline is post-start-commit (never a
   commit-message grep, which matches the orchestrator's own commit),
   uncertainty still scores toward failure with the orchestrator read-only,
-  and HEAD/tree are rechecked after the verification commands run.
+  HEAD/tree are rechecked after the verification commands run, and repair
+  is spec-only from the baseline with spec-only bookkeeping commits.
 
 The Stop hook is unchanged: completion still requires a `VERIFIER REPORT`
 PASS from a dispatched verifier, independent of per-task `passes`.
