@@ -812,3 +812,12 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     # "reached only from" claim stays true.
     grep -q 'the POST-WAIT REFRESH' "$PLUGIN_DIR/commands/build.md"
 }
+
+@test "safety: BLOCKING WAIT hands off to scoring only from the post-wait refresh, never from step 4" {
+    # PR #32 re-review: step 4 ended "then score it by that step", a
+    # handoff that reached step 7's fallback and step 8's restore before
+    # step 5's refresh ran. Step 4 must end at detecting FINISHED; step 5
+    # is the sole handoff, after exit 0.
+    ! grep -q 'then score it by that step' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'the ONLY handoff out of this section' "$PLUGIN_DIR/commands/build.md"
+}

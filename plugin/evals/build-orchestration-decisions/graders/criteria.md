@@ -160,7 +160,18 @@ score proportionally to how many hold:
     reaches OWNERSHIP LOST only at the next turn's step 1 refresh does
     not satisfy this criterion.
 
-14. For every one of the thirteen scenarios, the response names the
+14. Scenario 14: the response routes to OWNERSHIP LOST on the refresh's
+    exit 5 exactly as in scenario 13, and does NOT enter the NO-REPORT
+    FALLBACK on the way: no HEAD-vs-baseline comparison is scored, no
+    CLEAN check, no verification command, and no SPEC RESTORE (step 7 d)
+    — BLOCKING WAIT step 4 ends at detecting FINISHED, and step 5's
+    refresh is the only handoff into step 7. It writes and deletes
+    nothing and prints the standalone `G2G OWNERSHIP LOST <owner-token>`
+    line. A response that applies the fallback, restores the spec, or
+    scores the attempt FAILED before (or instead of) routing to OWNERSHIP
+    LOST does not satisfy this criterion.
+
+15. For every one of the fourteen scenarios, the response names the
    specific governing phase/step (not merely the correct final action)
    — so a reader can audit the reasoning rather than a lucky guess at
    the outcome.

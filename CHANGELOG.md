@@ -38,8 +38,10 @@ was the less-guarded route into step 8.
   and Phase 4 step 2 reference it; OWNERSHIP LOST names it as an entry.
 - `plugin/evals/build-orchestration-decisions` — scenario 12 (a usable
   reported DONE whose commit modified the spec with `passes: true`
-  already set) and scenario 13 (a usable DONE whose post-wait refresh
-  exits 5), each with its grading criterion.
+  already set), scenario 13 (a usable DONE whose post-wait refresh
+  exits 5), and scenario 14 (the same with no report at all — the
+  fallback must not run before the refresh), each with its grading
+  criterion.
 
 ## 0.7.2 (2026-09-17)
 

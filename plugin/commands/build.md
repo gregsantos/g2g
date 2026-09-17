@@ -526,13 +526,17 @@ call rather than yielding.
    report arrives, and it never fires at all for a builder that dies
    before committing. Treat a watch that ends without a matching report
    as inconclusive and keep waiting for the agent itself until it is
-   FINISHED per Phase 3 step 7, then score it by that step.
+   FINISHED per Phase 3 step 7. This step ends at detecting FINISHED; it
+   scores nothing and hands off nowhere — step 5 does that.
 5. POST-WAIT REFRESH — once the subagent is FINISHED, before acting on
    anything the subagent produced and before writing anything to the
    checkout, run the OWNERSHIP-CHECKED REFRESH exactly as Phase 3 step 1
-   does: exit 0 → continue to the scoring step that dispatched you; any
-   other exit → OWNERSHIP LOST, writing nothing, per that step's branch
-   table. The heartbeat is refreshed at the start of a turn and this
+   does. This is the ONLY handoff out of this section: exit 0 → return
+   to the step that dispatched you (Phase 3 step 7 or Phase 4 step 2)
+   and score the result there; any other exit → OWNERSHIP LOST, writing
+   nothing, per that step's branch table. A missing or unusable report
+   changes nothing here — the NO-REPORT FALLBACK and its SPEC RESTORE
+   are scoring, and run only after this refresh has exited 0. The heartbeat is refreshed at the start of a turn and this
    wait is INSIDE the turn, so a build or verification that outlasts the
    lock's stale threshold lets a concurrent build reclaim the checkout
    and advance the same spec while you were blocked; every write that

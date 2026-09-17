@@ -7,9 +7,9 @@ results, the post-wait ownership refresh, verifier FAIL handling, and the termin
 path), not from memory and not from this prompt:
 this case exists to detect regressions in the shipped procedure text.
 
-Given each of the following thirteen independent scenarios, state exactly
+Given each of the following fourteen independent scenarios, state exactly
 what the orchestrator does next. Answer scenario-by-scenario (label
-your answers 1-13), and for each one give: (a) which phase/step of
+your answers 1-14), and for each one give: (a) which phase/step of
 `build.md` governs (cite it), (b) the concrete next action(s) in order,
 and (c) whether a builder or verifier subagent is dispatched this turn
 or not.
@@ -101,3 +101,9 @@ or not.
     exits 5: the lock's heartbeat went stale during the wait and the
     lock now carries a foreign owner token. `git diff --quiet a1b2c3d --
     <spec-path>` also exits 1.
+
+14. Same as scenario 13 — long wait, FINISHED builder for T-004,
+    HEAD moved from `a1b2c3d` to `e4f5a6b`, POST-WAIT REFRESH exits 5
+    with a foreign owner token, `git diff --quiet a1b2c3d -- <spec-path>`
+    exits 1 — except that no message from the builder carried a
+    `BUILDER REPORT` marker at all.
