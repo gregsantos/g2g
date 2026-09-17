@@ -31,14 +31,19 @@ jq -e '.tasks | type == "array" and all(.[]?;
 # exit 2 instead. Absent or null dependsOn is an empty list. Shape is
 # gated first for the same reason as the tasks gate above: iterating a
 # non-array (or a non-string entry) would die inside jq with an
-# undocumented exit under set -e.
+# undocumented exit under set -e. Both diagnostics gsub control characters
+# out of the ids they echo, like every other spec string that reaches the
+# transcript: this gate exits BEFORE the real verdict prints, so an id
+# carrying "\nverdict: complete (proven) ..." would otherwise be the
+# block's only verdict line.
 jq -e 'all(.tasks[]; (.dependsOn // []) | type == "array" and all(.[]?; type == "string"))' "$SPEC" >/dev/null \
     || fail 2 "dependsOn must be an array of task-id strings on every task: $SPEC"
 DANGLING=$(jq -r '[.tasks[].id] as $ids
     | first(.tasks[] | . as $task | (.dependsOn // [])[]
             | select(. as $dep | any($ids[]; . == $dep) | not)
             | "task \($task.id) depends on unknown task id \(.)")
-      // empty' "$SPEC")
+      // empty
+    | gsub("[[:cntrl:]]"; " ")' "$SPEC")
 [[ -z "$DANGLING" ]] || fail 2 "$DANGLING: $SPEC"
 # Kahn's algorithm: repeatedly resolve every task whose dependencies are
 # all resolved; after (task count) rounds anything still unresolved sits
@@ -50,7 +55,7 @@ CYCLE=$(jq -r '.tasks as $tasks
         | ($state.remaining
            | map(select(all((.dependsOn // [])[]; . as $dep | any($state.resolved[]; . == $dep))))) as $ready
         | {resolved: ($state.resolved + ($ready | map(.id))), remaining: ($state.remaining - $ready)})
-    | .remaining | map(.id | tostring) | join(", ")' "$SPEC")
+    | .remaining | map(.id | tostring) | join(", ") | gsub("[[:cntrl:]]"; " ")' "$SPEC")
 [[ -z "$CYCLE" ]] || fail 2 "dependsOn cycle among tasks: $CYCLE: $SPEC"
 
 # verificationCommands must be an array of non-empty single-line strings.

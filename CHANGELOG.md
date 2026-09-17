@@ -20,8 +20,15 @@ existing-id rule lived only in authoring guidance.
   cycle (`dependsOn cycle among tasks: T-001, T-002`). `/g2g:build`
   Phase 1 step 5 already aborts on exit 2, so the check reaches every
   preflight with no orchestrator change; the diagnostic reaches the
-  operator through the script's stderr in the tool output. Header,
-  footer, verdict line, and the 0/2/3 exit-code contract are unchanged.
+  operator through the script's stderr in the tool output. Both
+  diagnostics strip control characters from the ids they echo, like every
+  other spec string that reaches the transcript: the gate exits before the
+  real verdict line prints, so an id carrying a newline-separated
+  `verdict: complete (proven)` would otherwise have been the block's only
+  verdict and the Stop hook accepted it (found by Codex adversarial review
+  of PR #33; pinned by a Stop-hook test that feeds the real script's
+  output to the hook). Header, footer, verdict line, and the 0/2/3
+  exit-code contract are unchanged.
 - `plugin/skills/writing-g2g-specs/SKILL.md` notes that the dependsOn
   discipline is now enforced by the evidence script.
 
