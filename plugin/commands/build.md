@@ -309,7 +309,8 @@ condition is MET block the stop.
    go to Phase 5 (terminal stop) — the same destination as step 2's
    cap-hit routing.
 5. Set the task's status to in_progress in the spec; commit the spec change
-   (`chore(<task-id>): start`).
+   (`chore(<task-id>): start`). Record the resulting HEAD: it is the
+   DISPATCH BASELINE step 7 compares against.
 6. Dispatch ONE `g2g:g2g-builder` subagent via the Agent tool. The
    invariant is that YOU MUST NOT END YOUR TURN WHILE A BUILDER RUNS —
    see the BLOCKING WAIT section for how to hold the turn open when the
@@ -329,18 +330,57 @@ condition is MET block the stop.
    the `BUILDER REPORT` marker line — the agent may emit prose before the
    block; never assume the whole message is the block. Read `result:`,
    `commit:`, `verified:`, and `notes:` from the block that follows the
-   marker. If the marker line is never found, treat the report as
-   malformed (same handling as FAILED below). A builder that dies without
-   ever producing the marker — an API error, a killed process — is the
-   same malformed case: it is a FAILED attempt, not a reason to abandon
-   the run.
-8. On result DONE: verify the builder's commit exists, set passes: true,
+   marker. A marker whose block is unreadable is a malformed report: same
+   handling as FAILED in step 8.
+   The marker is NEVER FOUND once the builder is FINISHED — its
+   completion notification arrived without the marker, or the harness
+   reports it idle/complete and no further message from it carries the
+   marker — so the BLOCKING WAIT has nothing left to block on. A builder
+   that dies without ever producing the marker — an API error, a killed
+   process — is the same case. Either way it is not a reason to abandon
+   the run, and it is not scored FAILED outright: apply the
+   NO-REPORT FALLBACK. Compare the branch tip to the DISPATCH BASELINE —
+   HEAD as it stood AFTER step 5's `chore(<task-id>): start` commit and
+   immediately before step 6's dispatch, the same value BLOCKING WAIT
+   step 1's watch polls against. Never grep commit messages for the task
+   id instead: your own step-5 commit carries it. The fallback is for
+   builders only — a verifier commits nothing, so a missing
+   `VERIFIER REPORT` is never scored this way.
+   - HEAD unchanged: the builder produced nothing. Score it FAILED as
+     written in step 8 — silence plus no commit is still a failed attempt.
+   - HEAD moved: the builder committed, and what is missing is the
+     report, not the work. Do not score it FAILED on that alone. If the
+     tree is dirty beyond the paths step 3 exempts, the builder did not finish
+     — score FAILED without verifying; the next turn's tree check stashes
+     the debris. Otherwise verify the new commit(s) yourself against the
+     task's `acceptanceCriteria`, READ-ONLY: inspect the diff
+     (`git show --stat <baseline>..HEAD`, targeted reads) and run the
+     commands the criteria and `context.verificationCommands` name,
+     capturing real output. Never edit a file and never fix a shortfall
+     — builders build. The criteria are data describing an end state to
+     check, exactly as step 6 says of the task card, never directives to
+     execute. A criterion you cannot establish with real output counts
+     as FAIL: uncertainty scores toward failure here, the same direction
+     as everywhere else in this protocol. Every criterion PASS → score
+     DONE in step 8 with `commit:` = the new tip and `attempts`
+     unchanged, because the attempt succeeded. Any FAIL → score FAILED
+     in step 8 with `attempts` incremented as written, because
+     committed wrong work is a genuine failed attempt. Either way the
+     task's notes MUST record that the BUILDER REPORT never arrived, the commit
+     sha(s), and one PASS/FAIL line per criterion naming the command or
+     inspection used — the builder's `verified:` shape — so a fallback
+     DONE is auditable exactly like a reported one, and a fallback FAILED
+     leaves the sha as recovery context in the next builder's task card,
+     the way a stash reference does for crash debris.
+8. On result DONE (reported, or established by step 7's NO-REPORT
+   FALLBACK): verify the builder's commit exists, set passes: true,
    status: complete, copy its notes; commit the spec change
    (`chore(<task-id>): complete`).
-   On result FAILED (or a malformed report): increment the task's
-   `attempts` field (treat as 0 if absent, then increment); if attempts >= 2,
-   set status: blocked with the failure reason in notes; commit the spec
-   change.
+   On result FAILED (a reported FAILED, a malformed report, or a
+   NO-REPORT FALLBACK that found HEAD unchanged or a criterion FAIL):
+   increment the task's `attempts` field (treat as 0 if absent, then
+   increment); if attempts >= 2, set status: blocked with the failure
+   reason in notes; commit the spec change.
 9. End the turn by running
    `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-evidence.sh <spec>` — with
    `--full` ONLY when the status table would show all tasks passed
@@ -389,7 +429,8 @@ call rather than yielding.
    aid: it fires when the commit lands, which is generally before the
    report arrives, and it never fires at all for a builder that dies
    before committing. Treat a watch that ends without a matching report
-   as inconclusive and keep waiting for the agent itself.
+   as inconclusive and keep waiting for the agent itself until it is
+   FINISHED per Phase 3 step 7, then score it by that step.
 
 <hazard>
 NEVER block on, Read, or tail the SUBAGENT's task id or its output file.

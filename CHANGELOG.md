@@ -1,5 +1,41 @@
 # Changelog
 
+## 0.7.2 (2026-09-17)
+
+Fixes how `/g2g:build` scores a builder whose `BUILDER REPORT` never
+arrives (#29). Phase 3 step 7 treated a missing marker as a FAILED attempt
+and consulted the builder's commit only when a report had already arrived,
+so a reporting failure — an API error mid-report, a killed process, harness
+delivery latency — was scored as a work failure, and two of them blocked a
+task whose correct commit was already on the branch.
+
+### Changed
+- `plugin/commands/build.md` — Phase 3 step 7 now defines when the marker
+  is "never found" (the builder is FINISHED with no marker in any message)
+  and adds the NO-REPORT FALLBACK: compare HEAD to the baseline taken
+  after the `chore(<task-id>): start` commit. Unchanged → FAILED as
+  before. Moved → the orchestrator verifies the new commit against the
+  task's acceptance criteria read-only, with real command output; every
+  PASS scores DONE with `attempts` unchanged, while any FAIL, a criterion
+  it cannot establish, or a dirty tree scores FAILED and increments
+  `attempts` as before. Notes record the missing report, the sha, and
+  per-criterion PASS/FAIL lines so a fallback DONE is auditable like a
+  reported one.
+- `plugin/commands/build.md` — step 8 names both routes into DONE and
+  FAILED.
+- `plugin/evals/build-orchestration-decisions/` — scenarios 5 and 6
+  exercise the missing-marker branch (HEAD moved / HEAD unchanged).
+
+### Added
+- `tests/commands.bats` — three tests pinning the fallback: the branch-tip
+  check precedes FAILED, the baseline is post-start-commit (never a
+  commit-message grep, which matches the orchestrator's own commit), and
+  uncertainty still scores toward failure with the orchestrator read-only.
+
+The Stop hook is unchanged: completion still requires a `VERIFIER REPORT`
+PASS from a dispatched verifier, independent of per-task `passes`.
+
+
 ## 0.7.1 (2026-08-26)
 
 Fixes the subagent-dispatch contract in `/g2g:build` (#19). The procedure

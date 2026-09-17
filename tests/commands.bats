@@ -683,7 +683,33 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     grep -qi 'JSONL transcript' "$PLUGIN_DIR/commands/build.md"
 }
 
-@test "contract: build.md treats a subagent that dies without a report as FAILED" {
+@test "contract: build.md treats a subagent that dies without a report as a scored case, not an abandoned run" {
     grep -qi 'dies without\|died without' "$PLUGIN_DIR/commands/build.md"
     grep -qi 'not a reason to abandon' "$PLUGIN_DIR/commands/build.md"
+}
+
+# Issue #29: a builder whose BUILDER REPORT never arrived was scored a
+# FAILED attempt even when its commit was already on the branch — the
+# commit was consulted only on a reported DONE — so a reporting failure
+# counted as a work failure and two of them blocked the task. Step 7 now
+# consults the branch tip first; these pin the fallback's shape.
+
+@test "contract: build.md scores a missing BUILDER REPORT by the branch tip, not straight to FAILED" {
+    grep -q 'NO-REPORT FALLBACK' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'HEAD unchanged' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'HEAD moved' "$PLUGIN_DIR/commands/build.md"
+}
+
+@test "contract: the no-report baseline is HEAD after the start commit, never a message grep" {
+    # The orchestrator's own `chore(<task-id>): start` carries the task id,
+    # so a commit-message grep would match the orchestrator's commit.
+    grep -q 'AFTER step 5' "$PLUGIN_DIR/commands/build.md"
+    grep -qi 'never grep commit messages' "$PLUGIN_DIR/commands/build.md"
+}
+
+@test "safety: the no-report fallback keeps uncertainty scored as failure and the orchestrator read-only" {
+    grep -q 'silence plus no commit is still a failed attempt' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'cannot establish with real output counts' "$PLUGIN_DIR/commands/build.md"
+    grep -qi 'never edit a file and never fix a shortfall' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'committed wrong work is a genuine failed attempt' "$PLUGIN_DIR/commands/build.md"
 }

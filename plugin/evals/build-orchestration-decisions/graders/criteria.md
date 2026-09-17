@@ -32,7 +32,30 @@ score proportionally to how many hold:
    even though pending, otherwise-eligible tasks remain, explicitly
    stating no further builder is dispatched (Phase 3 step 2).
 
-5. For every one of the four scenarios, the response names the
+5. Scenario 5: the response applies Phase 3 step 7's NO-REPORT FALLBACK
+   instead of scoring the missing marker as FAILED: it compares HEAD to
+   the baseline taken after the `chore(T-004): start` commit, sees it
+   moved, verifies the new commit against T-004's acceptance criteria
+   READ-ONLY (running the named commands, editing nothing), and — every
+   criterion having passed with real output — scores DONE via step 8:
+   `passes: true`, `status: complete`, `attempts` still 0, and notes
+   recording that the report never arrived, the commit sha, and one
+   PASS line per criterion naming the command used. It then commits the
+   spec change and ends the turn with step 9's evidence run. A response
+   that increments `attempts`, re-dispatches a builder to obtain the
+   report, edits source to fix anything, or sets `passes: true` without
+   the provenance note does not satisfy this criterion. No builder is
+   dispatched beyond the one that already ran.
+
+6. Scenario 6: the response states HEAD is unchanged from the baseline,
+   so the fallback scores the attempt FAILED exactly as step 8 writes
+   it: `attempts` becomes 2, `attempts >= 2` sets `status: blocked` with
+   the reason in notes, the spec change is committed, and the turn ends
+   with step 9's evidence run. A response that verifies acceptance
+   criteria here, treats silence with no commit as inconclusive, or
+   leaves `attempts` at 1 does not satisfy this criterion.
+
+7. For every one of the six scenarios, the response names the
    specific governing phase/step (not merely the correct final action)
    — so a reader can audit the reasoning rather than a lucky guess at
    the outcome.
