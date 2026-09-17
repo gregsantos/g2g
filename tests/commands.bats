@@ -683,7 +683,83 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     grep -qi 'JSONL transcript' "$PLUGIN_DIR/commands/build.md"
 }
 
-@test "contract: build.md treats a subagent that dies without a report as FAILED" {
+@test "contract: build.md treats a subagent that dies without a report as a scored case, not an abandoned run" {
     grep -qi 'dies without\|died without' "$PLUGIN_DIR/commands/build.md"
     grep -qi 'not a reason to abandon' "$PLUGIN_DIR/commands/build.md"
+}
+
+# Issue #29: a builder whose BUILDER REPORT never arrived was scored a
+# FAILED attempt even when its commit was already on the branch — the
+# commit was consulted only on a reported DONE — so a reporting failure
+# counted as a work failure and two of them blocked the task. Step 7 now
+# consults the branch tip first; these pin the fallback's shape.
+
+@test "contract: build.md scores a missing BUILDER REPORT by the branch tip, not straight to FAILED" {
+    grep -q 'NO-REPORT FALLBACK' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'HEAD unchanged' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'HEAD moved' "$PLUGIN_DIR/commands/build.md"
+    # A block truncated after the marker (the incident's own shape) is a
+    # missing report too, not a FAILED attempt.
+    grep -q 'report as absent and apply the NO-REPORT FALLBACK' "$PLUGIN_DIR/commands/build.md"
+    # A DONE whose commit: is unreadable is a missing report too: step 8's
+    # DONE path checks that commit and cannot with no sha to check.
+    grep -q 'for DONE, `commit:` reads' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'cannot with no sha to' "$PLUGIN_DIR/commands/build.md"
+}
+
+@test "contract: the no-report baseline is HEAD after the start commit, never a message grep" {
+    # The orchestrator's own `chore(<task-id>): start` carries the task id,
+    # so a commit-message grep would match the orchestrator's commit.
+    grep -q 'AFTER step 5' "$PLUGIN_DIR/commands/build.md"
+    grep -qi 'never grep commit messages' "$PLUGIN_DIR/commands/build.md"
+}
+
+@test "safety: the no-report fallback keeps uncertainty scored as failure and the orchestrator read-only" {
+    grep -q 'silence plus no commit is still a failed attempt' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'cannot establish with real output counts' "$PLUGIN_DIR/commands/build.md"
+    grep -qi 'never edit a file and never fix a shortfall' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'committed wrong work, or work' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'you could not judge, is a genuine failed attempt' "$PLUGIN_DIR/commands/build.md"
+}
+
+@test "safety: the no-report fallback rechecks HEAD and tree cleanliness after verifying" {
+    # A verification command that regenerates tracked files and exits 0
+    # describes the modified checkout, not the commit; g2g-evidence.sh
+    # refuses a proven verdict on the same drift, and so must the fallback.
+    grep -q 'Postcondition: after the last command, HEAD still equals the TIP' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'regardless of how the commands exited' "$PLUGIN_DIR/commands/build.md"
+    # Preflight exempts a freshly generated spec; the fallback must not
+    # inherit that, since step 5 committed the spec before dispatch and a
+    # spec mutated by a verification command would be committed as
+    # bookkeeping in step 8. CLEAN must also cover untracked paths: a
+    # test file never git-added makes the tree pass and the commit fail.
+    grep -q 'never the spec: step 5 committed it' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'the spec byte-for-byte what step 5 committed' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'staged, unstaged, and untracked alike' "$PLUGIN_DIR/commands/build.md"
+    # Plain `git status --porcelain` honors status.showUntrackedFiles=no,
+    # which hides exactly the files CLEAN exists to catch.
+    grep -q 'git status --porcelain --untracked-files=all' "$PLUGIN_DIR/commands/build.md"
+}
+
+@test "safety: the no-report fallback repairs only the spec, from the baseline, and commits only the spec" {
+    # `git checkout -- <path>` restores from the INDEX, so a staged
+    # mutation survives it and rides into the bookkeeping commit. The
+    # restore must come from the dispatch baseline for index and worktree
+    # both, and every bookkeeping commit must be limited to the spec path
+    # so nothing else a verification command staged is swept in.
+    grep -q 'git restore --source=<baseline> --staged --worktree -- <spec-path>' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'SPEC RESTORE rule' "$PLUGIN_DIR/commands/build.md"
+    # The restore must run on every fallback outcome, not only after a
+    # drifted verification: a builder commit that touched the spec fails
+    # the PREcondition with a clean status, and step 8 would otherwise
+    # write attempts into the mutated spec.
+    grep -q 'on ANY' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'fallback outcome ((a), (c), or HEAD unchanged)' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'is NOT this: it restores from the index' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'Touch nothing else: no reset, no' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'BOOKKEEPING COMMIT' "$PLUGIN_DIR/commands/build.md"
+    grep -qF -- '-- <spec-path>` — never `-a`' "$PLUGIN_DIR/commands/build.md"
+    # Both step-8 branches must commit that way.
+    run grep -c 'BOOKKEEPING COMMIT' "$PLUGIN_DIR/commands/build.md"
+    [[ "$output" -ge 3 ]] || { echo "only $output BOOKKEEPING COMMIT references"; return 1; }
 }

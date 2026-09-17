@@ -1,5 +1,72 @@
 # Changelog
 
+## 0.7.2 (2026-09-17)
+
+Fixes how `/g2g:build` scores a builder whose `BUILDER REPORT` never
+arrives (#29). Phase 3 step 7 treated a missing marker as a FAILED attempt
+and consulted the builder's commit only when a report had already arrived,
+so a reporting failure — an API error mid-report, a killed process, harness
+delivery latency — was scored as a work failure, and two of them blocked a
+task whose correct commit was already on the branch.
+
+### Changed
+- `plugin/commands/build.md` — Phase 3 step 7 now defines when the marker
+  is "never found" (the builder is FINISHED with no marker in any
+  message), treats a block that is not USABLE — `result:` unreadable, or
+  a DONE whose `commit:` does not resolve, the shape a message truncated
+  inside the block produces — as a missing report rather than a FAILED
+  attempt or a trusted DONE, and adds the NO-REPORT FALLBACK: compare HEAD to the baseline taken
+  after the `chore(<task-id>): start` commit. Unchanged → FAILED as
+  before. Moved → the orchestrator verifies the new commit against the
+  task's acceptance criteria read-only, with real command output; every
+  PASS scores DONE with `attempts` unchanged, while any FAIL, a criterion
+  it cannot establish, a dirty tree, or HEAD/tree drift after the
+  verification commands ran (the same drift the evidence script refuses
+  a proven verdict on) scores FAILED and increments `attempts` as before.
+  The fallback's tree exemptions are the goal/lock/mutex trio and the
+  SURFACED-FOREIGN list only — never the spec, which step 5 committed
+  before dispatch; preflight's freshly-generated-spec allowance does not
+  carry into the fallback, so a verification command that rewrites
+  criteria or flags is drift, not bookkeeping to commit. "Clean" covers
+  staged, unstaged, and untracked paths alike. On drift the orchestrator
+  repairs only the spec — index and working tree, from the dispatch
+  baseline via `git restore --source=<baseline> --staged --worktree`,
+  never `git checkout --` (which restores from the index) — on EVERY
+  fallback outcome, including a builder commit that itself touched the
+  spec and the HEAD-unchanged case, and touches nothing else; a commit
+  made during verification is recorded, not undone.
+  The cleanliness check names `git status --porcelain
+  --untracked-files=all` explicitly, since a host's
+  `status.showUntrackedFiles=no` would otherwise hide the very files it
+  exists to catch.
+- `plugin/commands/build.md` — every spec bookkeeping commit (steps 5 and
+  8) is now explicitly limited to the spec path (`git commit ... --
+  <spec-path>`, never `-a`), so a path some other writer staged cannot
+  ride into the orchestrator's commit.
+  Notes record the missing report, the sha, and
+  per-criterion PASS/FAIL lines so a fallback DONE is auditable like a
+  reported one.
+- `plugin/commands/build.md` — step 8 names both routes into DONE and
+  FAILED.
+- `plugin/evals/build-orchestration-decisions/` — scenarios 5 through 11
+  exercise the missing-report branch (HEAD moved / HEAD unchanged /
+  verification passed but modified tracked files / verification staged a
+  spec mutation / verification committed a spec mutation / the builder's
+  own commit modified the spec / a block truncated right after
+  `result: DONE`).
+
+### Added
+- `tests/commands.bats` — five tests pinning the fallback: the branch-tip
+  check precedes FAILED, the baseline is post-start-commit (never a
+  commit-message grep, which matches the orchestrator's own commit),
+  uncertainty still scores toward failure with the orchestrator read-only,
+  HEAD/tree are rechecked after the verification commands run, and repair
+  is spec-only from the baseline with spec-only bookkeeping commits.
+
+The Stop hook is unchanged: completion still requires a `VERIFIER REPORT`
+PASS from a dispatched verifier, independent of per-task `passes`.
+
+
 ## 0.7.1 (2026-08-26)
 
 Fixes the subagent-dispatch contract in `/g2g:build` (#19). The procedure

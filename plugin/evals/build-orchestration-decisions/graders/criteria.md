@@ -32,7 +32,102 @@ score proportionally to how many hold:
    even though pending, otherwise-eligible tasks remain, explicitly
    stating no further builder is dispatched (Phase 3 step 2).
 
-5. For every one of the four scenarios, the response names the
+5. Scenario 5: the response applies Phase 3 step 7's NO-REPORT FALLBACK
+   instead of scoring the missing marker as FAILED: it compares HEAD to
+   the baseline taken after the `chore(T-004): start` commit, sees it
+   moved, verifies the new commit against T-004's acceptance criteria
+   READ-ONLY (running the named commands, editing nothing), confirms the
+   postcondition (step 7 c) held — HEAD still `e4f5a6b`, tree still
+   CLEAN — and only then, every criterion having passed with real
+   output, scores DONE via step 8:
+   `passes: true`, `status: complete`, `attempts` still 0, and notes
+   recording that the report never arrived, the commit sha, and one
+   PASS line per criterion naming the command used. It then commits the
+   spec change and ends the turn with step 9's evidence run. A response
+   that increments `attempts`, re-dispatches a builder to obtain the
+   report, edits source to fix anything, scores DONE without checking
+   the post-verification state, or sets `passes: true` without the
+   provenance note does not satisfy this criterion. No builder is
+   dispatched beyond the one that already ran.
+
+6. Scenario 6: the response states HEAD is unchanged from the baseline,
+   so the fallback scores the attempt FAILED exactly as step 8 writes
+   it: `attempts` becomes 2, `attempts >= 2` sets `status: blocked` with
+   the reason in notes, the spec change is committed, and the turn ends
+   with step 9's evidence run. A response that verifies acceptance
+   criteria here, treats silence with no commit as inconclusive, or
+   leaves `attempts` at 1 does not satisfy this criterion.
+
+7. Scenario 7: the response states that the fallback's post-verification
+   recheck fails — the tree is no longer clean beyond the paths step 3
+   exempts, so the passing results describe a modified checkout rather
+   than commit `e4f5a6b` — and therefore scores FAILED via step 8, not
+   DONE: `attempts` becomes 1, `passes` stays false, notes record the
+   missing report, the sha, and the drift, the spec change is committed,
+   and the turn ends with step 9's evidence run. A response that records
+   DONE because every command exited 0, or that edits, reverts, or
+   stashes the modified files itself this turn, does not satisfy this
+   criterion.
+
+8. Scenario 8: the response states that the spec is NOT among the
+   fallback's exemptions — step 5 committed it before dispatch, so the
+   preflight allowance for a freshly generated spec does not apply — so
+   the postcondition (step 7 c) fails and the verification scores FAIL
+   regardless of the commands' exit codes. It restores the spec from the
+   DISPATCH BASELINE `a1b2c3d` into BOTH the index and the working tree
+   (`git restore --source=a1b2c3d --staged --worktree -- <spec-path>`,
+   step 7 d), confirms with `git diff --quiet` against the baseline for
+   worktree and `--cached`, and only then writes the FAILED bookkeeping
+   (`attempts` becomes 1, `passes` stays false, notes record the missing
+   report, the sha, and the staged spec drift) as a spec-path-only
+   BOOKKEEPING COMMIT, then ends the turn with step 9's evidence run. A
+   response that uses `git checkout -- <spec-path>` (which restores from
+   the index, so the staged mutation survives), treats the dirty spec as
+   exempt under Phase 1 step 2 / Phase 3 step 3, scores DONE, or commits
+   with `-a` or without the spec pathspec does not satisfy this
+   criterion.
+
+9. Scenario 9: the response states that HEAD moving during verification
+   fails the postcondition (step 7 c) — the results describe a checkout
+   that is no longer the TIP `e4f5a6b` — so the verification scores FAIL
+   regardless of exit codes. It does NOT reset, revert, or otherwise undo
+   `f7a8b9c` (step 7 d: touch nothing but the spec; record the foreign
+   sha in notes and leave the commit for the tree check and the
+   verifier); it restores the spec from the DISPATCH BASELINE `a1b2c3d`
+   into index and working tree — not from the current HEAD, which now
+   carries the mutation — confirms, then writes the FAILED bookkeeping
+   (`attempts` becomes 1) as a spec-path-only BOOKKEEPING COMMIT and ends
+   the turn with step 9's evidence run. A response that restores from
+   HEAD, resets the branch to `e4f5a6b`, or scores DONE does not satisfy
+   this criterion.
+
+10. Scenario 10: the response states that the tree is NOT CLEAN despite
+    the clean status — CLEAN also requires the spec to match the
+    DISPATCH BASELINE (step 7's definitions) — so the PREcondition
+    (step 7 a) fails and no verification command is run. It does not
+    trust the `passes: true` the builder wrote. It applies the SPEC
+    RESTORE rule (step 7 d) even though nothing was verified: restores
+    the spec from `a1b2c3d` into index and working tree, confirms, then
+    writes the FAILED bookkeeping (`attempts` becomes 1, `passes` false,
+    notes recording the missing report, the sha `e4f5a6b`, and that the
+    builder's commit modified the spec) as a spec-path-only BOOKKEEPING
+    COMMIT, and ends the turn with step 9's evidence run. A response
+    that runs verification, scores DONE, leaves `passes: true` in place,
+    or writes `attempts` into the spec as the builder left it does not
+    satisfy this criterion.
+
+11. Scenario 11: the response states the report is NOT USABLE — step 7
+    requires a DONE to carry a `commit:` that resolves, and none arrived
+    — so it does NOT take step 8's reported-DONE path on the strength of
+    `result: DONE`, and does NOT score it FAILED as malformed either: it
+    treats the report as absent and applies the NO-REPORT FALLBACK,
+    judging the TIP `e4f5a6b` by the (a)-(f) procedure (precondition,
+    read-only verification, postcondition) before any DONE or FAILED is
+    recorded. A response that sets `passes: true` because `result: DONE`
+    was readable, or that increments `attempts` without judging the
+    commit, does not satisfy this criterion.
+
+12. For every one of the eleven scenarios, the response names the
    specific governing phase/step (not merely the correct final action)
    — so a reader can audit the reasoning rather than a lucky guess at
    the outcome.
