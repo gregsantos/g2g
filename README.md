@@ -70,10 +70,11 @@ engine everywhere else.
   read, listing exactly what got done and what is still blocked.
 - **Completion you can trust.** g2g's evidence is a deterministic *artifact* —
   your commands, actually executed, with real exit codes. The Stop gate that
-  reads it is still a small-model judge, but it is judging real tool output in
-  the transcript (not the model's self-narration), and the verifier
-  independently re-runs the commands — so "done" cannot be conjured by the
-  model saying so.
+  reads it is a deterministic script, not a model: it pairs the evidence
+  block to the exact command that produced it, checks the verdict line and
+  the commit it certifies, and requires the verifier's PASS and an opened PR
+  before the arming session may end. The verifier independently re-runs the
+  commands — so "done" cannot be conjured by the model saying so.
 
 **When not to use it:** interactive one-offs, or simple scheduled chores —
 `/goal`, `/loop`, or a routine are simpler and lighter. g2g earns its structure
@@ -124,6 +125,7 @@ claude -p "/g2g:go 'fix the failing lint rules'" --plugin-dir /path/to/g2g/plugi
 | `/g2g:dev "<prompt>" [--review]` | Pipeline: generate spec → build it |
 | `/g2g:review [--diff-base <ref>] [--full] [--focus <cats>] [--target <path>]` | Read-only review into the tracked findings backlog |
 | `/g2g:improve [--wait]` | One bounded improve tick: review → fix-spec → build → PR (strictly opt-in) |
+| `/g2g:compound [<spec.json> \| F-NNN]` | Turn one completed, verified build (or one addressed finding) into exactly one grounded learning under `docs/learnings/` |
 | `/g2g:status` | Read-only dashboard: goal, spec progress, open `g2g/*` PRs, worktrees |
 
 ## How it works
@@ -158,11 +160,16 @@ claude -p "/g2g:build specs/feature.json" \
   --permission-mode acceptEdits \
   --allowedTools "Agent,Bash,Read,Write,Edit,Glob,Grep" \
   --setting-sources project \
-  --max-turns 40 \
+  --max-turns 80 \
   --max-budget-usd 20
 ```
 
 Notes:
+
+- **`--max-turns` is a guillotine, not a target.** When it fires mid-build
+  there is no PR at all, unlike the inner caps, which route to a draft
+  partial PR. The smoke gate runs a 2-task sandbox at 80; size up with
+  task count.
 
 - **`--plugin-dir` is not part of this shape.** If the plugin was
   installed the normal way (`/plugin marketplace add` +
@@ -176,10 +183,14 @@ Notes:
 - The CLI retries transient API errors itself and exits nonzero on
   failure — no wrapper loop is needed; use your CI runner's retry for
   whole-process failures.
-- Under `--setting-sources project` plugin hooks are inert, so the host
-  repo needs the Stop hook in its own `.claude/settings.json` —
-  `/g2g:init` installs it; commit the result. Without it, an unattended
-  run has no completion gate.
+- Under `--setting-sources project` your personal settings are excluded,
+  so a plugin enabled only in `~/.claude/settings.json` is not loaded at
+  all in that session — no `/g2g:*` commands and no Stop hook. Either
+  pass `--plugin-dir`, or declare the plugin in the host repo's own
+  `.claude/settings.json` (`extraKnownMarketplaces` + `enabledPlugins`),
+  which `/g2g:init` writes; commit that file. **Never copy the hook into
+  the host repo** — a vendored copy is one no plugin update can patch,
+  and `/g2g:init` offers to remove legacy copies it finds.
 - `specs/` and `review-output/` must be git-tracked: worktrees and
   fresh clones only materialize tracked files.
 - **Measuring actual cost.** `ANTHROPIC_API_KEY` outranks subscription
@@ -206,20 +217,27 @@ Notes:
 g2g/
 ├── .claude-plugin/marketplace.json   # Marketplace catalog (installs ./plugin)
 ├── plugin/                           # The plugin
-│   ├── .claude-plugin/plugin.json    # Plugin metadata
+│   ├── .claude-plugin/plugin.json    # Plugin metadata (name, version)
 │   ├── commands/                     # /g2g:* command procedures
 │   ├── agents/                       # g2g-builder, g2g-verifier
-│   ├── skills/                       # writing-g2g-specs, reviewing-codebase
-│   ├── hooks/hooks.json              # Stop hook (goal enforcement)
+│   ├── skills/                       # writing-g2g-specs, reviewing-codebase, writing-g2g-learnings
+│   ├── workflows/g2g-build.js        # The /g2g:build-wf task loop (dynamic-workflow runtime)
+│   ├── hooks/hooks.json              # Stop hook registration → g2g-stop.sh
 │   ├── scripts/g2g-evidence.sh       # Deterministic evidence generator
+│   ├── scripts/g2g-stop.sh           # Stop-hook goal enforcement (deterministic, no model)
 │   ├── scripts/g2g-lock.sh           # Checkout-lock protocol (sole implementation)
+│   ├── scripts/g2g-slug.sh           # Branch/spec-file slug derivation (sole implementation)
+│   ├── scripts/g2g-learning-check.sh # Validates docs/learnings entries
 │   ├── templates/                    # /g2g:init config starters
 │   ├── routines/                     # Scheduled-run templates
-│   └── evals/                        # plugin-eval cases (harness in early access)
+│   └── evals/                        # plugin-eval cases (status: its README)
 ├── specs/                            # Spec JSONs (tracked)
 ├── review-output/                    # Findings backlog + report (tracked)
-├── docs/G2G_PLUGIN_REF.md            # Operator runbook
-└── tests/                            # bats tests for scripts + templates
+├── docs/G2G_PLUGIN_REF.md            # Operator runbook (review & improve flywheel)
+├── docs/learnings/                   # Compound learnings, written by /g2g:compound
+├── docs/proposals/                   # Design proposals (both shipped; kept as design records)
+├── scripts/                          # Repo CI only — release tagging + version-bump gate
+└── tests/                            # bats suites, smoke.sh (both build engines), lib/ probe
 ```
 
 ## Development
@@ -271,10 +289,13 @@ How the tooling composes with a dev session:
   tree, so headless children spawned by `/g2g:improve` inherit the
   dev code too.
 
-Release flow: bump `plugin/.claude-plugin/plugin.json`'s `version`
-(required for consumers to see the change), merge to main, then on
-consuming machines run `/plugin marketplace update g2g` — third-party
-marketplaces do not background-auto-update by default.
+Release flow: any PR that changes installed plugin behavior bumps
+`plugin/.claude-plugin/plugin.json`'s `version` once and adds the matching
+`CHANGELOG.md` section in the same PR — CI's `version-bump` job fails the
+PR otherwise. On merge to main, CI tags `g2g--v<version>` from that
+CHANGELOG section; tags are never cut by hand. Consumers then run
+`/plugin marketplace update g2g` — third-party marketplaces do not
+background-auto-update by default. Full rules: `CLAUDE.md`.
 
 ## License
 
