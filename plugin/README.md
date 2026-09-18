@@ -68,10 +68,10 @@ workflow). What changes and what doesn't:
 Requirements: Claude Code >= 2.1.154 with dynamic workflows enabled
 (`disableWorkflows` unset). Headless runs must add `Workflow` to the
 invocation's `--allowedTools` (the "Running headless" flag set predates
-this command) and need MORE outer `--max-turns` headroom than
-`/g2g:build` — the controlled sandbox run (2 tasks) used 48 outer
-turns where `/g2g:build`'s smoke fits in 40; start at 60 and size up
-with task count. Where the runtime is unavailable the command
+this command) and an outer `--max-turns` sized like `/g2g:build`'s:
+`make smoke-wf` runs both engines at 80, and the 2026-09-17 sandbox run
+(2 tasks) used 59 outer turns under it, so start at 80 and size up with
+task count. Where the runtime is unavailable the command
 refuses and points at `/g2g:build`, which remains the stable engine.
 Until the workflow path has accumulated the same live mileage, treat it
 as experimental: `make smoke-wf` runs the same sandbox smoke as
