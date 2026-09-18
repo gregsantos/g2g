@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.7.6 (2026-09-17)
+
+Closes the gap between a build's proven evidence and its pull request
+(F-038). The Stop hook's completion check required three things after
+arming — a paired `complete (proven)` evidence block, a head line matching
+the current tree, and a dispatched verifier PASS — and `/g2g:build` Phase 4
+step 6 satisfies all three, while the push, the `gh pr create`, and the
+`release-terminal` that deletes `.g2g-goal` are all step 7. A turn
+boundary between the two let the hook allow the session to end with no PR
+opened and the goal still on disk.
+
+### Changed
+- `plugin/scripts/g2g-stop.sh` adds a fourth completion requirement: a
+  `gh pr create` tool call — matched word-bounded anywhere in the command,
+  since build.md chains a `PROJECT_NAME` capture in front of it — paired
+  by tool-use id to a result carrying a pull-request URL, after the arming
+  point. A complete build with no PR now blocks with a reason that points
+  at Phase 4 step 7 and the release that must follow. A URL in assistant
+  prose, a URL paired to a command that is not `gh pr create`, a `gh pr
+  create` whose result carries no URL (gh failed), or a PR opened before
+  arming do not satisfy it. Every existing allow and block behaviour is
+  unchanged and its tests carry a PR record where they model a finished
+  build; six new tests pin the gate.
+- `/g2g:build` Phase 4 step 7 gains the failure path Phase 5 already had:
+  if `git push` or `gh pr create` fails, report it verbatim and CONTINUE
+  to `release-terminal`, so a failed push still has a legal way out of the
+  armed goal. It also states that the turn must not end between step 6 and
+  the release, and why.
+- `plugin/README.md`, `CLAUDE.md`, and build.md's Phase 2 description of
+  what allows a stop name the new requirement; the hook's escalation
+  text now also points a complete-but-unreleased build at Phase 4 step 7
+  rather than only at the partial path. Resumed builds
+  (`--continue-branch`) satisfy the gate too: `gh pr create` on a branch
+  whose PR already exists prints that PR's URL. `/g2g:build-wf` runs
+  build.md's Phase 4 and 5 verbatim in the main transcript, so its PR
+  call pairs the same way.
+
 ## 0.7.5 (2026-09-17)
 
 Gives the slug derivation an explicit charset and a single executable

@@ -504,7 +504,9 @@ algorithm backing it).
   bookkeeping alone (status mode, which never runs verification
   commands and so can never earn `(proven)`); `incomplete` otherwise,
   naming the first failing fact. The Stop hook's completion check keys
-  on this token: it requires the transcript's evidence block — the one
+  on this token (and, since 0.7.6, on a `gh pr create` result after the
+  arming point — F-038 — so a complete build cannot end between printing
+  its evidence and opening its PR): it requires the transcript's evidence block — the one
   it can pair by tool-use id to a command that is exactly the plugin's
   own evidence-script `--full` invocation, start to end, nothing
   chained before or after it — to carry exactly one verdict line,

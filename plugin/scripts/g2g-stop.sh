@@ -62,7 +62,9 @@ Stop retrying the same step. Either finish the build properly, or end it
 deliberately:
   - Reachable but incomplete: continue the procedure in build.md — for a
     terminal stop that is Phase 5 (push, then
-    \`\${CLAUDE_PLUGIN_ROOT}/scripts/g2g-lock.sh release-terminal <owner-token>\`).
+    \`\${CLAUDE_PLUGIN_ROOT}/scripts/g2g-lock.sh release-terminal <owner-token>\`),
+    or Phase 4 step 7 if the verifier already passed (push, \`gh pr create\`,
+    then the same release-terminal).
   - Unreachable (spec missing, no build in progress, goal armed by hand):
     say so plainly and delete .g2g-goal. That clears the goal and this hook
     will allow the stop."
@@ -378,6 +380,51 @@ verifier_passed=$(jq -rs --arg token "$owner_token" '
 
 if [ "${verifier_passed:-0}" -lt 1 ] 2>/dev/null; then
     block "Condition not met: no VERIFIER REPORT with verdict: PASS from a dispatched g2g:g2g-verifier subagent appears after the goal was armed."
+fi
+
+# ---------------------------------------------------------------------------
+# PR gate (F-038). Every check above is satisfied at build.md Phase 4 step 6,
+# where the proven --full evidence prints; the push, the PR, and the
+# release-terminal that deletes .g2g-goal are all step 7. A turn boundary
+# between the two therefore let a complete build end with no PR and the goal
+# still on disk. Require a `gh pr create` tool call — paired by tool_use_id
+# to a result carrying the pull-request URL gh prints — after the arming
+# point. The command match is a word-bounded `gh pr create` anywhere in the
+# command (build.md chains a PROJECT_NAME capture in front of it, F-035),
+# deliberately looser than the evidence pairing: the only payoff of forging
+# a PR record is ending a session without a PR, which this gate merely
+# stops from happening by accident. Both Phase 4 and Phase 5 open their PR
+# before releasing, and the conflicts path releases first (no goal, no
+# hook), so an honest build never meets this gate without a PR to show.
+# ---------------------------------------------------------------------------
+pr_opened=$(jq -rs --arg token "$owner_token" '
+    ([ range(0; length) as $index
+       | select(.[$index].type=="assistant")
+       | select(any(.[$index].message.content[]?;
+             type=="object" and .type=="tool_use"
+             and ((.input | tostring) | contains($token))))
+       | $index ] | first) as $arm_index
+    | if $arm_index == null then 0
+      else
+        [ .[] | select(.type=="assistant") | .message.content[]?
+          | select(type=="object" and .type=="tool_use")
+          | select((.input.command? // "")
+                   | test("(^|[^[:alnum:]_-])gh[[:space:]]+pr[[:space:]]+create([[:space:]]|$)"))
+          | .id ] as $pr_ids
+        | [ range(0; length) as $index | .[$index] as $record
+            | select($index > $arm_index and $record.type=="user")
+            | $record.message.content[]?
+            | select(type=="object" and .type=="tool_result")
+            | select(.tool_use_id as $id | $pr_ids | index($id))
+            | [.content] | flatten
+            | map(if type=="object" then (.text // "") else tostring end)
+            | join("\n")
+            | select(test("https://[^[:space:]]+/pull/[0-9]+"))
+            | 1 ] | length
+      end' "$transcript_path" 2>/dev/null)
+
+if [ "${pr_opened:-0}" -lt 1 ] 2>/dev/null; then
+    block "Condition not met: the build is complete (proven evidence, verifier PASS) but no pull request has been opened since the goal was armed. Finish build.md Phase 4 step 7: push once, run \`gh pr create\`, then \`\${CLAUDE_PLUGIN_ROOT}/scripts/g2g-lock.sh release-terminal <owner-token>\` — the release runs on the push/PR failure path too."
 fi
 
 allow
