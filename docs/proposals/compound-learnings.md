@@ -1,7 +1,11 @@
 # Proposal: a compound learnings store for g2g
 
-**Status:** proposed. Spec written at [`specs/compound-learnings.json`](../../specs/compound-learnings.json);
-nothing implemented yet.
+**Status:** shipped in 0.7.0 (2026-08-18) — spec
+[`specs/compound-learnings.json`](../../specs/compound-learnings.json),
+verifier PASS 2026-08-19, all four tasks. Kept as the design record;
+`/g2g:compound`, the `writing-g2g-learnings` skill, `g2g-learning-check.sh`,
+and `docs/learnings/` are the implementation. Where this text and the
+plugin README's "Compound learnings" section disagree, the README wins.
 
 **Origin:** an audit of the `compound-engineering` plugin's `ce-compound` and
 `ce-compound-refresh` skills, asking which of their strategies g2g should own

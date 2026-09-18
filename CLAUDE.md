@@ -67,23 +67,27 @@ g2g/
 │   ├── .claude-plugin/plugin.json    # Plugin metadata (name, version)
 │   ├── commands/                     # /g2g:* command procedures (markdown)
 │   ├── agents/                       # g2g-builder, g2g-verifier definitions
-│   ├── skills/                       # writing-g2g-specs, reviewing-codebase
+│   ├── skills/                       # writing-g2g-specs, reviewing-codebase, writing-g2g-learnings
+│   ├── workflows/g2g-build.js        # /g2g:build-wf task loop (g2g:build-loop workflow)
 │   ├── hooks/hooks.json              # Stop hook registration → g2g-stop.sh
 │   ├── scripts/g2g-evidence.sh       # Deterministic evidence generator
 │   ├── scripts/g2g-lock.sh           # Checkout-lock protocol (sole implementation)
 │   ├── scripts/g2g-slug.sh           # Branch/spec-file slug derivation (sole implementation)
 │   ├── scripts/g2g-stop.sh           # Stop-hook goal enforcement (sole implementation)
+│   ├── scripts/g2g-learning-check.sh # docs/learnings schema check (used by /g2g:compound + tests)
 │   ├── templates/                    # /g2g:init config starters (g2g-*.json)
 │   ├── routines/                     # Scheduled-run templates
 │   └── evals/                        # plugin-eval cases (status: its README)
 ├── specs/                            # Spec JSONs — must stay git-tracked
 ├── review-output/                    # Findings backlog — must stay git-tracked
 ├── docs/G2G_PLUGIN_REF.md            # Operator runbook
+├── docs/learnings/                   # Learnings store (L-NNN), written by /g2g:compound
+├── docs/proposals/                   # Shipped design proposals, kept as design records
 ├── scripts/tag-release.sh            # Repo CI only — release tags (never shipped)
 ├── scripts/check-version-bump.sh     # Repo CI only — enforces the bump rule below
 ├── scripts/lib/changelog-section.awk # Sole CHANGELOG section parser, shared by both
 ├── scripts/lib/semver.sh             # Sole version-format/ordering rules, shared by both
-├── tests/                            # bats suites + enforcement canary (canary/)
+├── tests/                            # bats suites + enforcement canary (canary/) + smoke.sh + lib/ probe
 └── .claude/                          # This repo's own g2g.json + settings.json
 ```
 
