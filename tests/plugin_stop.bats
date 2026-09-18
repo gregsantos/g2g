@@ -108,10 +108,25 @@ verifier_pass_record() {
 EOF
 }
 
+# The PR the build opened (F-038): a `gh pr create` tool_use paired to a
+# tool_result carrying the pull-request URL gh prints. Args: [command]
+# [resultText] — defaults are an honest Phase 4 step 7 invocation and its
+# URL; pass a different command to simulate a non-gh producer, or a
+# different result to simulate gh failing.
+pr_created_record() {
+    local command="${1:-gh pr create --title g2g-fixture --body-file body.md}"
+    local result="${2:-https://github.com/example/fixture/pull/7}"
+    cat <<EOF
+{"type":"assistant","timestamp":"$NOW","message":{"content":[{"type":"tool_use","id":"tu_pr","name":"Bash","input":{"command":"$command"}}]}}
+{"type":"user","timestamp":"$NOW","message":{"content":[{"type":"tool_result","tool_use_id":"tu_pr","content":[{"type":"text","text":"$result"}]}]}}
+EOF
+}
+
 complete_transcript() {
     { arming_record
       evidence_records "specs/x.json" "2 total | 2 passed | 0 in_progress | 0 pending | 0 blocked"
       verifier_pass_record
+      pr_created_record
     } > "$TRANSCRIPT"
 }
 
@@ -297,6 +312,7 @@ EOF
     { arming_record
       evidence_records "specs/x.json" "2 total | 2 passed | 0 in_progress | 0 pending | 0 blocked"
       verifier_pass_record
+      pr_created_record
     } > "$TRANSCRIPT"
     run_hook
     assert_allowed
@@ -542,6 +558,7 @@ EOF
 {"type":"user","timestamp":"$NOW","message":{"content":[{"type":"tool_result","tool_use_id":"tu_ev","content":[{"type":"text","text":"=== G2G EVIDENCE ===\ntasks: 2 total | 2 passed | 0 in_progress | 0 pending | 0 blocked\n$WORK_HEAD_LINE\nverify: ./verify.sh -> exit 0\nverifier: PASS\nverdict: complete (proven) [tasks 2/2; verify all exit 0; verifier PASS]"}]}]}}
 EOF
       verifier_pass_record
+      pr_created_record
     } > "$TRANSCRIPT"
     run_hook
     assert_allowed
@@ -627,6 +644,104 @@ EOF
 
 # Emit a harness-written stop_hook_summary record carrying a block from THIS
 # hook. Args: reason-text
+# --- PR gate (F-038) ---------------------------------------------------------
+#
+# Phase 4 step 6 prints the proven evidence and step 7 pushes, opens the PR,
+# and releases the goal. Everything the completion check used to require was
+# satisfied at step 6, so a turn boundary between the two let the session end
+# with no PR and the goal still on disk. The check now also requires a
+# `gh pr create` tool call, paired to a result carrying the PR URL, after
+# the arming point.
+
+@test "stop: a complete build with no pull request opened blocks and names the missing PR" {
+    write_goal "$TOKEN" "specs/x.json" 40 6 "$NOW"
+    { arming_record
+      evidence_records "specs/x.json" "2 total | 2 passed | 0 in_progress | 0 pending | 0 blocked"
+      verifier_pass_record
+    } > "$TRANSCRIPT"
+    run_hook
+    assert_blocked
+    [[ "$output" == *"pull request"* ]] \
+        || { echo "block reason does not name the missing PR: $output"; return 1; }
+    [[ "$output" == *"release-terminal"* ]] \
+        || { echo "block reason does not name the release that must follow: $output"; return 1; }
+}
+
+@test "stop: a pull-request URL in assistant prose does not satisfy the PR gate" {
+    write_goal "$TOKEN" "specs/x.json" 40 6 "$NOW"
+    { arming_record
+      evidence_records "specs/x.json" "2 total | 2 passed | 0 in_progress | 0 pending | 0 blocked"
+      verifier_pass_record
+      echo '{"type":"assistant","message":{"content":[{"type":"text","text":"Opened https://github.com/example/fixture/pull/7"}]}}'
+    } > "$TRANSCRIPT"
+    run_hook
+    assert_blocked
+}
+
+@test "stop: a pull-request URL paired to a command that is not gh pr create does not satisfy the PR gate" {
+    write_goal "$TOKEN" "specs/x.json" 40 6 "$NOW"
+    { arming_record
+      evidence_records "specs/x.json" "2 total | 2 passed | 0 in_progress | 0 pending | 0 blocked"
+      verifier_pass_record
+      pr_created_record 'echo https://github.com/example/fixture/pull/7'
+    } > "$TRANSCRIPT"
+    run_hook
+    assert_blocked
+}
+
+@test "stop: a gh pr create whose result carries no pull-request URL does not satisfy the PR gate" {
+    # gh failing (auth, network, no remote) prints an error, not a URL; the
+    # build must then still reach release-terminal by procedure.
+    write_goal "$TOKEN" "specs/x.json" 40 6 "$NOW"
+    { arming_record
+      evidence_records "specs/x.json" "2 total | 2 passed | 0 in_progress | 0 pending | 0 blocked"
+      verifier_pass_record
+      pr_created_record 'gh pr create --title \"g2g: fixture\"' 'pull request create failed: HTTP 401'
+    } > "$TRANSCRIPT"
+    run_hook
+    assert_blocked
+}
+
+@test "stop: a pull request opened before the goal was armed does not satisfy the PR gate" {
+    write_goal "$TOKEN" "specs/x.json" 40 6 "$NOW"
+    { pr_created_record
+      arming_record
+      evidence_records "specs/x.json" "2 total | 2 passed | 0 in_progress | 0 pending | 0 blocked"
+      verifier_pass_record
+    } > "$TRANSCRIPT"
+    run_hook
+    assert_blocked
+}
+
+@test "stop: a gh pr create --dry-run whose preview quotes an older PR URL does not satisfy the PR gate" {
+    # Codex review of PR #37: `gh pr create --dry-run` prints the would-be
+    # PR (title and body) without creating anything, so a body that cites
+    # an earlier PR's URL would otherwise satisfy an unanchored URL match.
+    write_goal "$TOKEN" "specs/x.json" 40 6 "$NOW"
+    { arming_record
+      evidence_records "specs/x.json" "2 total | 2 passed | 0 in_progress | 0 pending | 0 blocked"
+      verifier_pass_record
+      pr_created_record 'gh pr create --dry-run --title g2g-fixture --body-file body.md' 'Would have created a pull request:\nTitle: g2g: fixture\nBody: supersedes https://github.com/example/fixture/pull/3'
+    } > "$TRANSCRIPT"
+    run_hook
+    assert_blocked
+    [[ "$output" == *"pull request"* ]] \
+        || { echo "block reason does not name the missing PR: $output"; return 1; }
+}
+
+@test "stop: the PR gate accepts the build.md shape — a PROJECT_NAME capture chained before gh pr create" {
+    # build.md Phase 4 step 7 and Phase 5 step 2 read the project name in
+    # the same command (F-035), so `gh pr create` is not the first word.
+    write_goal "$TOKEN" "specs/x.json" 40 6 "$NOW"
+    { arming_record
+      evidence_records "specs/x.json" "2 total | 2 passed | 0 in_progress | 0 pending | 0 blocked"
+      verifier_pass_record
+      pr_created_record 'PROJECT_NAME=$(jq -r .project specs/x.json) && gh pr create --draft --title \"g2g: $PROJECT_NAME (partial)\" --body-file body.md'
+    } > "$TRANSCRIPT"
+    run_hook
+    assert_allowed
+}
+
 prior_block_record() {
     cat <<EOF
 {"type":"system","subtype":"stop_hook_summary","hookCount":1,"hookErrors":["$1"],"timestamp":"$NOW"}

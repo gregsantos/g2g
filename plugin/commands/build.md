@@ -210,7 +210,12 @@ command (confirmed by spike). Instead:
      them — still matches the repository's state at stop time; a stale
      or missing head line blocks with the drift and the
      `g2g-evidence.sh <spec-path> --full` re-run remedy instead of
-     letting a moved tree stop on a token that no longer certifies it.
+     letting a moved tree stop on a token that no longer certifies it,
+     AND a `gh pr create` tool call after the goal was armed has a
+     paired result carrying the pull-request URL (F-038) — the three
+     conditions above are all met at Phase 4 step 6, and without this
+     one a turn ending there could stop the session with no PR opened
+     and the goal still on disk.
 
    Otherwise it blocks and names the missing element. Two properties are
    worth knowing because they constrain how you must work, not just how
@@ -676,14 +681,21 @@ finish line and burn the whole remaining budget before surfacing partial work.
    capture prefixed in the same command, per Phase 1 step 3), body = evidence block +
    task table + verifier summary. The PR title and body must contain no
    attribution lines (no 'Generated with Claude Code', no Co-Authored-By
-   trailers). NEVER merge. Now that the build has reached a successful
-   terminal state, run
+   trailers). NEVER merge. If `git push` or `gh pr create` fails,
+   report the failure verbatim along with the branch/commit state for a
+   human to salvage, then CONTINUE to the release below — it runs on
+   the failure path too, exactly as Phase 5 step 3 does. Now that the
+   build has reached a terminal state, run
    `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-lock.sh release-terminal <owner-token>`
    to remove the goal/lock pair (exit 5: the pair is no longer yours —
    delete nothing and say so; any other nonzero exit: report the
    helper's output verbatim and leave the files for a human), and
    mention the release outcome
-   in your final message. Report the PR URL.
+   in your final message. Report the PR URL. Do not end your turn
+   between step 6 and this release: the Stop hook's completion check
+   also requires the `gh pr create` result in the transcript (F-038),
+   so a stop attempted after the evidence but before the PR is blocked
+   and points back here.
 
 ## Phase 5 — Terminal stop (cap hit, re-verify round cap hit, or all remaining tasks blocked)
 1. FIRST, before attempting any push or PR creation, run
