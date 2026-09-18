@@ -418,7 +418,7 @@
       "description": "The orchestrator derives the work branch g2g/<slug-from-spec-project> from the spec's project field using only an informal rule (\"lowercase, hyphenated form\", build.md line 27-28) and interpolates <project> verbatim into commit messages (line 37) and gh pr create titles; spec.md derives the spec filename slug the same way. No explicit character whitelist is specified, so a project value containing .., /, or shell/git metacharacters could yield an unexpected ref (e.g. ref-name traversal like g2g/../main) or, if the executing agent builds the git/gh command as a shell string, argument/command injection. The improve path auto-names the project safely (\"Improve <date>\"), but /g2g:spec -f <file> and bare/-p inputs let untrusted requirement text influence it.",
       "suggestion": "Define an explicit slug charset in build.md and spec.md (map to [a-z0-9-], collapse and trim repeated/leading/trailing hyphens, reject empty results) and require project/slug values be passed to git and gh as literal arguments, never interpolated into a shell string.",
       "effort": "small",
-      "addressed": null
+      "addressed": 35
     },
     {
       "id": "F-036",
