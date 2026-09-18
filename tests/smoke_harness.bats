@@ -381,7 +381,7 @@ result_event() {
     } > "$WORK/run.log"
     run bash "$SMOKE" --assert-only "$WORK"
     [[ "$status" -eq 1 ]]
-    [[ "$output" == *"no pending sandbox task"* ]]
+    [[ "$output" == *"no eligible sandbox task"* ]]
 }
 
 @test "assert-only: build-wf fails when the launch's tasks are not the sandbox spec's tasks" {
@@ -393,7 +393,47 @@ result_event() {
     } > "$WORK/run.log"
     run bash "$SMOKE" --assert-only "$WORK"
     [[ "$status" -eq 1 ]]
-    [[ "$output" == *"no pending sandbox task"* ]]
+    [[ "$output" == *"no eligible sandbox task"* ]]
+}
+
+@test "assert-only: build-wf fails when every pending task is blocked or waits on a failed dependency" {
+    # Emulated partial build: T-001 blocked, T-002 pending but dependent on
+    # it. Both have passes:false, yet g2g-build.js's nextEligible() selects
+    # neither and returns blocked with zero dispatches.
+    make_preserved_run
+    echo "build-wf" > "$WORK/engine"
+    {
+        workflow_event "$(jq -cn --argjson a "$LOOP_ARGS" '{name:"g2g:build-loop", args:($a + {tasks:[{id:"T-001",status:"blocked",passes:false,dependsOn:[]},{id:"T-002",status:"pending",passes:false,dependsOn:["T-001"]}]})}')"
+        workflow_result
+    } > "$WORK/run.log"
+    run bash "$SMOKE" --assert-only "$WORK"
+    [[ "$status" -eq 1 ]]
+    [[ "$output" == *"no eligible sandbox task"* ]]
+}
+
+@test "assert-only: build-wf fails when the launch's turn cap cannot admit a first dispatch" {
+    # The loop increments turn before checking `turn >= turnCap`, so a cap
+    # of 1 returns cap-turns before any agent runs.
+    make_preserved_run
+    echo "build-wf" > "$WORK/engine"
+    {
+        workflow_event "$(jq -cn --argjson a "$LOOP_ARGS" '{name:"g2g:build-loop", args:($a + {turnCap:1})}')"
+        workflow_result
+    } > "$WORK/run.log"
+    run bash "$SMOKE" --assert-only "$WORK"
+    [[ "$status" -eq 1 ]]
+    [[ "$output" == *"turn cap"* ]]
+}
+
+@test "assert-only: build-wf passes a launch whose eligible task depends on an already-passed one" {
+    make_preserved_run
+    echo "build-wf" > "$WORK/engine"
+    {
+        workflow_event "$(jq -cn --argjson a "$LOOP_ARGS" '{name:"g2g:build-loop", args:($a + {tasks:[{id:"T-001",status:"complete",passes:true,dependsOn:[]},{id:"T-002",status:"pending",passes:false,dependsOn:["T-001"]}]})}')"
+        workflow_result
+    } > "$WORK/run.log"
+    run bash "$SMOKE" --assert-only "$WORK"
+    [[ "$status" -eq 0 ]] || { echo "$output"; return 1; }
 }
 
 @test "assert-only: build-wf passes a resume-shaped launch with one passed and one pending task" {

@@ -217,12 +217,16 @@ git -C "$WORK/origin.git" rev-parse --verify "$BRANCH" > /dev/null 2>&1 \
 #      every arg g2g-build.js validates before dispatching an agent, each
 #      non-null and non-empty and `tasks` a non-empty array; a request
 #      failing that throws at invocation and ran nothing.
-#   3. That request hands the loop at least one PENDING sandbox task (an
-#      id from the spec with `passes` not true). Otherwise the loop's own
-#      selection finds nothing eligible and returns `complete` with zero
-#      dispatches — which is how a wrapper that built by hand first and
-#      launched the workflow afterwards would look. At least one, not all:
-#      a `--continue-branch` resume legitimately hands over a mix.
+#   3. That request hands the loop at least one sandbox task the loop
+#      would actually dispatch — a port of g2g-build.js's nextEligible():
+#      an id from the spec, not blocked, `passes` not true, every
+#      dependsOn id passed — and a turnCap the loop's first turn clears
+#      (the script increments before `turn >= turnCap`, so 1 returns
+#      cap-turns untouched). Otherwise the loop returns complete/blocked/
+#      cap-turns with zero dispatches — which is how a wrapper that built
+#      (or half-built) by hand first and launched the workflow afterwards
+#      would look. At least one eligible task, not all: a
+#      `--continue-branch` resume legitimately hands over a mix.
 #   4. That request has a paired tool_result (same tool_use id) that is
 #      not an error. The live result is "Workflow launched in background";
 #      the loop's OUTCOME arrives later as a task notification that never
@@ -279,15 +283,24 @@ if [[ "$ENGINE" == "build-wf" ]]; then
                 | select(.input.args.tasks | type == "array" and length > 0)'
     }
     WF_NAMED=$(named_launches | count_lines)
-    # ...and handing the loop at least one pending task from the sandbox spec.
-    WF_PENDING_IDS=$(named_launches \
-        | jq -r --argjson spec_ids "$SPEC_TASK_IDS" '
-            select(any(.input.args.tasks[];
-                       (.id as $id | $spec_ids | index($id) != null) and .passes != true))
-            | .id')
-    WF_PENDING=$(printf '%s\n' "$WF_PENDING_IDS" | count_lines)
+    # ...and handing the loop at least one task it would dispatch. The
+    # eligibility predicate mirrors nextEligible() in g2g-build.js.
+    eligible_launches() {
+        named_launches \
+            | jq -c --argjson spec_ids "$SPEC_TASK_IDS" '
+                (.input.args.tasks | map(select(.passes == true) | .id)) as $passed
+                | select(any(.input.args.tasks[];
+                    (.id as $id | $spec_ids | index($id) != null)
+                    and .status != "blocked"
+                    and .passes != true
+                    and ((.dependsOn // []) | all(. as $dep | $passed | index($dep) != null))))'
+    }
+    WF_ELIGIBLE=$(eligible_launches | count_lines)
+    WF_DISPATCHABLE_IDS=$(eligible_launches \
+        | jq -r 'select((.input.args.turnCap | type == "number") and .input.args.turnCap >= 2) | .id')
+    WF_DISPATCHABLE=$(printf '%s\n' "$WF_DISPATCHABLE_IDS" | count_lines)
     WF_LAUNCHED=$(comm -12 \
-        <(printf '%s\n' "$WF_PENDING_IDS" | grep . | sort -u) \
+        <(printf '%s\n' "$WF_DISPATCHABLE_IDS" | grep . | sort -u) \
         <(succeeded_tool_result_ids | sort -u) | count_lines)
 
     [[ "$WF_ALL" -gt 0 ]] \
@@ -296,10 +309,12 @@ if [[ "$ENGINE" == "build-wf" ]]; then
         || fail "Workflow ran ${WF_INLINE}x with an inline script or scriptPath — the loop was emulated, not the shipped g2g-build.js (a valid named launch does not excuse it)"
     [[ "$WF_NAMED" -gt 0 ]] \
         || fail "Workflow ran ${WF_ALL}x but never as $WORKFLOW_NAME by exact name with every required arg set (${WORKFLOW_REQUIRED_ARGS[*]}; tasks non-empty)"
-    [[ "$WF_PENDING" -gt 0 ]] \
-        || fail "$WORKFLOW_NAME was requested ${WF_NAMED}x but with no pending sandbox task in its tasks arg — the loop had nothing to dispatch, so the build was done by hand before the launch"
+    [[ "$WF_ELIGIBLE" -gt 0 ]] \
+        || fail "$WORKFLOW_NAME was requested ${WF_NAMED}x but with no eligible sandbox task in its tasks arg (spec id, not blocked, not passed, dependencies passed) — the loop had nothing to dispatch, so the build was done by hand before the launch"
+    [[ "$WF_DISPATCHABLE" -gt 0 ]] \
+        || fail "$WORKFLOW_NAME was requested ${WF_ELIGIBLE}x with eligible work but a turn cap below 2 — the loop returns cap-turns before its first dispatch"
     [[ "$WF_LAUNCHED" -gt 0 ]] \
-        || fail "$WORKFLOW_NAME was requested ${WF_PENDING}x with pending work but no request has a paired non-error tool_result — the launch failed, so whatever built the branch was not the workflow"
+        || fail "$WORKFLOW_NAME was requested ${WF_DISPATCHABLE}x with dispatchable work but no request has a paired non-error tool_result — the launch failed, so whatever built the branch was not the workflow"
     echo "smoke: workflow: $WORKFLOW_NAME launched ${WF_LAUNCHED}x (Workflow tool_use total: $WF_ALL)"
 fi
 
