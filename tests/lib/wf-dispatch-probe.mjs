@@ -16,7 +16,12 @@
 // the exported meta block dropped, the rest as an async function body over
 // the runtime globals (args, agent, parallel, pipeline, phase). The body
 // has no filesystem or shell access by runtime design and this probe hands
-// it none — the stub agent is the only side channel, and it never returns.
+// it none: it runs in a fresh `node:vm` context — strict mode, JavaScript
+// intrinsics only (no process, require, Buffer, timers), no dynamic code
+// generation, and no module loader, so `import()` throws. The stub agent
+// is the only side channel, and it never returns. A sloppy evaluator with
+// Node globals could report dispatch for a body the runtime rejects, or
+// let a body exit the probe with a fake success (adversarial review, PR #40).
 //
 //   printf '%s' '<args json>' | node wf-dispatch-probe.mjs <path/to/g2g-build.js>
 //
@@ -27,6 +32,7 @@
 //   probe-error: ...             3   probe misuse
 
 import { readFileSync } from 'node:fs'
+import vm from 'node:vm'
 
 const [scriptPath] = process.argv.slice(2)
 if (!scriptPath) {
@@ -73,10 +79,17 @@ const unavailable = name => () => {
   throw new Error(`${name}() reached before the first agent dispatch — not modelled by this probe`)
 }
 
-const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor
+// A fresh context has only the JavaScript intrinsics (Date, Map, JSON,
+// Number, Promise...) — none of Node's globals. codeGeneration off makes
+// eval() and new Function() throw inside it; with no importModuleDynamically
+// hook, import() throws too.
+const context = vm.createContext(Object.create(null), {
+  codeGeneration: { strings: false, wasm: false },
+})
+const wrapped = `'use strict';\n(async (args, agent, parallel, pipeline, phase) => {\n${body}\n})`
 let workflowBody
 try {
-  workflowBody = new AsyncFunction('args', 'agent', 'parallel', 'pipeline', 'phase', body)
+  workflowBody = new vm.Script(wrapped, { filename: scriptPath }).runInContext(context)
 } catch (error) {
   console.log(`throws: script does not compile: ${error.message}`)
   process.exit(2)

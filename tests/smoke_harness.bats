@@ -535,13 +535,108 @@ result_event() {
     [[ "$output" == *"ownerToken"* ]]
 }
 
+# A synthetic workflow file with the runtime's shape (meta block + body),
+# for probing the evaluator boundary rather than the shipped script.
+synthetic_workflow() {
+    local file="$BATS_TEST_TMPDIR/synthetic-$RANDOM.js"
+    {
+        echo "export const meta = {"
+        echo "  name: 'synthetic',"
+        echo "}"
+        cat
+    } > "$file"
+    echo "$file"
+}
+
+probe_synthetic() {
+    # $1 = workflow body on stdin already written to $2
+    bash -c "printf '%s' '$LOOP_ARGS' | node '$PROBE' '$1'"
+}
+
+@test "probe: the body runs in strict mode — an undeclared assignment throws (exit 2)" {
+    command -v node >/dev/null 2>&1 || skip "node not installed"
+    # The runtime executes bodies strictly; a sloppy evaluator would report
+    # dispatch for a script the runtime rejects before its first agent.
+    wf=$(synthetic_workflow <<'EOF'
+undeclaredVariable = 1
+await agent('x', { label: 'never reached' })
+EOF
+)
+    run probe_synthetic "$wf"
+    [[ "$status" -eq 2 ]] || { echo "$output"; return 1; }
+    [[ "$output" == throws:* ]]
+    [[ "$output" == *"undeclaredVariable"* ]]
+}
+
+@test "probe: the body sees no Node globals — process.exit cannot fake a success (exit 2)" {
+    command -v node >/dev/null 2>&1 || skip "node not installed"
+    wf=$(synthetic_workflow <<'EOF'
+process.exit(0)
+EOF
+)
+    run probe_synthetic "$wf"
+    [[ "$status" -eq 2 ]] || { echo "$output"; return 1; }
+    [[ "$output" == *"process"* ]]
+}
+
+@test "probe: the body cannot import modules — a filesystem import throws (exit 2)" {
+    command -v node >/dev/null 2>&1 || skip "node not installed"
+    wf=$(synthetic_workflow <<'EOF'
+const fs = await import('node:fs')
+fs.writeFileSync('/tmp/g2g-probe-escape', 'x')
+await agent('x', { label: 'never reached' })
+EOF
+)
+    run probe_synthetic "$wf"
+    [[ ! -e /tmp/g2g-probe-escape ]] || { rm -f /tmp/g2g-probe-escape; echo "import succeeded and wrote a file"; return 1; }
+    [[ "$status" -eq 2 ]] || { echo "$output"; return 1; }
+}
+
+@test "probe: the body cannot generate code — eval and new Function throw (exit 2)" {
+    command -v node >/dev/null 2>&1 || skip "node not installed"
+    wf=$(synthetic_workflow <<'EOF'
+const escape = new Function('return 1')
+await agent('x', { label: 'never reached' })
+EOF
+)
+    run probe_synthetic "$wf"
+    [[ "$status" -eq 2 ]] || { echo "$output"; return 1; }
+}
+
+@test "probe: success requires the dispatch sentinel — a body that returns is no-dispatch (exit 1)" {
+    command -v node >/dev/null 2>&1 || skip "node not installed"
+    wf=$(synthetic_workflow <<'EOF'
+return { outcome: 'complete' }
+EOF
+)
+    run probe_synthetic "$wf"
+    [[ "$status" -eq 1 ]]
+    [[ "$output" == *"no-dispatch"* ]]
+}
+
+@test "probe: the shipped script's own intrinsics still work in the isolated context" {
+    command -v node >/dev/null 2>&1 || skip "node not installed"
+    # Date.parse, Map, Array, JSON, Number.isFinite are all the script needs;
+    # the isolated context must provide them or every launch reads as throws.
+    wf=$(synthetic_workflow <<'EOF'
+const ms = Date.parse(args.buildStart)
+if (!Number.isFinite(ms)) throw new Error('Date.parse missing')
+const m = new Map([[1, JSON.stringify([1])]])
+await agent('x', { label: `intrinsics ok ${m.size}` })
+EOF
+)
+    run probe_synthetic "$wf"
+    [[ "$status" -eq 0 ]] || { echo "$output"; return 1; }
+    [[ "$output" == "dispatch: intrinsics ok 1" ]]
+}
+
 @test "probe: never spawns anything — the stub agent is the only side channel" {
     command -v node >/dev/null 2>&1 || skip "node not installed"
     # The workflow body has no filesystem or shell access by runtime design;
-    # the probe must not hand it any. Pin that the probe passes only the
-    # five runtime globals and nothing that reaches the OS.
-    run grep -c "new AsyncFunction('args', 'agent', 'parallel', 'pipeline', 'phase'" "$PROBE"
-    [[ "$output" == "1" ]]
+    # the probe must not hand it any: an isolated vm context, only the five
+    # runtime globals, nothing that reaches the OS.
+    grep -q "node:vm" "$PROBE"
+    grep -q "'use strict'" "$PROBE"
     ! grep -q "child_process\|process.env\|writeFileSync" "$PROBE"
 }
 
