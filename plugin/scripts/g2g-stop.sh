@@ -393,7 +393,10 @@ fi
 # command (build.md chains a PROJECT_NAME capture in front of it, F-035),
 # deliberately looser than the evidence pairing: the only payoff of forging
 # a PR record is ending a session without a PR, which this gate merely
-# stops from happening by accident. Both Phase 4 and Phase 5 open their PR
+# stops from happening by accident. The one URL-bearing result a
+# `gh pr create` can print WITHOUT creating anything is `--dry-run`, whose
+# preview echoes the body (which may cite an older PR), so that flag is
+# rejected outright. Both Phase 4 and Phase 5 open their PR
 # before releasing, and the conflicts path releases first (no goal, no
 # hook), so an honest build never meets this gate without a PR to show.
 # ---------------------------------------------------------------------------
@@ -409,7 +412,8 @@ pr_opened=$(jq -rs --arg token "$owner_token" '
         [ .[] | select(.type=="assistant") | .message.content[]?
           | select(type=="object" and .type=="tool_use")
           | select((.input.command? // "")
-                   | test("(^|[^[:alnum:]_-])gh[[:space:]]+pr[[:space:]]+create([[:space:]]|$)"))
+                   | test("(^|[^[:alnum:]_-])gh[[:space:]]+pr[[:space:]]+create([[:space:]]|$)")
+                     and (test("(^|[[:space:]])--dry-run([[:space:]=]|$)") | not))
           | .id ] as $pr_ids
         | [ range(0; length) as $index | .[$index] as $record
             | select($index > $arm_index and $record.type=="user")

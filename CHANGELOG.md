@@ -19,8 +19,9 @@ opened and the goal still on disk.
   point. A complete build with no PR now blocks with a reason that points
   at Phase 4 step 7 and the release that must follow. A URL in assistant
   prose, a URL paired to a command that is not `gh pr create`, a `gh pr
-  create` whose result carries no URL (gh failed), or a PR opened before
-  arming do not satisfy it. Every existing allow and block behaviour is
+  create` whose result carries no URL (gh failed), a PR opened before
+  arming, or a `gh pr create --dry-run` whose preview quotes an older PR's
+  URL (Codex adversarial review of PR #37) do not satisfy it. Every existing allow and block behaviour is
   unchanged and its tests carry a PR record where they model a finished
   build; six new tests pin the gate.
 - `/g2g:build` Phase 4 step 7 gains the failure path Phase 5 already had:

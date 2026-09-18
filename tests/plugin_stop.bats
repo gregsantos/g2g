@@ -713,6 +713,22 @@ EOF
     assert_blocked
 }
 
+@test "stop: a gh pr create --dry-run whose preview quotes an older PR URL does not satisfy the PR gate" {
+    # Codex review of PR #37: `gh pr create --dry-run` prints the would-be
+    # PR (title and body) without creating anything, so a body that cites
+    # an earlier PR's URL would otherwise satisfy an unanchored URL match.
+    write_goal "$TOKEN" "specs/x.json" 40 6 "$NOW"
+    { arming_record
+      evidence_records "specs/x.json" "2 total | 2 passed | 0 in_progress | 0 pending | 0 blocked"
+      verifier_pass_record
+      pr_created_record 'gh pr create --dry-run --title g2g-fixture --body-file body.md' 'Would have created a pull request:\nTitle: g2g: fixture\nBody: supersedes https://github.com/example/fixture/pull/3'
+    } > "$TRANSCRIPT"
+    run_hook
+    assert_blocked
+    [[ "$output" == *"pull request"* ]] \
+        || { echo "block reason does not name the missing PR: $output"; return 1; }
+}
+
 @test "stop: the PR gate accepts the build.md shape — a PROJECT_NAME capture chained before gh pr create" {
     # build.md Phase 4 step 7 and Phase 5 step 2 read the project name in
     # the same command (F-035), so `gh pr create` is not the first word.
