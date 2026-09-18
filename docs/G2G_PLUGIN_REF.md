@@ -137,8 +137,11 @@ What the launcher does, in order:
    `mktemp -d` (`/tmp/g2g-improve-<random>`, mode 0700 — never a bare
    `date`-derived path, which is symlink-plantable and
    world-readable), then the worktree inside it
-   (`<run-root>/worktree`) on branch `g2g/improve-<random>`, and
-   copies the Stop-hook settings in if the repo doesn't track them.
+   (`<run-root>/worktree`) on branch `g2g/improve-<random>`. Nothing
+   is copied in: the plugin's own Stop hook fires in the worktree
+   because the plugin is loaded there (via `--plugin-dir` or the repo's
+   tracked plugin declaration), and copying a hook in is forbidden — a
+   vendored copy is one no plugin update can patch.
 3. Spawns `claude -p "/g2g:improve-cycle"` inside it, capped, with
    **sidecars in the run root, next to (never inside) the worktree**:
    `<run-root>/tick.pid` and `<run-root>/tick.log`.
@@ -231,7 +234,10 @@ loop session is just the scheduler.
 `/schedule "nightly at 02:00" <instructions>`). It preflights the
 Stop-hook settings, prefers `/g2g:improve --wait`, falls back to the
 documented direct spawn if the plugin isn't installed in the fresh
-clone, and STOPs honestly if neither is possible.
+clone, and STOPs honestly if neither is possible. Its preflight checks
+that `.claude/settings.json` declares the plugin (`extraKnownMarketplaces`
++ `enabledPlugins`, as `/g2g:init` writes) — that declaration is what
+loads the Stop hook under `--setting-sources project`.
 
 **One-off:** just run `/g2g:improve --wait` whenever you want a
 single bounded improvement pass.
