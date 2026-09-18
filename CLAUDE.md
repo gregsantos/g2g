@@ -42,6 +42,17 @@ markdown, or tests:
   add `SMOKE_REQUIRE_COMPLETE=1` to also demand a fully green build.
   `tests/smoke.sh --assert-only <preserved-dir>` re-checks a previous
   run's artifacts with no API spend.
+- Behavioral, workflow engine: `make smoke-wf` — the same sandbox and
+  assertions on `/g2g:build-wf` (`tests/smoke.sh --engine build-wf`),
+  plus a check that the run log shows the Workflow tool launching
+  `g2g:build-loop` by exact name with every required arg and a paired
+  non-error result, and never with an inline script or scriptPath, so
+  the wrapper cannot pass by emulating the loop in prose. Merge gate for
+  changes to `plugin/workflows/` or `plugin/commands/build-wf.md`;
+  never in check. Both engines share one script, so parity holds by
+  construction; `tests/smoke_harness.bats` pins the engine switch and
+  the assertions without API spend. Promotion of build-wf out of
+  experimental is gated on sustained smoke-wf parity (F-058).
 
 # Project structure
 

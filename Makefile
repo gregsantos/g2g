@@ -1,4 +1,4 @@
-.PHONY: test lint validate check smoke
+.PHONY: test lint validate check smoke smoke-wf
 
 # macOS system bash 3.2 has an errexit defect: a failing bare '[[ ]]'
 # mid-test does not fail the test, so under it only each test's final
@@ -45,3 +45,11 @@ check: lint validate test
 # plugin/commands/ or plugin/agents/; intentionally NOT part of check.
 smoke:
 	bash tests/smoke.sh
+
+# Same sandbox, same assertions, on the experimental /g2g:build-wf engine
+# (plugin/workflows/g2g-build.js), plus a check that the Workflow tool
+# actually ran the shipped build-loop workflow. Merge gate for changes to
+# plugin/workflows/ or plugin/commands/build-wf.md; build-wf's promotion
+# out of experimental is gated on sustained parity here. Never in check.
+smoke-wf:
+	bash tests/smoke.sh --engine build-wf

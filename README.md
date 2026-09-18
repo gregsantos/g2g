@@ -227,6 +227,7 @@ g2g/
 ```bash
 make check   # shellcheck + manifest validation + bats (brew install bats-core shellcheck)
 make smoke   # real headless build in a throwaway sandbox (~$1-3) — merge gate for command/agent changes
+make smoke-wf  # same smoke on the experimental /g2g:build-wf engine (~$2-5) — merge gate for workflow changes
 ```
 
 ### Developing the plugin (the dev loop)
@@ -263,8 +264,9 @@ untracked `plugin/.orphaned_at` file into the repo).
 
 How the tooling composes with a dev session:
 
-- `make smoke` always exercises the working tree — it passes the
-  repo's `plugin/` path explicitly — regardless of how you launched.
+- `make smoke` and `make smoke-wf` always exercise the working tree —
+  they pass the repo's `plugin/` path explicitly — regardless of how
+  you launched.
 - Inside a `g2gdev` session, `${CLAUDE_PLUGIN_ROOT}` *is* the working
   tree, so headless children spawned by `/g2g:improve` inherit the
   dev code too.
