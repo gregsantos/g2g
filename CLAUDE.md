@@ -45,9 +45,13 @@ markdown, or tests:
 - Behavioral, workflow engine: `make smoke-wf` — the same sandbox and
   assertions on `/g2g:build-wf` (`tests/smoke.sh --engine build-wf`),
   plus a check that the run log shows the Workflow tool launching
-  `g2g:build-loop` by exact name with every required arg and a paired
-  non-error result, and never with an inline script or scriptPath, so
-  the wrapper cannot pass by emulating the loop in prose. Merge gate for
+  `g2g:build-loop` by exact name with the sandbox's tasks, args the
+  shipped script carries through to its first agent dispatch (decided
+  by executing `g2g-build.js` with a stub agent via
+  `tests/lib/wf-dispatch-probe.mjs`, never by re-implementing its
+  checks), and a paired non-error result, and never with an inline
+  script or scriptPath, so the wrapper cannot pass by emulating the
+  loop in prose. Merge gate for
   changes to `plugin/workflows/` or `plugin/commands/build-wf.md`;
   never in check. Both engines share one script, so parity holds by
   construction; `tests/smoke_harness.bats` pins the engine switch and

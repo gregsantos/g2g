@@ -7,9 +7,17 @@
 # switch, the invocation each engine gets, and the --assert-only checks
 # that gate a preserved run. The real behavioral runs cost API dollars and
 # stay behind `make smoke` / `make smoke-wf`, never `make check`.
+#
+# The build-wf gate decides "would this launch reach the loop's first agent"
+# by EXECUTING plugin/workflows/g2g-build.js with the launch's args and a
+# stub agent (tests/lib/wf-dispatch-probe.mjs), not by re-implementing the
+# script's checks — five review rounds of mirroring them in jq each found a
+# parity gap. The probe's own contract is pinned below.
 
 REPO_DIR="$BATS_TEST_DIRNAME/.."
 SMOKE="$BATS_TEST_DIRNAME/smoke.sh"
+PROBE="$BATS_TEST_DIRNAME/lib/wf-dispatch-probe.mjs"
+WORKFLOW_SCRIPT="$REPO_DIR/plugin/workflows/g2g-build.js"
 
 setup() {
     # Hermetic: a throwaway HOME, no user or system git config (so no
@@ -191,8 +199,10 @@ recorded_arg() {
 # ---------------------------------------------------------------------------
 
 make_preserved_run() {
+    command -v node >/dev/null 2>&1 || skip "node not installed"
     WORK="$BATS_TEST_TMPDIR/work"
     SB="$WORK/sandbox"
+    rm -rf "$WORK"
     mkdir -p "$WORK"
     bash "$BATS_TEST_DIRNAME/make_sandbox.sh" "$SB" > /dev/null
     git init -q --bare "$WORK/origin.git"
@@ -337,7 +347,7 @@ result_event() {
     } > "$WORK/run.log"
     run bash "$SMOKE" --assert-only "$WORK"
     [[ "$status" -eq 1 ]]
-    [[ "$output" == *"never as g2g:build-loop by exact name"* ]]
+    [[ "$output" == *"first dispatch"* ]]
 }
 
 @test "assert-only: build-wf fails when a required arg is present but null or empty" {
@@ -353,7 +363,7 @@ result_event() {
     } > "$WORK/run.log"
     run bash "$SMOKE" --assert-only "$WORK"
     [[ "$status" -eq 1 ]]
-    [[ "$output" == *"never as g2g:build-loop by exact name"* ]]
+    [[ "$output" == *"first dispatch"* ]]
 }
 
 @test "assert-only: build-wf fails when the launch carries an empty tasks array" {
@@ -365,7 +375,7 @@ result_event() {
     } > "$WORK/run.log"
     run bash "$SMOKE" --assert-only "$WORK"
     [[ "$status" -eq 1 ]]
-    [[ "$output" == *"never as g2g:build-loop by exact name"* ]]
+    [[ "$output" == *"first dispatch"* ]]
 }
 
 @test "assert-only: build-wf fails when the launch hands the workflow only already-passed tasks" {
@@ -381,7 +391,7 @@ result_event() {
     } > "$WORK/run.log"
     run bash "$SMOKE" --assert-only "$WORK"
     [[ "$status" -eq 1 ]]
-    [[ "$output" == *"no eligible sandbox task"* ]]
+    [[ "$output" == *"first dispatch"* ]]
 }
 
 @test "assert-only: build-wf fails when the launch's tasks are not the sandbox spec's tasks" {
@@ -393,7 +403,7 @@ result_event() {
     } > "$WORK/run.log"
     run bash "$SMOKE" --assert-only "$WORK"
     [[ "$status" -eq 1 ]]
-    [[ "$output" == *"no eligible sandbox task"* ]]
+    [[ "$output" == *"not the sandbox spec"* ]]
 }
 
 @test "assert-only: build-wf fails when every pending task is blocked or waits on a failed dependency" {
@@ -408,7 +418,7 @@ result_event() {
     } > "$WORK/run.log"
     run bash "$SMOKE" --assert-only "$WORK"
     [[ "$status" -eq 1 ]]
-    [[ "$output" == *"no eligible sandbox task"* ]]
+    [[ "$output" == *"first dispatch"* ]]
 }
 
 @test "assert-only: build-wf fails when the launch's turn cap cannot admit a first dispatch" {
@@ -422,7 +432,7 @@ result_event() {
     } > "$WORK/run.log"
     run bash "$SMOKE" --assert-only "$WORK"
     [[ "$status" -eq 1 ]]
-    [[ "$output" == *"turn cap"* ]]
+    [[ "$output" == *"first dispatch"* ]]
 }
 
 @test "assert-only: build-wf fails when the launch's buildStart is not a parseable timestamp" {
@@ -436,7 +446,7 @@ result_event() {
     } > "$WORK/run.log"
     run bash "$SMOKE" --assert-only "$WORK"
     [[ "$status" -eq 1 ]]
-    [[ "$output" == *"buildStart"* ]]
+    [[ "$output" == *"first dispatch"* ]]
 }
 
 @test "assert-only: build-wf fails when the launch's hours cap is negative" {
@@ -450,7 +460,89 @@ result_event() {
     } > "$WORK/run.log"
     run bash "$SMOKE" --assert-only "$WORK"
     [[ "$status" -eq 1 ]]
-    [[ "$output" == *"hoursCap"* ]]
+    [[ "$output" == *"first dispatch"* ]]
+}
+
+@test "assert-only: build-wf passes buildStart formats the workflow itself accepts" {
+    # Date.parse takes fractional seconds and offsets; a gate narrower than
+    # the script is a false failure on a legitimate run (Codex pass 5).
+    for ts in "2026-09-17T00:00:00.000Z" "2026-09-17T00:00:00+00:00" "2026-09-17T00:00:00Z"; do
+        make_preserved_run
+        echo "build-wf" > "$WORK/engine"
+        {
+            workflow_event "$(jq -cn --argjson a "$LOOP_ARGS" --arg ts "$ts" '{name:"g2g:build-loop", args:($a + {buildStart:$ts})}')"
+            workflow_result
+        } > "$WORK/run.log"
+        run bash "$SMOKE" --assert-only "$WORK"
+        [[ "$status" -eq 0 ]] || { echo "buildStart $ts: $output"; return 1; }
+    done
+}
+
+@test "assert-only: build-wf fails when a task entry is null" {
+    # g2g-build.js reads t.attempts on every entry before dispatch.
+    make_preserved_run
+    echo "build-wf" > "$WORK/engine"
+    {
+        workflow_event "$(jq -cn --argjson a "$LOOP_ARGS" '{name:"g2g:build-loop", args:($a + {tasks:[null,{id:"T-001"}]})}')"
+        workflow_result
+    } > "$WORK/run.log"
+    run bash "$SMOKE" --assert-only "$WORK"
+    [[ "$status" -eq 1 ]]
+    [[ "$output" == *"first dispatch"* ]]
+}
+
+@test "assert-only: build-wf fails when dependsOn is not an array" {
+    # (t.dependsOn || []).every throws on an object.
+    make_preserved_run
+    echo "build-wf" > "$WORK/engine"
+    {
+        workflow_event "$(jq -cn --argjson a "$LOOP_ARGS" '{name:"g2g:build-loop", args:($a + {tasks:[{id:"T-001",dependsOn:{}}]})}')"
+        workflow_result
+    } > "$WORK/run.log"
+    run bash "$SMOKE" --assert-only "$WORK"
+    [[ "$status" -eq 1 ]]
+    [[ "$output" == *"first dispatch"* ]]
+}
+
+# ---------------------------------------------------------------------------
+# The probe's contract: exit 0 = the launch reaches the first agent call,
+# 1 = the script returned without dispatching, 2 = it threw first.
+# ---------------------------------------------------------------------------
+
+@test "probe: a live-shaped launch reaches the loop's first dispatch (exit 0)" {
+    command -v node >/dev/null 2>&1 || skip "node not installed"
+    run bash -c "printf '%s' '$LOOP_ARGS' | node '$PROBE' '$WORKFLOW_SCRIPT'"
+    [[ "$status" -eq 0 ]] || { echo "$output"; return 1; }
+    [[ "$output" == dispatch:* ]]
+    [[ "$output" == *"heartbeat"* ]]
+}
+
+@test "probe: an all-passed task list returns without dispatching (exit 1)" {
+    command -v node >/dev/null 2>&1 || skip "node not installed"
+    args=$(jq -cn --argjson a "$LOOP_ARGS" '$a + {tasks:[{id:"T-001",passes:true}]}')
+    run bash -c "printf '%s' '$args' | node '$PROBE' '$WORKFLOW_SCRIPT'"
+    [[ "$status" -eq 1 ]]
+    [[ "$output" == *"no-dispatch"* ]]
+    [[ "$output" == *"complete"* ]]
+}
+
+@test "probe: a missing required arg throws before dispatch (exit 2)" {
+    command -v node >/dev/null 2>&1 || skip "node not installed"
+    args=$(jq -cn --argjson a "$LOOP_ARGS" '$a | del(.ownerToken)')
+    run bash -c "printf '%s' '$args' | node '$PROBE' '$WORKFLOW_SCRIPT'"
+    [[ "$status" -eq 2 ]]
+    [[ "$output" == throws:* ]]
+    [[ "$output" == *"ownerToken"* ]]
+}
+
+@test "probe: never spawns anything — the stub agent is the only side channel" {
+    command -v node >/dev/null 2>&1 || skip "node not installed"
+    # The workflow body has no filesystem or shell access by runtime design;
+    # the probe must not hand it any. Pin that the probe passes only the
+    # five runtime globals and nothing that reaches the OS.
+    run grep -c "new AsyncFunction('args', 'agent', 'parallel', 'pipeline', 'phase'" "$PROBE"
+    [[ "$output" == "1" ]]
+    ! grep -q "child_process\|process.env\|writeFileSync" "$PROBE"
 }
 
 @test "assert-only: build-wf passes a launch whose eligible task depends on an already-passed one" {
@@ -544,18 +636,6 @@ result_event() {
     run bash "$SMOKE" --assert-only "$WORK"
     [[ "$status" -eq 1 ]]
     [[ "$output" == *"inline script"* ]]
-}
-
-@test "contract: the args smoke.sh requires of a build-loop request are exactly the ones g2g-build.js validates" {
-    # Both lists must move together: a key required by the script but not
-    # by the gate lets a doomed request pass; a key required by the gate but
-    # not by the script fails a legitimate launch.
-    smoke_keys=$(sed -n 's/^WORKFLOW_REQUIRED_ARGS=(\(.*\))$/\1/p' "$SMOKE" | tr ' ' '\n' | sort)
-    [[ -n "$smoke_keys" ]] || { echo "WORKFLOW_REQUIRED_ARGS not found in smoke.sh"; return 1; }
-    js_keys=$(sed -n "/^for (const key of \[/,/\]) {/p" "$REPO_DIR/plugin/workflows/g2g-build.js" \
-        | grep -o "'[A-Za-z]*'" | tr -d "'" | sort)
-    [[ -n "$js_keys" ]] || { echo "required-arg loop not found in g2g-build.js"; return 1; }
-    [[ "$smoke_keys" == "$js_keys" ]] || { echo "smoke.sh: $smoke_keys"; echo "g2g-build.js: $js_keys"; return 1; }
 }
 
 @test "assert-only: the build engine does not require a Workflow invocation" {
