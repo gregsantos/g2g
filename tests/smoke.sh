@@ -214,9 +214,16 @@ git -C "$WORK/origin.git" rev-parse --verify "$BRANCH" > /dev/null 2>&1 \
 #      rejected even when a legitimate named launch also exists.
 #   2. At least one Workflow tool_use names the shipped workflow EXACTLY
 #      (`g2g:build-loop`, as observed in the first live run) and carries
-#      every arg g2g-build.js validates before dispatching an agent; a
-#      request missing one throws at invocation and ran nothing.
-#   3. That request has a paired tool_result (same tool_use id) that is
+#      every arg g2g-build.js validates before dispatching an agent, each
+#      non-null and non-empty and `tasks` a non-empty array; a request
+#      failing that throws at invocation and ran nothing.
+#   3. That request hands the loop at least one PENDING sandbox task (an
+#      id from the spec with `passes` not true). Otherwise the loop's own
+#      selection finds nothing eligible and returns `complete` with zero
+#      dispatches — which is how a wrapper that built by hand first and
+#      launched the workflow afterwards would look. At least one, not all:
+#      a `--continue-branch` resume legitimately hands over a mix.
+#   4. That request has a paired tool_result (same tool_use id) that is
 #      not an error. The live result is "Workflow launched in background";
 #      the loop's OUTCOME arrives later as a task notification that never
 #      enters the event stream, so launch success is the most the log can
@@ -260,15 +267,27 @@ if [[ "$ENGINE" == "build-wf" ]]; then
         | jq -c 'select(((.input.script // "") != "") or ((.input.scriptPath // "") != ""))' \
         | count_lines)
     REQUIRED_JSON=$(printf '%s\n' "${WORKFLOW_REQUIRED_ARGS[@]}" | jq -R . | jq -sc .)
-    WF_NAMED_IDS=$(workflow_tool_uses \
-        | jq -r --arg name "$WORKFLOW_NAME" --argjson required "$REQUIRED_JSON" '
-            select(.input.name == $name)
-            | select((.input.args // null) | type == "object")
-            | select([.input.args | has($required[])] | all)
+    SPEC_TASK_IDS=$(jq -c '[.tasks[].id]' "$SPEC")
+    # Named exactly, with every required arg set the way g2g-build.js
+    # checks (not undefined, null, or "") and tasks a non-empty array.
+    named_launches() {
+        workflow_tool_uses \
+            | jq -c --arg name "$WORKFLOW_NAME" --argjson required "$REQUIRED_JSON" '
+                select(.input.name == $name)
+                | select((.input.args // null) | type == "object")
+                | select([.input.args[$required[]] | . != null and . != ""] | all)
+                | select(.input.args.tasks | type == "array" and length > 0)'
+    }
+    WF_NAMED=$(named_launches | count_lines)
+    # ...and handing the loop at least one pending task from the sandbox spec.
+    WF_PENDING_IDS=$(named_launches \
+        | jq -r --argjson spec_ids "$SPEC_TASK_IDS" '
+            select(any(.input.args.tasks[];
+                       (.id as $id | $spec_ids | index($id) != null) and .passes != true))
             | .id')
-    WF_NAMED=$(printf '%s\n' "$WF_NAMED_IDS" | count_lines)
+    WF_PENDING=$(printf '%s\n' "$WF_PENDING_IDS" | count_lines)
     WF_LAUNCHED=$(comm -12 \
-        <(printf '%s\n' "$WF_NAMED_IDS" | grep . | sort -u) \
+        <(printf '%s\n' "$WF_PENDING_IDS" | grep . | sort -u) \
         <(succeeded_tool_result_ids | sort -u) | count_lines)
 
     [[ "$WF_ALL" -gt 0 ]] \
@@ -276,9 +295,11 @@ if [[ "$ENGINE" == "build-wf" ]]; then
     [[ "$WF_INLINE" -eq 0 ]] \
         || fail "Workflow ran ${WF_INLINE}x with an inline script or scriptPath — the loop was emulated, not the shipped g2g-build.js (a valid named launch does not excuse it)"
     [[ "$WF_NAMED" -gt 0 ]] \
-        || fail "Workflow ran ${WF_ALL}x but never as $WORKFLOW_NAME by exact name with every required arg (${WORKFLOW_REQUIRED_ARGS[*]})"
+        || fail "Workflow ran ${WF_ALL}x but never as $WORKFLOW_NAME by exact name with every required arg set (${WORKFLOW_REQUIRED_ARGS[*]}; tasks non-empty)"
+    [[ "$WF_PENDING" -gt 0 ]] \
+        || fail "$WORKFLOW_NAME was requested ${WF_NAMED}x but with no pending sandbox task in its tasks arg — the loop had nothing to dispatch, so the build was done by hand before the launch"
     [[ "$WF_LAUNCHED" -gt 0 ]] \
-        || fail "$WORKFLOW_NAME was requested ${WF_NAMED}x but no request has a paired non-error tool_result — the launch failed, so whatever built the branch was not the workflow"
+        || fail "$WORKFLOW_NAME was requested ${WF_PENDING}x with pending work but no request has a paired non-error tool_result — the launch failed, so whatever built the branch was not the workflow"
     echo "smoke: workflow: $WORKFLOW_NAME launched ${WF_LAUNCHED}x (Workflow tool_use total: $WF_ALL)"
 fi
 

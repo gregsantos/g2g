@@ -340,6 +340,75 @@ result_event() {
     [[ "$output" == *"never as g2g:build-loop by exact name"* ]]
 }
 
+@test "assert-only: build-wf fails when a required arg is present but null or empty" {
+    # g2g-build.js rejects undefined, null, and "" alike; has() alone
+    # accepted null.
+    make_preserved_run
+    echo "build-wf" > "$WORK/engine"
+    {
+        workflow_event "$(jq -cn --argjson a "$LOOP_ARGS" '{name:"g2g:build-loop", args:($a + {ownerToken:null})}')" toolu_a
+        workflow_result toolu_a false
+        workflow_event "$(jq -cn --argjson a "$LOOP_ARGS" '{name:"g2g:build-loop", args:($a + {branch:""})}')" toolu_b
+        workflow_result toolu_b false
+    } > "$WORK/run.log"
+    run bash "$SMOKE" --assert-only "$WORK"
+    [[ "$status" -eq 1 ]]
+    [[ "$output" == *"never as g2g:build-loop by exact name"* ]]
+}
+
+@test "assert-only: build-wf fails when the launch carries an empty tasks array" {
+    make_preserved_run
+    echo "build-wf" > "$WORK/engine"
+    {
+        workflow_event "$(jq -cn --argjson a "$LOOP_ARGS" '{name:"g2g:build-loop", args:($a + {tasks:[]})}')"
+        workflow_result
+    } > "$WORK/run.log"
+    run bash "$SMOKE" --assert-only "$WORK"
+    [[ "$status" -eq 1 ]]
+    [[ "$output" == *"never as g2g:build-loop by exact name"* ]]
+}
+
+@test "assert-only: build-wf fails when the launch hands the workflow only already-passed tasks" {
+    # The emulate-first bypass: build by hand, then launch the shipped loop
+    # with every task already passes:true so it returns complete having
+    # dispatched nothing. A launch must carry at least one pending sandbox
+    # task or the loop had nothing to do.
+    make_preserved_run
+    echo "build-wf" > "$WORK/engine"
+    {
+        workflow_event "$(jq -cn --argjson a "$LOOP_ARGS" '{name:"g2g:build-loop", args:($a + {tasks:[{id:"T-001",status:"complete",passes:true},{id:"T-002",status:"complete",passes:true}]})}')"
+        workflow_result
+    } > "$WORK/run.log"
+    run bash "$SMOKE" --assert-only "$WORK"
+    [[ "$status" -eq 1 ]]
+    [[ "$output" == *"no pending sandbox task"* ]]
+}
+
+@test "assert-only: build-wf fails when the launch's tasks are not the sandbox spec's tasks" {
+    make_preserved_run
+    echo "build-wf" > "$WORK/engine"
+    {
+        workflow_event "$(jq -cn --argjson a "$LOOP_ARGS" '{name:"g2g:build-loop", args:($a + {tasks:[{id:"T-999",passes:false}]})}')"
+        workflow_result
+    } > "$WORK/run.log"
+    run bash "$SMOKE" --assert-only "$WORK"
+    [[ "$status" -eq 1 ]]
+    [[ "$output" == *"no pending sandbox task"* ]]
+}
+
+@test "assert-only: build-wf passes a resume-shaped launch with one passed and one pending task" {
+    # --continue-branch hands the loop a mix; at least one pending task is
+    # the requirement, not all of them.
+    make_preserved_run
+    echo "build-wf" > "$WORK/engine"
+    {
+        workflow_event "$(jq -cn --argjson a "$LOOP_ARGS" '{name:"g2g:build-loop", args:($a + {tasks:[{id:"T-001",passes:true},{id:"T-002",passes:false}]})}')"
+        workflow_result
+    } > "$WORK/run.log"
+    run bash "$SMOKE" --assert-only "$WORK"
+    [[ "$status" -eq 0 ]] || { echo "$output"; return 1; }
+}
+
 @test "assert-only: build-wf fails when a valid named launch is accompanied by an inline-script call" {
     make_preserved_run
     echo "build-wf" > "$WORK/engine"
