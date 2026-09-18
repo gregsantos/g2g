@@ -31,20 +31,17 @@ command as a shell string, argument or command injection.
 ## Root Cause
 The command files are procedures a model executes by composing shell
 commands, so any template of the form "run X with <value>" invites the
-model to paste the value into the command text. Two consecutive
-failures on PR #35 show how sticky that is. The first draft closed the
-charset hole with a helper but showed it as
-`g2g-slug.sh "<project>"` in `plugin/commands/spec.md` and
-`plugin/commands/go.md`; Codex adversarial review reproduced a project
-name containing `$(printf F035_EXPANDED >&2)` printing its marker,
-because Bash evaluates command substitutions and backticks inside a
-double-quoted argument BEFORE the helper receives anything to
-sanitize. The same draft also captured `PROJECT_NAME` once in
-`plugin/commands/build.md` Phase 1 step 3 for reuse in later steps,
-which does not work — shell state does not survive between Bash tool
-calls — and the model's natural workaround is to carry the value in
-its own context and paste it, which is the interpolation the step was
-meant to forbid.
+model to paste the value into the command text. Once the value is in
+the command text, Bash evaluates `$(…)` and backticks inside a
+double-quoted argument before any helper runs, so a sanitizer called
+that way sees text that has already executed. A charset rule stated in
+prose does not close this: the first fix on PR #35 added the helper
+but showed it as `g2g-slug.sh "<project>"`, and adversarial review
+demonstrated a project name carrying a command substitution executing
+before the helper received it. A related trap sits in the same
+procedure: shell variables do not survive between Bash tool calls, so
+"capture the value once, reuse it later" silently degrades to the
+model carrying the value in its own context and pasting it.
 
 ## Resolution
 PR #35 (commits 2df7192 and 0052886) landed three things:
@@ -80,16 +77,14 @@ PR #35 (commits 2df7192 and 0052886) landed three things:
   step 4; `plugin/commands/go.md` step 1 — the three call sites.
 - `tests/plugin_slug.bats` and the three slug pins in
   `tests/commands.bats`.
-- Commits 2df7192 (helper and call sites) and 0052886 (the
-  paste-template fix after Codex review), merged as PR #35.
-- The same class recurred on the neighbouring PRs of 2026-09-17: PR #33
-  added dependency diagnostics to `plugin/scripts/g2g-evidence.sh`
-  that echoed spec ids verbatim and had to gain the same
-  `gsub("[[:cntrl:]]"; " ")` every other spec string there already
-  carries, and PR #37's Stop-hook PR gate in `plugin/scripts/g2g-stop.sh`
-  had to reject `gh pr create --dry-run` because a preview echoes a
-  body the model controls. Three PRs, one mechanism: loose text
-  reaching a place where it is interpreted.
+- Commits 2df7192 (helper and call sites) and 0052886 (paste-template
+  fix), merged as PR #35.
+- The same mechanism, in two other interpreters: every spec string
+  `plugin/scripts/g2g-evidence.sh` prints passes through
+  `gsub("[[:cntrl:]]"; " ")` so spec text cannot forge a verdict line
+  (PR #33), and the Stop hook's PR gate in `plugin/scripts/g2g-stop.sh`
+  rejects `gh pr create --dry-run` because a preview echoes a body the
+  model controls (PR #37).
 
 ## Implication
 When writing or changing a command procedure, treat any value that
