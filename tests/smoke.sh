@@ -220,10 +220,13 @@ git -C "$WORK/origin.git" rev-parse --verify "$BRANCH" > /dev/null 2>&1 \
 #   3. That request hands the loop at least one sandbox task the loop
 #      would actually dispatch — a port of g2g-build.js's nextEligible():
 #      an id from the spec, not blocked, `passes` not true, every
-#      dependsOn id passed — and a turnCap the loop's first turn clears
-#      (the script increments before `turn >= turnCap`, so 1 returns
-#      cap-turns untouched). Otherwise the loop returns complete/blocked/
-#      cap-turns with zero dispatches — which is how a wrapper that built
+#      dependsOn id passed — and caps the loop's first turn clears: a
+#      turnCap of at least 2 (the script increments before `turn >=
+#      turnCap`), a buildStart the script can parse (it throws otherwise),
+#      and a non-negative hoursCap (the first wall-clock check compares
+#      the start against start + cap). Otherwise the loop throws or
+#      returns complete/blocked/cap-turns/cap-hours with zero dispatches
+#      — which is how a wrapper that built
 #      (or half-built) by hand first and launched the workflow afterwards
 #      would look. At least one eligible task, not all: a
 #      `--continue-branch` resume legitimately hands over a mix.
@@ -296,8 +299,19 @@ if [[ "$ENGINE" == "build-wf" ]]; then
                     and ((.dependsOn // []) | all(. as $dep | $passed | index($dep) != null))))'
     }
     WF_ELIGIBLE=$(eligible_launches | count_lines)
+    # Caps the loop's first turn clears. buildStart is parsed the way the
+    # Stop hook's BSD fallback and build.md's ISO 8601 instruction expect.
+    WF_TURNCAP_OK=$(eligible_launches \
+        | jq -c 'select((.input.args.turnCap | type == "number") and .input.args.turnCap >= 2)' | count_lines)
+    WF_BUILDSTART_OK=$(eligible_launches \
+        | jq -c 'select((.input.args.buildStart | type == "string")
+                        and ((.input.args.buildStart | try fromdateiso8601 catch null) != null))' | count_lines)
     WF_DISPATCHABLE_IDS=$(eligible_launches \
-        | jq -r 'select((.input.args.turnCap | type == "number") and .input.args.turnCap >= 2) | .id')
+        | jq -r 'select((.input.args.turnCap | type == "number") and .input.args.turnCap >= 2)
+                 | select((.input.args.buildStart | type == "string")
+                          and ((.input.args.buildStart | try fromdateiso8601 catch null) != null))
+                 | select((.input.args.hoursCap | type == "number") and .input.args.hoursCap >= 0)
+                 | .id')
     WF_DISPATCHABLE=$(printf '%s\n' "$WF_DISPATCHABLE_IDS" | count_lines)
     WF_LAUNCHED=$(comm -12 \
         <(printf '%s\n' "$WF_DISPATCHABLE_IDS" | grep . | sort -u) \
@@ -311,8 +325,12 @@ if [[ "$ENGINE" == "build-wf" ]]; then
         || fail "Workflow ran ${WF_ALL}x but never as $WORKFLOW_NAME by exact name with every required arg set (${WORKFLOW_REQUIRED_ARGS[*]}; tasks non-empty)"
     [[ "$WF_ELIGIBLE" -gt 0 ]] \
         || fail "$WORKFLOW_NAME was requested ${WF_NAMED}x but with no eligible sandbox task in its tasks arg (spec id, not blocked, not passed, dependencies passed) — the loop had nothing to dispatch, so the build was done by hand before the launch"
-    [[ "$WF_DISPATCHABLE" -gt 0 ]] \
+    [[ "$WF_TURNCAP_OK" -gt 0 ]] \
         || fail "$WORKFLOW_NAME was requested ${WF_ELIGIBLE}x with eligible work but a turn cap below 2 — the loop returns cap-turns before its first dispatch"
+    [[ "$WF_BUILDSTART_OK" -gt 0 ]] \
+        || fail "$WORKFLOW_NAME was requested ${WF_ELIGIBLE}x with eligible work but an unparseable buildStart — the loop throws before its first dispatch"
+    [[ "$WF_DISPATCHABLE" -gt 0 ]] \
+        || fail "$WORKFLOW_NAME was requested ${WF_ELIGIBLE}x with eligible work but a negative hoursCap — the loop returns cap-hours before its first dispatch"
     [[ "$WF_LAUNCHED" -gt 0 ]] \
         || fail "$WORKFLOW_NAME was requested ${WF_DISPATCHABLE}x with dispatchable work but no request has a paired non-error tool_result — the launch failed, so whatever built the branch was not the workflow"
     echo "smoke: workflow: $WORKFLOW_NAME launched ${WF_LAUNCHED}x (Workflow tool_use total: $WF_ALL)"

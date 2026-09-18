@@ -425,6 +425,34 @@ result_event() {
     [[ "$output" == *"turn cap"* ]]
 }
 
+@test "assert-only: build-wf fails when the launch's buildStart is not a parseable timestamp" {
+    # g2g-build.js throws on an unparseable buildStart before any agent runs
+    # — e.g. a wrapper that pasted the placeholder "BUILD_START" verbatim.
+    make_preserved_run
+    echo "build-wf" > "$WORK/engine"
+    {
+        workflow_event "$(jq -cn --argjson a "$LOOP_ARGS" '{name:"g2g:build-loop", args:($a + {buildStart:"BUILD_START"})}')"
+        workflow_result
+    } > "$WORK/run.log"
+    run bash "$SMOKE" --assert-only "$WORK"
+    [[ "$status" -eq 1 ]]
+    [[ "$output" == *"buildStart"* ]]
+}
+
+@test "assert-only: build-wf fails when the launch's hours cap is negative" {
+    # deadline = buildStart + hoursCap h; the first cap check compares the
+    # start clock against it, so a negative cap returns cap-hours untouched.
+    make_preserved_run
+    echo "build-wf" > "$WORK/engine"
+    {
+        workflow_event "$(jq -cn --argjson a "$LOOP_ARGS" '{name:"g2g:build-loop", args:($a + {hoursCap:-1})}')"
+        workflow_result
+    } > "$WORK/run.log"
+    run bash "$SMOKE" --assert-only "$WORK"
+    [[ "$status" -eq 1 ]]
+    [[ "$output" == *"hoursCap"* ]]
+}
+
 @test "assert-only: build-wf passes a launch whose eligible task depends on an already-passed one" {
     make_preserved_run
     echo "build-wf" > "$WORK/engine"
