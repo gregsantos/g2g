@@ -74,8 +74,11 @@ turns where `/g2g:build`'s smoke fits in 40; start at 60 and size up
 with task count. Where the runtime is unavailable the command
 refuses and points at `/g2g:build`, which remains the stable engine.
 Until the workflow path has accumulated the same live mileage, treat it
-as experimental: run `make smoke` against it before relying on it
-unattended.
+as experimental: `make smoke-wf` runs the same sandbox smoke as
+`/g2g:build` against this engine (and additionally checks that the
+Workflow tool really ran the `build-loop` workflow); run it before
+relying on the command unattended and after any change to
+`plugin/workflows/` or `build-wf.md`.
 
 ## Spec generation & the dev pipeline
 
