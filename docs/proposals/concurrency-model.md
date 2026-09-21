@@ -1,7 +1,12 @@
 # Proposal: a concurrency model for the g2g command surface
 
-**Status:** proposed, awaiting independent review. Nothing here is implemented
-except where noted as shipped.
+**Status:** shipped in 0.6.5 (2026-08-13) — spec
+[`specs/concurrency-safety.json`](../../specs/concurrency-safety.json),
+verifier PASS 2026-08-13, all five tasks. Kept as the design record; the
+normative description is the plugin README's "Concurrency model" section,
+`plugin/scripts/g2g-lock.sh` is the sole implementation, and
+`tests/plugin_lock.bats` pins the contract. Where this text and those
+disagree, they win.
 
 **Origin:** the operator question "can I run two `/g2g:build` and a `/g2g:spec`
 in different sessions without conflicting?" — answered no, then audited.

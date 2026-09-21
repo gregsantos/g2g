@@ -103,7 +103,7 @@ pause for human approval, then the full build engine. Headless example
       --permission-mode acceptEdits \
       --allowedTools "Agent,Bash,Read,Write,Edit,Glob,Grep" \
       --setting-sources project \
-      --max-turns 40 \
+      --max-turns 80 \
       --max-budget-usd 20
 
 Do not pass `--review` headlessly — with no one to approve, the session
@@ -559,12 +559,13 @@ claude -p "/g2g:build specs/feature.json" \
   --permission-mode acceptEdits \
   --allowedTools "Agent,Bash,Read,Write,Edit,Glob,Grep" \
   --setting-sources project \
-  --max-turns 40 \
+  --max-turns 80 \
   --max-budget-usd 20
 ```
 
 - `--allowedTools` is required alongside `acceptEdits` (which only auto-approves `Edit`/`Write`) — otherwise `Bash` calls get rejected until the session dies (the full list including `Agent` was validated in recorded end-to-end spike runs).
 - `--setting-sources project` excludes the invoking user's personal settings — a real incident had a user-level `git push` approval gate silently deny a build's push.
+- `--max-turns` is a guillotine, not a target: when it fires mid-build there is no PR at all, unlike the inner TURN_CAP, which routes to a draft partial PR. The smoke gate (`make smoke`, `make smoke-wf`) runs a 2-task sandbox at 80; size up with task count.
 - `--max-budget-usd` is what backs the "headless spawns add a dollar cap" guardrail above — the recorded end-to-end spike runs predate this flag being added to the invocation and ran without it; include it for any new headless spawn.
 - `--plugin-dir` is what loads the plugin, and with it the Stop hook. It is **not** optional: `--setting-sources project` excludes your personal settings, so a plugin enabled only in `~/.claude/settings.json` is not loaded at all in that session — no `/g2g:*` commands and no hook. The alternative to passing `--plugin-dir` is declaring the plugin in the repo's own `.claude/settings.json`, which `/g2g:init` sets up (see [New repo quickstart](#new-repo-quickstart)). Either is sufficient; this file's invocation uses `--plugin-dir`.
 
