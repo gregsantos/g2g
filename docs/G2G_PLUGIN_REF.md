@@ -8,7 +8,8 @@ The flywheel in one line:
 
 ```
 /g2g:review → findings backlog → /g2g:improve tick → fix PR →
-   human reviews & merges → backlog reconciled → next tick picks the next findings
+   human reviews & merges → backlog reconciled → (/g2g:compound: one learning)
+   → next tick picks the next findings
 ```
 
 Nothing in this loop ever merges anything. Humans merge; the flywheel
@@ -136,8 +137,11 @@ What the launcher does, in order:
    `mktemp -d` (`/tmp/g2g-improve-<random>`, mode 0700 — never a bare
    `date`-derived path, which is symlink-plantable and
    world-readable), then the worktree inside it
-   (`<run-root>/worktree`) on branch `g2g/improve-<random>`, and
-   copies the Stop-hook settings in if the repo doesn't track them.
+   (`<run-root>/worktree`) on branch `g2g/improve-<random>`. Nothing
+   is copied in: the plugin's own Stop hook fires in the worktree
+   because the plugin is loaded there (via `--plugin-dir` or the repo's
+   tracked plugin declaration), and copying a hook in is forbidden — a
+   vendored copy is one no plugin update can patch.
 3. Spawns `claude -p "/g2g:improve-cycle"` inside it, capped, with
    **sidecars in the run root, next to (never inside) the worktree**:
    `<run-root>/tick.pid` and `<run-root>/tick.log`.
@@ -209,6 +213,14 @@ mid-build instead, there is **no PR at all** (the backstop is a
 guillotine — see §7's sizing rules) and you'll find a CRASHED or
 dirty-FINISHED worktree via §4.
 
+**After a merge (optional): compound the learning.** `/g2g:compound
+<spec.json>` or `/g2g:compound F-NNN` turns one completed, verified
+build — or one addressed finding — into exactly one grounded entry under
+`docs/learnings/` (schema and bar: the plugin README's "Compound
+learnings"; only compound when the lesson generalizes beyond the one
+fix). It is the flywheel's memory step, not a PR step: it writes a
+file, you commit it.
+
 ## 6. Triggers
 
 **Locally, recurring:** `/loop /g2g:improve` from an interactive
@@ -222,7 +234,10 @@ loop session is just the scheduler.
 `/schedule "nightly at 02:00" <instructions>`). It preflights the
 Stop-hook settings, prefers `/g2g:improve --wait`, falls back to the
 documented direct spawn if the plugin isn't installed in the fresh
-clone, and STOPs honestly if neither is possible.
+clone, and STOPs honestly if neither is possible. Its preflight checks
+that `.claude/settings.json` declares the plugin (`extraKnownMarketplaces`
++ `enabledPlugins`, as `/g2g:init` writes) — that declaration is what
+loads the Stop hook under `--setting-sources project`.
 
 **One-off:** just run `/g2g:improve --wait` whenever you want a
 single bounded improvement pass.
@@ -272,6 +287,9 @@ PR. That data is why the default is now **25**. Sizing guidance:
 | Same findings selected every cycle, no PRs | No `gh`/GitHub remote: PR creation fails, reconciliation skips, findings stay open | Give the environment `gh` auth + a GitHub remote, or triage the backlog by hand |
 | Launcher refuses to run | RUNNING/CRASHED tick or an open `g2g/improve-*` PR | That's the design (skip, don't stack): finish/kill/inspect per §4, merge or close the PR |
 | Tick ended, no PR, worktree dirty | Outer cap guillotined it mid-build | Salvage per §4; raise the outer caps per §7 |
+| Complete build blocks at stop: "the build is complete (proven evidence, verifier PASS) but no pull request has been opened since the goal was armed" | Since 0.7.6 (F-038) the Stop hook also requires a `gh pr create` tool call, paired to a result carrying the PR URL, after the arming point — a build used to be able to end between printing its evidence and opening its PR. Either the session tried to stop before Phase 4 step 7, or `gh pr create` failed (no `gh` auth, no GitHub remote). A `--dry-run` preview does not count | Finish build.md Phase 4 step 7: push once, `gh pr create`, then `g2g-lock.sh release-terminal <owner-token>` — the release runs on the push/PR failure path too, so a failed `gh` still lets the session end honestly with the goal deleted. A `--continue-branch` resume of a branch whose PR already exists satisfies the gate: `gh pr create` prints the existing PR's URL |
+| Build aborts in preflight: `g2g-slug: no slug characters in input` (exit 2) | The spec's `project` field has nothing in `[a-z0-9]` after lowercasing; since 0.7.5 (F-035) branch names and spec filenames come only from `plugin/scripts/g2g-slug.sh`, which refuses rather than guessing | Give the spec a `project` value with at least one letter or digit |
+| Build aborts in preflight: evidence script exit 2 naming a `dependsOn` id | Since 0.7.4 (F-037) `g2g-evidence.sh` refuses a spec whose `dependsOn` names a task that does not exist or forms a cycle — such a task could never become eligible, and the loop would run to its cap with nothing to select | Fix the spec's `dependsOn` arrays (task ids only, no cycles) and rerun |
 | Build aborts: "live-owner" | Another `/g2g:build` holds `.g2g-goal.lock` in this checkout (heartbeat refreshed within the last hour) | Wait for it (or kill it); a dead build's lock goes stale and is reclaimed automatically by the next run |
 | Build aborts: "mutex-stuck" / "malformed-state" | `.g2g-goal.mutex` is wedged past its recovery deadline, or the lock path is not a regular file — something outside `plugin/scripts/g2g-lock.sh` touched the lock names | Inspect the repo root by hand; remove the debris only once you've confirmed no build is running, then rerun |
 
@@ -309,7 +327,22 @@ PR. That data is why the default is now **25**. Sizing guidance:
   Phase 4 rebases onto the default branch before running the final
   `--full` evidence — the proven token must certify the tree that is
   actually pushed, not a pre-rebase snapshot the rebase has since moved
-  past.
+  past. Since 0.7.6 a complete build additionally cannot stop until a
+  `gh pr create` result (paired by tool-use id, after the arming point)
+  is in the transcript (F-038) — completion and "a PR exists" can no
+  longer come apart across a turn boundary. The hook is a deterministic
+  script (`plugin/scripts/g2g-stop.sh`) with no model call; its
+  uncertainty is asymmetric on purpose — anything that leaves *arming*
+  in doubt allows the stop, and only a proven-armed session fails
+  closed.
+- **Untrusted text never reaches a shell.** Spec `project` values,
+  finding text, and requirements text are untrusted; since 0.7.5 every
+  derived branch name and spec filename goes through
+  `plugin/scripts/g2g-slug.sh` reading the value from the spec file
+  (`--spec`), never pasted into a command (F-035), and every line the
+  evidence script prints from spec text is stripped of control
+  characters so it cannot forge the verdict line the hook trusts
+  (0.7.4). Details: `docs/learnings/commands/untrusted-text-in-shell-templates.md`.
 - **Caps on every spawn:** `--max-turns` and `--max-budget-usd`, always;
   inner build caps route gracefully to partial PRs.
 - **No orphans:** no `nohup`/`disown`/`setsid` anywhere; every tick has
