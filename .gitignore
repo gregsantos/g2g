@@ -10,6 +10,7 @@
 !.claude/g2g.json
 !.claude/settings.json
 !.claude/commands/
+!.claude/rules/
 
 # Dependencies
 node_modules/
