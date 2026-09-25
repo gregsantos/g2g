@@ -36,10 +36,10 @@
         "make check passes"
       ],
       "dependsOn": [],
-      "status": "in_progress",
-      "passes": false,
+      "status": "complete",
+      "passes": true,
       "effort": "medium",
-      "notes": "",
+      "notes": "commit e327d5e. verified: tools line pinned by bats; PRE-VERIFY SNAPSHOT + compare tests green; build-wf.md untouched and still composes Phase 4 by reference; scripts/check-version-bump.sh --base main -> 0.7.6 -> 0.8.0 with CHANGELOG section (exit 0); README Guardrails + G2G_PLUGIN_REF section 9 updated; 4 new commands.bats tests; make check 348 tests exit 0. Builder notes: avoided reusing build.md's broader FALLBACK EXEMPTIONS term (it includes SURFACED-FOREIGN) and wrote 'the goal/lock/mutex trio ... filtered out' instead; filtering rationale cites the transient .g2g-goal.mutex/ directory; no attribution lines.",
       "attempts": 0
     },
     {
