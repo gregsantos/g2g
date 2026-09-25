@@ -59,10 +59,10 @@
       "dependsOn": [
         "T-001"
       ],
-      "status": "in_progress",
-      "passes": false,
+      "status": "complete",
+      "passes": true,
       "effort": "medium",
-      "notes": "",
+      "notes": "commit 9598df5. verified: rule 9 present; mutation: between verified: and notes:; build.md step 7/8 mutation handling with 'mutation: not reported' default; g2g-build.js optional mutation (node --check ok), required list and enum unchanged, complete-writer copies it; verifier flags: after commands:, missing evidence goes to flags; build.md Phase 4 reads flags: into both PR bodies; commands.bats 87 ok; make check 356 tests exit 0.\nmutation: 9 new/strengthened commands.bats tests, each shown FAIL after editing the pinned phrase/ordering in the source file and PASS after restoring (schema-fields loop, optional mutation field, complete-writer copy, rule 9 wording, template ordering, build.md step 7/8 wording, verifier flags-not-findings, flags after commands, Phase 4 PR bodies).\nFLAG: plugin/README.md and docs/G2G_PLUGIN_REF.md do not yet document the mutation: and flags: report fields (not required by T-002's criteria).",
       "attempts": 0
     },
     {
