@@ -86,10 +86,10 @@
       "dependsOn": [
         "T-002"
       ],
-      "status": "in_progress",
-      "passes": false,
+      "status": "complete",
+      "passes": true,
       "effort": "large",
-      "notes": "",
+      "notes": "commit cb9b22b. verified: builder rules 10 (NEEDS_DECISION, commit none, untouched tree, decision: field) and 11 (FLAG lines; unverifiable criterion stays FAILED); build.md step 7 usable NEEDS_DECISION, step 8 self-checks HEAD vs DISPATCH BASELINE and tree CLEAN, blocked with attempts unchanged or FAILED; new PR BODY COMPOSITION section: all 3 gh pr create sites use --body-file from mktemp -d, body has '## Needs your attention' with '### Decisions for you' and '### Flags'; g2g-build.js enum + decision, writerSchema head, NEEDS_DECISION checker branch; status.md read-only needs-human step; SKILL.md recovery path, no new status value; README + G2G_PLUGIN_REF documented; commands.bats 99/99; new tests/lib/wf-loop-runner.mjs drives the real g2g-build.js in node:vm and smoke_harness.bats 57/57 covers both NEEDS_DECISION paths; make check 371 tests exit 0.\nBuilder notes: two existing pins rewritten because this task changes what they pinned (builderSchema enum now ['DONE','FAILED','NEEDS_DECISION']; the Phase 4 flags-in-PR-body pin now checks the '### Flags' structure), both recorded in the CHANGELOG.\nmutation: every new pin broken and restored (FAIL then PASS), including the two executable smoke_harness NEEDS_DECISION tests against real g2g-build.js behaviour (blocked->pending and forcing the HEAD/tree check true each flipped the outcome); one first break used a same-prefix suffix that did not break the test and was redone with a full-token replacement.\ndecision: n/a\nFLAG: make smoke and make smoke-wf were not run (API cost); they are the human merge gate for this PR.",
       "attempts": 0
     },
     {
