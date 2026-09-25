@@ -613,7 +613,19 @@ finish line and burn the whole remaining budget before surfacing partial work.
    exactly as Phase 3 step 1 does — a verification pass can outlast the
    lock's stale threshold, and an unrefreshed heartbeat here would let a
    concurrent build reclaim the checkout mid-verify; any nonzero exit
-   routes to OWNERSHIP LOST per that step's branch table. Then dispatch
+   routes to OWNERSHIP LOST per that step's branch table. Then, still
+   before dispatching, record the PRE-VERIFY SNAPSHOT: run
+   `git rev-parse HEAD` and
+   `git status --porcelain --untracked-files=all`, and note both
+   verbatim — the porcelain output with the goal/lock/mutex trio
+   (`.g2g-goal`, `.g2g-goal.lock`, `.g2g-goal.mutex`) filtered out,
+   since the transient `.g2g-goal.mutex/` directory can legitimately
+   appear or vanish between snapshots on its own. This is the read-only
+   verifier's enforcement: the agent's own `tools:` allowlist
+   (`plugin/agents/g2g-verifier.md`) narrows what it can invoke
+   directly, but Bash remains on that list and Bash can still write
+   files, so the allowlist alone does not prove the checkout stayed
+   untouched — step 2's compare does. Then dispatch
    a `g2g:g2g-verifier` subagent, holding the turn open per the
    BLOCKING WAIT section, passing the
    spec path and base ref = the default branch. Model routing: from
@@ -624,8 +636,18 @@ finish line and burn the whole remaining budget before surfacing partial work.
    spec checked against the full branch diff at completion time — every
    task, not only the ones built this session.
 2. Wait for its final message per the BLOCKING WAIT section — including
-   its POST-WAIT REFRESH, which must exit 0 before anything below runs —
-   and find its result by SEEKING the
+   its POST-WAIT REFRESH, which must exit 0 before anything below runs.
+   Once it does, and before reading the verdict, take the same snapshot
+   again — `git rev-parse HEAD` and the same filtered
+   `git status --porcelain --untracked-files=all` — and compare both
+   values against the PRE-VERIFY SNAPSHOT from step 1. Any difference
+   (HEAD moved, or the filtered porcelain output changed) means the
+   verifier changed the checkout: ignore its verdict entirely — PASS
+   included — write nothing to the spec, revert nothing, and go
+   straight to Phase 5, naming the drift in the handoff (the changed
+   paths from the porcelain diff, or the new HEAD sha if it moved) so
+   the resulting partial PR lists it. Only when the two snapshots match
+   do you proceed to find its result by SEEKING the
    `VERIFIER REPORT` marker line, the same way as Phase 3 step 7.
 3. verdict FAIL: first apply the round cap — if `VERIFY_ROUND >= REVERIFY_CAP`,
    do NOT dispatch another fix round; go to Phase 5 now, passing the

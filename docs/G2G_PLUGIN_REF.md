@@ -335,6 +335,25 @@ PR. That data is why the default is now **25**. Sizing guidance:
   uncertainty is asymmetric on purpose — anything that leaves *arming*
   in doubt allows the stop, and only a proven-armed session fails
   closed.
+- **Read-only verifier, enforced in two layers.** Since 0.8.0,
+  `plugin/agents/g2g-verifier.md`'s frontmatter carries
+  `tools: Read, Grep, Glob, Bash` — no `Edit`, `Write`, or
+  `NotebookEdit` — narrowing what the verifier can invoke directly.
+  That allowlist alone does not prove the checkout stayed untouched:
+  Bash remains available and can still write files. The enforcement is
+  `/g2g:build` Phase 4's snapshot compare: step 1 records a PRE-VERIFY
+  SNAPSHOT (`git rev-parse HEAD` plus
+  `git status --porcelain --untracked-files=all`, the goal/lock/mutex
+  trio filtered out) immediately before dispatching the verifier, and
+  step 2 takes the identical snapshot again once the POST-WAIT REFRESH
+  exits 0 and before reading the verdict. Any difference — HEAD moved,
+  or the filtered porcelain output changed — means the verifier changed
+  the checkout: its verdict (PASS included) is ignored, nothing is
+  written to the spec, nothing is reverted, and the build routes
+  straight to Phase 5 with the drift named (the changed paths, or the
+  new HEAD sha) so the resulting partial PR lists it. `/g2g:build-wf`
+  executes build.md's Phase 4 by reference, so it inherits this check
+  with no copy in `plugin/commands/build-wf.md`.
 - **Untrusted text never reaches a shell.** Spec `project` values,
   finding text, and requirements text are untrusted; since 0.7.5 every
   derived branch name and spec filename goes through

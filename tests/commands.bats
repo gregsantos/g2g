@@ -873,3 +873,47 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     ! grep -q 'then score it by that step' "$PLUGIN_DIR/commands/build.md"
     grep -q 'the ONLY handoff out of this section' "$PLUGIN_DIR/commands/build.md"
 }
+
+@test "safety: g2g-verifier.md frontmatter narrows tools to exactly Read, Grep, Glob, Bash" {
+    # T-001: the tools allowlist is layer one of the read-only-verifier
+    # enforcement — it must name exactly these four tools, no Edit,
+    # Write, or NotebookEdit that would let the verifier mutate the
+    # checkout through a direct tool call.
+    run sed -n '1,10p' "$PLUGIN_DIR/agents/g2g-verifier.md"
+    [[ "$output" == *$'\ntools: Read, Grep, Glob, Bash\n'* ]] \
+        || { echo "tools line missing or not exact in g2g-verifier.md frontmatter"; return 1; }
+    ! grep -qE '^tools:.*(Edit|Write|NotebookEdit)' "$PLUGIN_DIR/agents/g2g-verifier.md"
+}
+
+@test "safety: build.md Phase 4 records a PRE-VERIFY SNAPSHOT before the verifier dispatch" {
+    # Layer two of the read-only-verifier enforcement (T-001): Bash
+    # remains on the verifier's tools list and can still write files, so
+    # the allowlist alone proves nothing — this snapshot-and-compare is
+    # the actual check.
+    grep -q 'PRE-VERIFY SNAPSHOT' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'git rev-parse HEAD' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'git status --porcelain --untracked-files=all' "$PLUGIN_DIR/commands/build.md"
+    # Phase 4 step 1 must record it before dispatch, and reference the
+    # goal/lock/mutex trio as the filtered exemption.
+    grep -q 'goal/lock/mutex trio' "$PLUGIN_DIR/commands/build.md"
+}
+
+@test "safety: build.md Phase 4 compares the snapshot after POST-WAIT REFRESH and before the verdict" {
+    grep -q 'take the same snapshot' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'PRE-VERIFY SNAPSHOT from step 1' "$PLUGIN_DIR/commands/build.md"
+    grep -qi 'verifier changed the checkout' "$PLUGIN_DIR/commands/build.md"
+    # Any drift must ignore the verdict (PASS included), write nothing to
+    # the spec, revert nothing, and route to Phase 5 naming the drift.
+    grep -qi 'ignore its verdict entirely' "$PLUGIN_DIR/commands/build.md"
+    grep -qi 'write nothing to the spec, revert nothing' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'straight to Phase 5' "$PLUGIN_DIR/commands/build.md"
+    grep -qi 'naming the drift' "$PLUGIN_DIR/commands/build.md"
+}
+
+@test "safety: build-wf.md contains no copy of the PRE-VERIFY SNAPSHOT check" {
+    # build-wf.md executes build.md's Phase 4 by reference (F-046-style
+    # composition), so the snapshot check must reach it automatically —
+    # never be duplicated as prose here.
+    ! grep -q 'PRE-VERIFY SNAPSHOT' "$PLUGIN_DIR/commands/build-wf.md"
+    grep -q "build.md's Phase 4" "$PLUGIN_DIR/commands/build-wf.md"
+}

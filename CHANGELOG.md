@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.8.0 (2026-09-25)
+
+Enforces a read-only verifier with two layers instead of one (T-001).
+Trusting the verifier's own restraint — nothing stopped it from editing
+the checkout it was supposed to only judge — was the gap: an agent
+frontmatter allowlist narrows what the verifier can invoke directly, and
+a snapshot-and-compare check in the orchestrator catches any change to
+the checkout regardless of how it got there, including through Bash,
+which the allowlist cannot restrict.
+
+### Changed
+- `plugin/agents/g2g-verifier.md` frontmatter gains
+  `tools: Read, Grep, Glob, Bash` — no `Edit`, `Write`, or
+  `NotebookEdit`, narrowing the verifier's directly available tools.
+  This alone is not the enforcement: Bash can still write files, so a
+  verifier could still touch the checkout through a shell command. The
+  actual enforcement is the snapshot check below.
+- `/g2g:build` Phase 4 adds a PRE-VERIFY SNAPSHOT / compare check around
+  the verifier dispatch: step 1 records `git rev-parse HEAD` plus
+  `git status --porcelain --untracked-files=all` (goal/lock/mutex trio
+  filtered out) immediately before dispatching the verifier, and step 2
+  takes the same snapshot again after the POST-WAIT REFRESH exits 0 and
+  before reading the verdict. Any difference — HEAD moved or the
+  porcelain status changed — means the verifier changed the checkout:
+  its verdict (PASS included) is ignored, nothing is written to the
+  spec, nothing is reverted, and the build goes straight to Phase 5 with
+  the drift named (changed paths, or the new HEAD sha) so the resulting
+  partial PR lists it. `/g2g:build-wf` executes build.md's Phase 4 by
+  reference, so it inherits this check without any copy in
+  `plugin/commands/build-wf.md`.
+- `plugin/README.md`'s Guardrails section and `docs/G2G_PLUGIN_REF.md`
+  section 9 (Safety model) document the tools allowlist and the
+  snapshot check.
+- `tests/commands.bats` pins the verifier's tools line, the PRE-VERIFY
+  SNAPSHOT / compare check in build.md Phase 4, and its absence from
+  build-wf.md.
+
 ## 0.7.6 (2026-09-17)
 
 Closes the gap between a build's proven evidence and its pull request

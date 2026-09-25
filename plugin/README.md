@@ -530,6 +530,23 @@ algorithm backing it).
   There is no unlimited mode. The wall-clock cap is computed from the
   goal's `buildStart` and needs nothing from the transcript, so it holds
   even if everything else about a run has gone wrong.
+- **Read-only verifier, enforced in two layers** — since 0.8.0,
+  `plugin/agents/g2g-verifier.md`'s frontmatter carries
+  `tools: Read, Grep, Glob, Bash` (no `Edit`, `Write`, or
+  `NotebookEdit`), narrowing what the verifier can invoke directly. That
+  allowlist alone is not the enforcement: Bash remains available and
+  can still write files, so `/g2g:build` Phase 4 backs it with a
+  snapshot compare. Step 1 records a PRE-VERIFY SNAPSHOT — `git
+  rev-parse HEAD` plus `git status --porcelain --untracked-files=all`,
+  the goal/lock/mutex trio filtered out — immediately before dispatching
+  the verifier; step 2 takes the same snapshot again once the
+  POST-WAIT REFRESH exits 0, before reading the verdict. Any difference
+  means the verifier changed the checkout: its verdict (PASS included)
+  is ignored, nothing is written to the spec, nothing is reverted, and
+  the build goes straight to Phase 5 with the drift named (the changed
+  paths, or the new HEAD sha) so the resulting partial PR lists it.
+  `/g2g:build-wf` executes Phase 4 by reference, so it inherits the
+  check with no separate implementation in `plugin/commands/build-wf.md`.
 - **POSIX shell required** — the evidence script needs `bash`; pure
   Windows without git-bash/WSL is unsupported in v1.
 - **`.g2g-goal` and `.g2g-goal.lock`** are ephemeral, gitignored runtime
