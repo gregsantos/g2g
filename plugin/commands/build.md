@@ -524,10 +524,15 @@ condition is MET block the stop.
    before writing `passes: true` below: confirm the precondition — the
    tree is CLEAN by step 7's definition (it already is, from the entry
    gate and the commit-exists check just above, but confirm it again
-   here) — then run every entry in `context.verificationCommands`, in
+   here) — and that HEAD IS the builder's commit, comparing full hashes
+   only: resolve the reported short sha with
+   `git rev-parse <sha>^{commit}` and compare that against
+   `git rev-parse HEAD` (a short sha never string-equals a full one, so
+   comparing them directly fails every passing task) — then run every
+   entry in `context.verificationCommands`, in
    order, read-only, against the builder's commit, capturing each
    command's real exit code and output. Confirm the postcondition —
-   after the last command, HEAD still equals the builder's commit and
+   after the last command, HEAD still equals that same full hash and
    the tree is CLEAN again (step 7 (c)'s definition). If every command
    exited 0 and the postcondition holds, proceed to write `passes: true`
    below. Otherwise — a non-zero exit from any command, or any drift in

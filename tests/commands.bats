@@ -1148,6 +1148,15 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     grep -q 'a reported DONE that failed the OPT-IN' "$PLUGIN_DIR/commands/build.md"
 }
 
+@test "contract: build.md's OPT-IN REGRESSION CHECK compares HEAD to the builder's commit as full hashes, never the short sha" {
+    # The builder reports a short sha; `git rev-parse HEAD` prints a full
+    # one. Compared directly they never match, so every passing task would
+    # score FAILED (Codex adversarial review of PR #44).
+    grep -q 'git rev-parse <sha>^{commit}' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'comparing full hashes' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'HEAD still equals that same full hash' "$PLUGIN_DIR/commands/build.md"
+}
+
 @test "workflow: g2g-build.js accepts an optional verifyEachTask arg not in the required list, and dispatches a regression agent before the complete writer" {
     required_line=$(grep -n "for (const key of \['specPath', 'ownerToken', 'pluginRoot', 'branch'," "$PLUGIN_DIR/workflows/g2g-build.js" | head -1 | cut -d: -f1)
     [[ -n "$required_line" ]] || { echo "missing the required-args validation loop"; return 1; }

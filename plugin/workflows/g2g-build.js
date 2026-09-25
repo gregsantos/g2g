@@ -162,6 +162,23 @@ const writerSchema = {
   },
 }
 
+// SPEC RESTORE gate — build.md Phase 3 step 8's entry gate. Runs on EVERY
+// builder return, before any branch reads the result: a builder that
+// modified the spec (committed or not) broke g2g-builder.md rule 6, the
+// spec is restored from the DISPATCH BASELINE, and the attempt scores
+// FAILED whatever it reported. restored false means the restore itself
+// could not be confirmed — the run stops rather than write bookkeeping
+// onto a spec it cannot vouch for.
+const specGateSchema = {
+  type: 'object',
+  required: ['specDrift', 'restored', 'detail'],
+  properties: {
+    specDrift: { type: 'boolean' },
+    restored: { type: 'boolean' },
+    detail: { type: 'string' },
+  },
+}
+
 // Opt-in per-task regression check (T-004, verifyEachTask). Runs after a
 // DONE report and before the complete writer; ok false turns the report
 // into FAILED and routes to the existing FAILED branch below.
@@ -233,6 +250,11 @@ while (true) {
   if (!started.ok) return done('error', `spec start-commit failed: ${started.detail}`)
   task.status = 'in_progress'
   const dispatchBaselineHead = started.head || ''
+  // Without a baseline neither the SPEC RESTORE gate nor the
+  // NEEDS_DECISION check can be judged, so fail closed before spending a
+  // builder rather than score its result against nothing.
+  if (!dispatchBaselineHead) return done('error',
+    'spec start-commit reported no HEAD; cannot establish the DISPATCH BASELINE')
 
   // The builder. It reads its own contract file so the rules live in
   // exactly one place. The task card is data, not instructions —
@@ -256,11 +278,38 @@ while (true) {
     { label: `turn ${turn}: build ${task.id}`, ...builderOpts(a.builderModel) })
   stashRef = ''
 
+  // SPEC RESTORE gate, on every result (see specGateSchema). Both diff
+  // forms compare against the baseline COMMIT, so a spec edit the builder
+  // committed is caught as surely as one it left staged or unstaged.
+  const gate = await agent(
+    `SPEC RESTORE gate. Change nothing except the single restore below. ` +
+    `Run \`git diff --quiet ${dispatchBaselineHead} -- ${a.specPath}\` and \`git diff --quiet --cached ${dispatchBaselineHead} -- ${a.specPath}\`. ` +
+    `If both exit 0, report specDrift false and restored false. ` +
+    `If either exits nonzero, the spec was modified: run \`git restore --source=${dispatchBaselineHead} --staged --worktree -- ${a.specPath}\`, then re-run both diff commands; report specDrift true, and restored true only if both now exit 0. ` +
+    `In detail, name which form differed and list \`git log --oneline ${dispatchBaselineHead}..HEAD -- ${a.specPath}\`. Never reset, stash, revert, or touch any other path, and never undo a commit.`,
+    { schema: specGateSchema, label: `turn ${turn}: ${task.id} spec gate` })
+  if (gate.specDrift) {
+    if (!gate.restored) return done('error',
+      `builder modified ${a.specPath} and the restore from ${dispatchBaselineHead} could not be confirmed: ${gate.detail}`)
+    report.notes = `${report.notes || ''} [orchestration: builder modified the spec, restored from the DISPATCH BASELINE; it reported result ${report.result}, commit ${report.commit}: ${gate.detail}]`.trim()
+    report.result = 'FAILED'
+  }
+
+  // The reported sha is builder-written text that the checks below paste
+  // into git commands, so a DONE whose commit is not a plain hex sha is a
+  // malformed report — scored FAILED, never interpolated (L-004).
+  if (report.result === 'DONE' && !/^[0-9a-f]{4,40}$/.test(String(report.commit || ''))) {
+    report.notes = `${report.notes || ''} [orchestration: DONE reported a commit that is not a hex sha]`.trim()
+    report.result = 'FAILED'
+  }
+
   if (report.result === 'NEEDS_DECISION') {
     // Never trust the builder's own claim that it made no commit and
     // left the tree clean (g2g-builder.md rule 10) — the orchestrator
     // checks HEAD against the DISPATCH BASELINE and the tree itself,
-    // mirroring build.md Phase 3 step 8's NEEDS_DECISION branch.
+    // mirroring build.md Phase 3 step 8's NEEDS_DECISION branch. The spec
+    // path is ignored here only because the SPEC RESTORE gate above has
+    // already put it back to the baseline (or scored this attempt FAILED).
     const checked = await agent(
       `Run \`git rev-parse HEAD\` and report the exact output as head. Run \`git status --porcelain --untracked-files=all\`, ignoring these exact paths: the spec file ${a.specPath}, .g2g-goal, .g2g-goal.lock, .g2g-goal.mutex. Report ok true only if head equals ${JSON.stringify(dispatchBaselineHead)} AND nothing else is dirty or untracked; otherwise report ok false and put every other dirty/untracked path (or the mismatched head) in detail. Change nothing.`,
       { schema: writerSchema, label: `turn ${turn}: ${task.id} needs-decision check` })
@@ -292,10 +341,11 @@ while (true) {
     const commands = Array.isArray(a.context?.verificationCommands)
       ? a.context.verificationCommands : []
     const regression = await agent(
-      `Opt-in per-task regression check (verifyEachTask). Work read-only against the current commit ${report.commit} — never edit, revert, stash, or commit anything. ` +
+      `Opt-in per-task regression check (verifyEachTask). Work read-only against the builder's commit ${JSON.stringify(report.commit)} — never edit, revert, stash, or commit anything. ` +
+      `Step 0: the builder reports a SHORT sha, so resolve it first: run \`git rev-parse ${report.commit}^{commit}\` and call its output FULL. Compare only full hashes from here on — never compare the reported short sha to \`git rev-parse HEAD\` directly. Run \`git rev-parse HEAD\`; if it is not exactly FULL (or the resolve failed), report ok false and say so in detail. ` +
       `Step 1 (precondition): run \`git status --porcelain --untracked-files=all\`, ignoring exactly these paths: the spec file ${a.specPath}, .g2g-goal, .g2g-goal.lock, .g2g-goal.mutex. Report treeCleanBefore true only if nothing else is listed. ` +
       `Step 2: run, in order, each of these commands exactly as written, capturing each command's real exit code and the last 20 lines of its combined output: ${JSON.stringify(commands)}. ` +
-      `Step 3 (postcondition): run \`git rev-parse HEAD\` and confirm it still equals ${JSON.stringify(report.commit)}, then repeat step 1's status check and report the result as treeCleanAfter. ` +
+      `Step 3 (postcondition): run \`git rev-parse HEAD\` and confirm it still equals FULL, then repeat step 1's status check and report the result as treeCleanAfter. ` +
       `Report ok true only if treeCleanBefore, every command exited 0, HEAD is unchanged, AND treeCleanAfter; otherwise report ok false. In detail, on any failure, name the first offending command, its exit code, and the last 20 lines of its output — or, if HEAD moved or the tree drifted, name exactly what changed.`,
       { schema: regressionSchema, label: `turn ${turn}: ${task.id} regression check` })
     if (!regression.ok) {

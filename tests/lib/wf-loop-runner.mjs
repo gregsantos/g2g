@@ -23,7 +23,10 @@
 //
 // stdout, one JSON line on a normal return:
 //   {"outcome": "returned", "result": <the script's done() object>,
-//    "trace": [<label>, ...]}
+//    "trace": [<label>, ...], "prompts": [<prompt text>, ...]}
+// `prompts` holds each agent() call's prompt in call order (parallel to
+// `trace`), so a test can assert what the shipped script actually TELLS an
+// agent to run — not only which agents it dispatched.
 // exit 0
 //
 // On a thrown error (bad args, exhausted queue, a script bug):
@@ -78,9 +81,11 @@ const body = [...lines.slice(0, metaStart), ...lines.slice(metaEnd + 1)].join('\
 
 let cursor = 0
 const trace = []
-const agent = async (_prompt, options) => {
+const prompts = []
+const agent = async (prompt, options) => {
   const label = options?.label ?? 'agent'
   trace.push(label)
+  prompts.push(String(prompt))
   if (cursor >= queue.length) {
     throw new Error(`wf-loop-runner: agent queue exhausted at call ${cursor + 1} (label: ${label}) — the queue only had ${queue.length} entries`)
   }
@@ -109,7 +114,7 @@ try {
 try {
   const result = await workflowBody(
     args, agent, unavailable('parallel'), unavailable('pipeline'), unavailable('phase'))
-  console.log(JSON.stringify({ outcome: 'returned', result, trace }))
+  console.log(JSON.stringify({ outcome: 'returned', result, trace, prompts }))
   process.exit(0)
 } catch (error) {
   console.log(JSON.stringify({ outcome: 'threw', message: error && error.message ? error.message : String(error), trace }))

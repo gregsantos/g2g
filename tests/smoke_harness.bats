@@ -806,6 +806,7 @@ BUILD_START_EPOCH_JSON='("2026-09-17T00:00:00Z"|fromdateiso8601)'
         {result:"NEEDS_DECISION", commit:"none", verified:[], mutation:"n/a (no tests added)",
          decision:"Keep the deprecated flag or delete it? Options: keep one more release, or delete now. Recommend delete: nothing else references it.",
          notes:""},
+        {specDrift:false, restored:false, detail:""},
         {ok:true, detail:"", head:"abc123"},
         {ok:true, detail:""}
     ]')
@@ -833,6 +834,7 @@ BUILD_START_EPOCH_JSON='("2026-09-17T00:00:00Z"|fromdateiso8601)'
         {result:"NEEDS_DECISION", commit:"none", verified:[], mutation:"n/a (no tests added)",
          decision:"Keep the deprecated flag or delete it? Options: keep one more release, or delete now. Recommend delete: nothing else references it.",
          notes:""},
+        {specDrift:false, restored:false, detail:""},
         {ok:false, detail:"src/foo.js modified", head:"def456"},
         {ok:true, detail:""}
     ]')
@@ -861,6 +863,7 @@ BUILD_START_EPOCH_JSON='("2026-09-17T00:00:00Z"|fromdateiso8601)'
         {refreshExit:0, refreshLine:"g2g-lock: refreshed", treeDirty:false, now:$now},
         {ok:true, detail:"", head:"abc123"},
         {result:"DONE", commit:"abc123", verified:["x: pass"], mutation:"n/a (no tests added)", notes:""},
+        {specDrift:false, restored:false, detail:""},
         {ok:true, detail:"", commitExists:true}
     ]')
     input=$(jq -cn --argjson args "$args" --argjson queue "$queue" '{args:$args, queue:$queue}')
@@ -870,8 +873,8 @@ BUILD_START_EPOCH_JSON='("2026-09-17T00:00:00Z"|fromdateiso8601)'
     task_status=$(printf '%s' "$output" | jq -r '.result.tasks[0].status')
     [[ "$result_outcome" == "complete" ]] || { echo "outcome: $result_outcome; $output"; return 1; }
     [[ "$task_status" == "complete" ]] || { echo "status: $task_status; $output"; return 1; }
-    # The queue had exactly 4 entries (keeper, start, builder, complete
-    # writer) and the runner throws loudly on an unscripted 5th call — a
+    # The queue had exactly 5 entries (keeper, start, builder, spec gate,
+    # complete writer) and the runner throws loudly on an unscripted 6th call — a
     # regression agent dispatched here would exhaust the queue and fail
     # the run, so a clean "returned/complete" already proves none was
     # dispatched. Confirm it directly too, via the trace.
@@ -889,6 +892,7 @@ BUILD_START_EPOCH_JSON='("2026-09-17T00:00:00Z"|fromdateiso8601)'
         {refreshExit:0, refreshLine:"g2g-lock: refreshed", treeDirty:false, now:$now},
         {ok:true, detail:"", head:"abc123"},
         {result:"DONE", commit:"abc123", verified:["x: pass"], mutation:"n/a (no tests added)", notes:""},
+        {specDrift:false, restored:false, detail:""},
         {ok:false, detail:"make check exited 2; last 20 lines: ...regression tail...",
          treeCleanBefore:true, treeCleanAfter:true},
         {ok:true, detail:""}
@@ -904,6 +908,122 @@ BUILD_START_EPOCH_JSON='("2026-09-17T00:00:00Z"|fromdateiso8601)'
     [[ "$task_attempts" == "1" ]] || { echo "attempts: $task_attempts; $output"; return 1; }
     regression_calls=$(printf '%s' "$output" | jq '[.trace[] | select(contains("regression check"))] | length')
     [[ "$regression_calls" == "1" ]] || { echo "expected exactly one regression agent dispatch: $output"; return 1; }
+}
+
+# SPEC RESTORE gate (Codex adversarial review of PR #44): build.md's step 8
+# entry gate, now also in the workflow, on EVERY builder result. A builder
+# that touched the spec scores FAILED whatever it reported, and the spec is
+# restored from the DISPATCH BASELINE before any bookkeeping commit.
+
+run_one_task_loop() {
+    # $1 = extra args (jq object), $2 = queue (JSON array)
+    args=$(jq -cn --argjson a "$LOOP_ARGS" --argjson extra "$1" \
+        '$a + {turnCap:2, tasks:[{id:"T-001",title:"t",description:"d",acceptanceCriteria:["x"],dependsOn:[],status:"pending",passes:false,attempts:0}]} + $extra')
+    input=$(jq -cn --argjson args "$args" --argjson queue "$2" '{args:$args, queue:$queue}')
+    run bash -c "printf '%s' '$input' | node '$RUNNER' '$WORKFLOW_SCRIPT'"
+}
+
+@test "workflow loop: NEEDS_DECISION with spec-only drift and an unchanged HEAD scores FAILED, never blocked" {
+    command -v node >/dev/null 2>&1 || skip "node not installed"
+    now=$(jq -n "$BUILD_START_EPOCH_JSON")
+    queue=$(jq -cn --argjson now "$now" '[
+        {refreshExit:0, refreshLine:"g2g-lock: refreshed", treeDirty:false, now:$now},
+        {ok:true, detail:"", head:"abc1234def"},
+        {result:"NEEDS_DECISION", commit:"none", verified:[], decision:"pick one", notes:""},
+        {specDrift:true, restored:true, detail:"working-tree form differed"},
+        {ok:true, detail:""}
+    ]')
+    run_one_task_loop '{}' "$queue"
+    [[ "$status" -eq 0 ]] || { echo "$output"; return 1; }
+    [[ "$(printf '%s' "$output" | jq -r '.result.tasks[0].status')" == "pending" ]] || { echo "$output"; return 1; }
+    [[ "$(printf '%s' "$output" | jq -r '.result.tasks[0].attempts')" == "1" ]] || { echo "$output"; return 1; }
+    # The needs-decision checker and blocked writer never ran: the gate
+    # already scored the attempt FAILED.
+    [[ "$(printf '%s' "$output" | jq '[.trace[] | select(contains("needs-decision"))] | length')" == "0" ]] || { echo "$output"; return 1; }
+    # The gate ran against the baseline commit, and the restore is from it.
+    printf '%s' "$output" | jq -e '[.prompts[] | select(contains("git restore --source=abc1234def --staged --worktree"))] | length == 1' >/dev/null \
+        || { echo "gate prompt does not restore from the baseline: $output"; return 1; }
+}
+
+@test "workflow loop: DONE with spec drift scores FAILED and never reaches the complete writer" {
+    command -v node >/dev/null 2>&1 || skip "node not installed"
+    now=$(jq -n "$BUILD_START_EPOCH_JSON")
+    queue=$(jq -cn --argjson now "$now" '[
+        {refreshExit:0, refreshLine:"g2g-lock: refreshed", treeDirty:false, now:$now},
+        {ok:true, detail:"", head:"abc1234def"},
+        {result:"DONE", commit:"abc1234", verified:["x: pass"], notes:""},
+        {specDrift:true, restored:true, detail:"a builder commit touched the spec"},
+        {ok:true, detail:""}
+    ]')
+    run_one_task_loop '{}' "$queue"
+    [[ "$status" -eq 0 ]] || { echo "$output"; return 1; }
+    [[ "$(printf '%s' "$output" | jq -r '.result.tasks[0].passes')" == "false" ]] || { echo "$output"; return 1; }
+    [[ "$(printf '%s' "$output" | jq -r '.result.tasks[0].attempts')" == "1" ]] || { echo "$output"; return 1; }
+    [[ "$(printf '%s' "$output" | jq '[.trace[] | select(endswith(" complete"))] | length')" == "0" ]] || { echo "$output"; return 1; }
+}
+
+@test "workflow loop: an unconfirmed spec restore stops the run as an error" {
+    command -v node >/dev/null 2>&1 || skip "node not installed"
+    now=$(jq -n "$BUILD_START_EPOCH_JSON")
+    queue=$(jq -cn --argjson now "$now" '[
+        {refreshExit:0, refreshLine:"g2g-lock: refreshed", treeDirty:false, now:$now},
+        {ok:true, detail:"", head:"abc1234def"},
+        {result:"FAILED", commit:"none", verified:[], notes:""},
+        {specDrift:true, restored:false, detail:"restore failed"}
+    ]')
+    run_one_task_loop '{}' "$queue"
+    [[ "$status" -eq 0 ]] || { echo "$output"; return 1; }
+    [[ "$(printf '%s' "$output" | jq -r '.result.outcome')" == "error" ]] || { echo "$output"; return 1; }
+}
+
+@test "workflow loop: a start commit that reports no HEAD stops before any builder is spent" {
+    command -v node >/dev/null 2>&1 || skip "node not installed"
+    now=$(jq -n "$BUILD_START_EPOCH_JSON")
+    queue=$(jq -cn --argjson now "$now" '[
+        {refreshExit:0, refreshLine:"g2g-lock: refreshed", treeDirty:false, now:$now},
+        {ok:true, detail:""}
+    ]')
+    run_one_task_loop '{}' "$queue"
+    [[ "$status" -eq 0 ]] || { echo "$output"; return 1; }
+    [[ "$(printf '%s' "$output" | jq -r '.result.outcome')" == "error" ]] || { echo "$output"; return 1; }
+    [[ "$(printf '%s' "$output" | jq '[.trace[] | select(contains("build T-001"))] | length')" == "0" ]] || { echo "$output"; return 1; }
+}
+
+@test "workflow loop: a DONE whose commit is not a hex sha scores FAILED and is never pasted into a command" {
+    command -v node >/dev/null 2>&1 || skip "node not installed"
+    now=$(jq -n "$BUILD_START_EPOCH_JSON")
+    queue=$(jq -cn --argjson now "$now" '[
+        {refreshExit:0, refreshLine:"g2g-lock: refreshed", treeDirty:false, now:$now},
+        {ok:true, detail:"", head:"abc1234def"},
+        {result:"DONE", commit:"abc; touch pwned", verified:["x: pass"], notes:""},
+        {specDrift:false, restored:false, detail:""},
+        {ok:true, detail:""}
+    ]')
+    run_one_task_loop '{}' "$queue"
+    [[ "$status" -eq 0 ]] || { echo "$output"; return 1; }
+    [[ "$(printf '%s' "$output" | jq -r '.result.tasks[0].attempts')" == "1" ]] || { echo "$output"; return 1; }
+    printf '%s' "$output" | jq -e '[.prompts[] | select(contains("touch pwned"))] | length == 0' >/dev/null \
+        || { echo "the malformed commit reached a prompt: $output"; return 1; }
+}
+
+@test "workflow loop: verifyEachTask resolves the builder's short sha to a full hash before comparing HEAD" {
+    command -v node >/dev/null 2>&1 || skip "node not installed"
+    now=$(jq -n "$BUILD_START_EPOCH_JSON")
+    queue=$(jq -cn --argjson now "$now" '[
+        {refreshExit:0, refreshLine:"g2g-lock: refreshed", treeDirty:false, now:$now},
+        {ok:true, detail:"", head:"abc1234def"},
+        {result:"DONE", commit:"abc1234", verified:["x: pass"], notes:""},
+        {specDrift:false, restored:false, detail:""},
+        {ok:true, detail:"", treeCleanBefore:true, treeCleanAfter:true},
+        {ok:true, detail:"", commitExists:true}
+    ]')
+    run_one_task_loop '{"verifyEachTask":true,"context":{"verificationCommands":["make check"]}}' "$queue"
+    [[ "$status" -eq 0 ]] || { echo "$output"; return 1; }
+    [[ "$(printf '%s' "$output" | jq -r '.result.tasks[0].status')" == "complete" ]] || { echo "$output"; return 1; }
+    regression_prompt=$(printf '%s' "$output" | jq -r '.prompts[] | select(contains("verifyEachTask"))')
+    [[ "$regression_prompt" == *'git rev-parse abc1234^{commit}'* ]] || { echo "short sha is not resolved: $regression_prompt"; return 1; }
+    [[ "$regression_prompt" == *'still equals FULL'* ]] || { echo "postcondition does not compare the full hash: $regression_prompt"; return 1; }
+    [[ "$regression_prompt" != *'still equals "abc1234"'* ]] || { echo "postcondition compares the short sha: $regression_prompt"; return 1; }
 }
 
 @test "wf-loop-runner: never spawns anything — the scripted queue is the only side channel" {

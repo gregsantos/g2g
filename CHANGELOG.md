@@ -114,6 +114,21 @@ which the allowlist cannot restrict.
   absent: putting `--label` on `gh pr create` would fail PR creation in any
   host repo that lacks the label. A failed label call never blocks the
   terminal release. Verifier findings on PR #44.
+- `plugin/workflows/g2g-build.js` gains build.md's SPEC RESTORE entry
+  gate: after EVERY builder return, a spec that differs from the dispatch
+  baseline (committed, staged, or unstaged) is restored from it and the
+  attempt scores FAILED whatever the builder reported, before any
+  bookkeeping commit. Without it, a builder could edit criteria or pass
+  flags, report `NEEDS_DECISION` (or DONE/FAILED) without committing, and
+  the workflow's next writer committed the edit. A start commit that
+  reports no HEAD now stops the loop before a builder is spent, and a
+  DONE whose commit is not a hex sha scores FAILED instead of being pasted
+  into a git command. The verifyEachTask check (both engines) now resolves
+  the builder's short sha to a full hash before comparing it with HEAD;
+  compared directly they never match, so every passing task would have
+  scored FAILED. `tests/lib/wf-loop-runner.mjs` also records each agent
+  prompt, so tests assert what the shipped script tells an agent to run.
+  Codex adversarial review of PR #44.
 
 ## 0.7.6 (2026-09-17)
 
