@@ -108,10 +108,10 @@
       "dependsOn": [
         "T-003"
       ],
-      "status": "in_progress",
-      "passes": false,
+      "status": "complete",
+      "passes": true,
       "effort": "medium",
-      "notes": "",
+      "notes": "commit 8106d0c. verified: verifyEachTask false in all 4 templates, pinned in templates.bats; build.md step 8 OPT-IN REGRESSION CHECK (exactly true, reported DONE only, after commit-exists and before passes: true, CLEAN before and after, failure/drift -> FAILED with command, exit code, last 20 lines); g2g-build.js optional arg (not required), regressionSchema, regression agent before the complete writer; build-wf.md Phase 1 reads it and Phase 3 args carry it; README Config documents default and cost; smoke_harness tests drive real g2g-build.js via wf-loop-runner.mjs for both the absent and failing-command cases; make check 381 tests exit 0.\nmutation: 10 new tests, each broken then restored (FAIL then PASS), including removing the verifyEachTask guard and short-circuiting the failure branch in the real g2g-build.js.\ndecision: n/a\nFLAG: a commands.bats test pins that this repo's own .claude/g2g.json does NOT contain verifyEachTask. That came from the orchestrator's task-card wording, not the spec; it would block ever enabling the flag here and may be worth removing in review.\nFLAG: docs/G2G_PLUGIN_REF.md does not mention verifyEachTask (not required by the criteria).\nFLAG: make smoke and make smoke-wf were not run (API cost); they are the human merge gate for this PR.",
       "attempts": 0
     }
   ],
