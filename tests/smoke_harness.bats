@@ -17,6 +17,7 @@
 REPO_DIR="$BATS_TEST_DIRNAME/.."
 SMOKE="$BATS_TEST_DIRNAME/smoke.sh"
 PROBE="$BATS_TEST_DIRNAME/lib/wf-dispatch-probe.mjs"
+RUNNER="$BATS_TEST_DIRNAME/lib/wf-loop-runner.mjs"
 WORKFLOW_SCRIPT="$REPO_DIR/plugin/workflows/g2g-build.js"
 
 setup() {
@@ -777,4 +778,77 @@ EOF
     run bash "$SMOKE" --assert-only "$WORK"
     [[ "$status" -eq 1 ]]
     [[ "$output" == *".g2g-goal was not deleted"* ]]
+}
+
+# ---------------------------------------------------------------------------
+# NEEDS_DECISION under the real loop (T-003). wf-loop-runner.mjs drives the
+# SHIPPED plugin/workflows/g2g-build.js to a real return value under the
+# same node:vm isolation as wf-dispatch-probe.mjs, but with a scripted
+# QUEUE of agent() responses instead of a sentinel-throwing stub, so these
+# assert the loop's actual outcome across the several agent() calls a
+# NEEDS_DECISION report triggers, not merely that dispatch happened.
+# ---------------------------------------------------------------------------
+
+# The loop's turn-cap check runs BEFORE the loop dispatches any agent for
+# that turn, so buildStart just needs a real epoch second reading — reuse
+# the LOOP_ARGS timestamp via jq's fromdateiso8601 rather than hand-picking
+# a number that could drift from it.
+BUILD_START_EPOCH_JSON='("2026-09-17T00:00:00Z"|fromdateiso8601)'
+
+@test "workflow loop: NEEDS_DECISION with an unchanged HEAD ends the task blocked with attempts 0" {
+    command -v node >/dev/null 2>&1 || skip "node not installed"
+    now=$(jq -n "$BUILD_START_EPOCH_JSON")
+    args=$(jq -cn --argjson a "$LOOP_ARGS" \
+        '$a + {turnCap:8, tasks:[{id:"T-001",title:"t",description:"d",acceptanceCriteria:["x"],dependsOn:[],status:"pending",passes:false,attempts:0}]}')
+    queue=$(jq -cn --argjson now "$now" '[
+        {refreshExit:0, refreshLine:"g2g-lock: refreshed", treeDirty:false, now:$now},
+        {ok:true, detail:"", head:"abc123"},
+        {result:"NEEDS_DECISION", commit:"none", verified:[], mutation:"n/a (no tests added)",
+         decision:"Keep the deprecated flag or delete it? Options: keep one more release, or delete now. Recommend delete: nothing else references it.",
+         notes:""},
+        {ok:true, detail:"", head:"abc123"},
+        {ok:true, detail:""}
+    ]')
+    input=$(jq -cn --argjson args "$args" --argjson queue "$queue" '{args:$args, queue:$queue}')
+    run bash -c "printf '%s' '$input' | node '$RUNNER' '$WORKFLOW_SCRIPT'"
+    [[ "$status" -eq 0 ]] || { echo "$output"; return 1; }
+    outcome=$(printf '%s' "$output" | jq -r '.outcome')
+    [[ "$outcome" == "returned" ]] || { echo "$output"; return 1; }
+    result_outcome=$(printf '%s' "$output" | jq -r '.result.outcome')
+    task_status=$(printf '%s' "$output" | jq -r '.result.tasks[0].status')
+    task_attempts=$(printf '%s' "$output" | jq -r '.result.tasks[0].attempts')
+    [[ "$result_outcome" == "blocked" ]] || { echo "outcome: $result_outcome; $output"; return 1; }
+    [[ "$task_status" == "blocked" ]] || { echo "status: $task_status; $output"; return 1; }
+    [[ "$task_attempts" == "0" ]] || { echo "attempts: $task_attempts; $output"; return 1; }
+}
+
+@test "workflow loop: NEEDS_DECISION with a moved HEAD ends it with attempts 1" {
+    command -v node >/dev/null 2>&1 || skip "node not installed"
+    now=$(jq -n "$BUILD_START_EPOCH_JSON")
+    args=$(jq -cn --argjson a "$LOOP_ARGS" \
+        '$a + {turnCap:2, tasks:[{id:"T-001",title:"t",description:"d",acceptanceCriteria:["x"],dependsOn:[],status:"pending",passes:false,attempts:0}]}')
+    queue=$(jq -cn --argjson now "$now" '[
+        {refreshExit:0, refreshLine:"g2g-lock: refreshed", treeDirty:false, now:$now},
+        {ok:true, detail:"", head:"abc123"},
+        {result:"NEEDS_DECISION", commit:"none", verified:[], mutation:"n/a (no tests added)",
+         decision:"Keep the deprecated flag or delete it? Options: keep one more release, or delete now. Recommend delete: nothing else references it.",
+         notes:""},
+        {ok:false, detail:"src/foo.js modified", head:"def456"},
+        {ok:true, detail:""}
+    ]')
+    input=$(jq -cn --argjson args "$args" --argjson queue "$queue" '{args:$args, queue:$queue}')
+    run bash -c "printf '%s' '$input' | node '$RUNNER' '$WORKFLOW_SCRIPT'"
+    [[ "$status" -eq 0 ]] || { echo "$output"; return 1; }
+    result_outcome=$(printf '%s' "$output" | jq -r '.result.outcome')
+    task_status=$(printf '%s' "$output" | jq -r '.result.tasks[0].status')
+    task_attempts=$(printf '%s' "$output" | jq -r '.result.tasks[0].attempts')
+    [[ "$result_outcome" == "cap-turns" ]] || { echo "outcome: $result_outcome; $output"; return 1; }
+    [[ "$task_status" == "pending" ]] || { echo "status: $task_status; $output"; return 1; }
+    [[ "$task_attempts" == "1" ]] || { echo "attempts: $task_attempts; $output"; return 1; }
+}
+
+@test "wf-loop-runner: never spawns anything — the scripted queue is the only side channel" {
+    grep -q "node:vm" "$RUNNER"
+    grep -q "'use strict'" "$RUNNER"
+    ! grep -q "child_process\|process.env\|writeFileSync" "$RUNNER"
 }

@@ -376,6 +376,26 @@ PR. That data is why the default is now **25**. Sizing guidance:
   defense in depth: both improve commands refuse to run unless
   `.claude/g2g.json` sets `"improve": { "enabled": true }`, and
   enabling it is always a human edit.
+- **NEEDS_DECISION, checked not trusted (T-003):** a builder may report
+  `NEEDS_DECISION` in place of `DONE`/`FAILED` for a task that cannot be
+  completed without a choice the spec does not make — but the contract
+  requires `commit: none` and an untouched tree, and `/g2g:build` never
+  takes the builder's word for that: it independently checks HEAD
+  against the DISPATCH BASELINE and the tree's cleanliness before
+  honoring the report. Only on that check passing does the task move to
+  `status: blocked` with `notes` prefixed `needs-human: ` and `attempts`
+  left unchanged; a failed check scores the attempt FAILED instead, same
+  as any other builder that broke its contract. No new spec status
+  exists for this — `blocked` plus the `needs-human: ` notes prefix is
+  the whole signal, read by `/g2g:status` and folded into the completion
+  PR body's "Needs your attention" → "Decisions for you" section.
+- **FLAG lines never substitute for a criterion:** a builder may leave a
+  `FLAG: ` notes line for something it could not check that lies
+  outside the acceptance criteria (an unreachable environment, a
+  follow-up, an unperformable mutation proof); an acceptance criterion
+  it could not verify is still `FAILED`. Builder FLAG lines and the
+  verifier's `flags:` lines (T-002) both land in the completion PR
+  body's "Needs your attention" → "Flags" subsection.
 
 ## 10. The hill-climbing loop (operator view)
 

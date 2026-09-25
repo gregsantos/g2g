@@ -42,13 +42,35 @@ Rules — non-negotiable:
    and (d) run it again and show it PASS. A test that still passes
    against the broken code must be fixed before you commit — it
    proved nothing.
+10. NEEDS_DECISION is a third, narrow exit — reserved ONLY for a task
+    that cannot be completed without a choice the spec does not make
+    (keep vs. delete a deprecated path, which of two reasonable API
+    shapes, whether an ambiguous acceptance criterion means A or B).
+    It is never a substitute for FAILED: if the task can be completed
+    and verified, or if it fails an acceptance criterion, that is DONE
+    or FAILED, not NEEDS_DECISION — you do not get to skip a criterion
+    by calling it a decision. When you use it: make NO commit at all
+    (`commit: none`) and leave the tree exactly as you found it — no
+    staged, unstaged, or untracked changes, and the spec file
+    untouched. Fill the `decision:` field with the question, the
+    concrete options, and your own recommendation with its reason —
+    the orchestrator will surface this verbatim to a human; a vague or
+    missing decision helps no one.
+11. FLAG lines: anything you could not check that lies OUTSIDE the
+    acceptance criteria — an environment or credential you could not
+    reach, a follow-up you noticed but that isn't in scope, a mutation
+    proof you could not perform for some reason — goes into `notes` as
+    its own line starting `FLAG: `. A FLAG never substitutes for a criterion:
+    an acceptance criterion you could not verify with real output is FAILED, never a FLAG.
+    Use FLAG only for things the acceptance criteria never asked you to check.
 
 End your final message with exactly this block:
 
 BUILDER REPORT
 task: <task-id>
-result: DONE | FAILED
+result: DONE | FAILED | NEEDS_DECISION
 commit: <short-sha or "none">
 verified: <one line per acceptance criterion: PASS/FAIL + the command run>
 mutation: <one line per new or strengthened test: test name, what was broken, observed FAIL then PASS> | n/a (no tests added)
-notes: <conflicts found, follow-ups, anything the orchestrator must know>
+decision: <NEEDS_DECISION only: the question, the options, and your recommendation with its reason> | n/a
+notes: <conflicts found, follow-ups, anything the orchestrator must know; one `FLAG: ` line per unverifiable non-criterion item>

@@ -489,15 +489,32 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     grep -q 'agents/g2g-builder.md' "$PLUGIN_DIR/workflows/g2g-build.js"
 }
 
-@test "workflow: builderSchema's mutation field is optional; required fields and result enum unchanged" {
+@test "workflow: builderSchema's mutation and decision fields are optional; required fields unchanged, result enum gains NEEDS_DECISION" {
     grep -q "required: \['result', 'commit', 'verified', 'notes'\]" "$PLUGIN_DIR/workflows/g2g-build.js"
-    grep -q "result: { type: 'string', enum: \['DONE', 'FAILED'\] }" "$PLUGIN_DIR/workflows/g2g-build.js"
+    grep -q "result: { type: 'string', enum: \['DONE', 'FAILED', 'NEEDS_DECISION'\] }" "$PLUGIN_DIR/workflows/g2g-build.js"
     grep -q "mutation: { type: 'string' }" "$PLUGIN_DIR/workflows/g2g-build.js"
+    grep -q "decision: { type: 'string' }" "$PLUGIN_DIR/workflows/g2g-build.js"
 }
 
 @test "workflow: the complete-writer agent copies the builder's mutation line into notes" {
     grep -q 'report.mutation' "$PLUGIN_DIR/workflows/g2g-build.js"
     grep -q "'not reported'" "$PLUGIN_DIR/workflows/g2g-build.js"
+}
+
+@test "workflow: writerSchema gains an optional head field, and the start writer reports HEAD" {
+    grep -q "head: { type: 'string' }" "$PLUGIN_DIR/workflows/g2g-build.js"
+    grep -q 'git rev-parse HEAD.*report the exact output as head' "$PLUGIN_DIR/workflows/g2g-build.js"
+}
+
+@test "workflow: a NEEDS_DECISION report is checked against the DISPATCH BASELINE before scoring" {
+    grep -q "report.result === 'NEEDS_DECISION'" "$PLUGIN_DIR/workflows/g2g-build.js"
+    grep -q 'needs-decision check' "$PLUGIN_DIR/workflows/g2g-build.js"
+    grep -q "task.status = 'blocked'" "$PLUGIN_DIR/workflows/g2g-build.js"
+    grep -q "notesText = \`needs-human: " "$PLUGIN_DIR/workflows/g2g-build.js"
+    # A failed check falls through to the exact same FAILED scoring path
+    # as a malformed DONE — never a separate, looser one.
+    grep -q "report.result = 'FAILED'" "$PLUGIN_DIR/workflows/g2g-build.js"
+    grep -q 'NEEDS_DECISION arrived with changes' "$PLUGIN_DIR/workflows/g2g-build.js"
 }
 
 @test "workflow: caps and ownership loss are enforced in code" {
@@ -973,9 +990,109 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     [[ "$c_line" -lt "$f_line" ]] || { echo "flags: is not after commands:"; return 1; }
 }
 
-@test "contract: build.md Phase 4 reads the verifier's flags: field and both PR bodies include it" {
+@test "contract: build.md Phase 4 reads the verifier's flags: field and folds it into the Flags subsection of every PR body (T-003)" {
     grep -q '`flags:`' "$PLUGIN_DIR/commands/build.md"
     grep -qi 'treated as none' "$PLUGIN_DIR/commands/build.md"
-    grep -q 'verifier summary + its flags lines' "$PLUGIN_DIR/commands/build.md"
-    grep -q 'along with its flags lines' "$PLUGIN_DIR/commands/build.md"
+    # T-003 moved the verifier's flags lines out of the inline body summary
+    # and into the dedicated ### Flags subsection of the Needs your
+    # attention section — pinned below, not the old inline phrasing.
+    grep -q '### Flags' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'Needs your attention' "$PLUGIN_DIR/commands/build.md"
+}
+
+# T-003: a NEEDS_DECISION exit for a task that cannot be completed without a
+# human choice, and FLAG lines for anything a builder could not check that
+# lies outside the acceptance criteria. Both surface in the PR body's
+# "Needs your attention" section instead of being invisible.
+
+@test "contract: g2g-builder.md allows NEEDS_DECISION, defines decision:, and requires commit: none plus an untouched tree" {
+    grep -q 'result: DONE | FAILED | NEEDS_DECISION' "$PLUGIN_DIR/agents/g2g-builder.md"
+    grep -q '^10\. NEEDS_DECISION' "$PLUGIN_DIR/agents/g2g-builder.md"
+    grep -q '`commit: none`' "$PLUGIN_DIR/agents/g2g-builder.md"
+    grep -qi 'leave the tree exactly as you found it' "$PLUGIN_DIR/agents/g2g-builder.md"
+    grep -q '^decision:' "$PLUGIN_DIR/agents/g2g-builder.md"
+    # Never a substitute for FAILED.
+    grep -qi 'never a substitute for FAILED' "$PLUGIN_DIR/agents/g2g-builder.md"
+}
+
+@test "contract: the BUILDER REPORT template has decision: between mutation: and notes:" {
+    m_line=$(grep -n '^mutation:' "$PLUGIN_DIR/agents/g2g-builder.md" | tail -1 | cut -d: -f1)
+    d_line=$(grep -n '^decision:' "$PLUGIN_DIR/agents/g2g-builder.md" | tail -1 | cut -d: -f1)
+    n_line=$(grep -n '^notes:' "$PLUGIN_DIR/agents/g2g-builder.md" | tail -1 | cut -d: -f1)
+    [[ -n "$m_line" && -n "$d_line" && -n "$n_line" ]] || { echo "missing one of mutation:/decision:/notes:"; return 1; }
+    [[ "$m_line" -lt "$d_line" ]] || { echo "decision: is not after mutation:"; return 1; }
+    [[ "$d_line" -lt "$n_line" ]] || { echo "decision: is not before notes:"; return 1; }
+}
+
+@test "contract: g2g-builder.md has the FLAG rule; an unverifiable criterion is FAILED, never a FLAG" {
+    grep -q '^11\. FLAG lines' "$PLUGIN_DIR/agents/g2g-builder.md"
+    grep -q '`FLAG: `' "$PLUGIN_DIR/agents/g2g-builder.md"
+    grep -qi 'a FLAG never substitutes for a criterion' "$PLUGIN_DIR/agents/g2g-builder.md"
+    grep -qi 'you could not verify with real.*output is FAILED, never a FLAG' "$PLUGIN_DIR/agents/g2g-builder.md"
+}
+
+@test "contract: build.md Phase 3 step 7 counts a NEEDS_DECISION report as usable" {
+    grep -q 'reads as `DONE`, `FAILED`, or `NEEDS_DECISION`' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'for NEEDS_DECISION, `commit:` reads exactly `none`' "$PLUGIN_DIR/commands/build.md"
+}
+
+@test "contract: build.md step 8 checks HEAD and tree itself before honoring a NEEDS_DECISION" {
+    grep -q 'Then, on result NEEDS_DECISION' "$PLUGIN_DIR/commands/build.md"
+    grep -qi 'never trust the builder.s own claim' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'HEAD still equals the DISPATCH BASELINE and the tree is CLEAN' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'set status: blocked, leave `attempts` UNCHANGED' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'notes to `needs-human: `' "$PLUGIN_DIR/commands/build.md"
+    # The entry gate still runs first, and a NEEDS_DECISION it overrules
+    # (spec was dirtied) falls to FAILED, never to the blocked path.
+    grep -qi 'A NEEDS_DECISION this gate overruled' "$PLUGIN_DIR/commands/build.md"
+    grep -q "a reported NEEDS_DECISION this step's own" "$PLUGIN_DIR/commands/build.md"
+}
+
+@test "contract: every gh pr create in build.md passes the body with --body-file from a mktemp -d file" {
+    # 'gh pr create --title "g2g: ...' is the real invocation shape at all
+    # three call sites (Phase 4 steps 5 and 7, Phase 5 step 2); the generic
+    # PR BODY COMPOSITION description uses a `<title>` placeholder instead,
+    # so this pattern counts real invocations only.
+    invocations=$(grep -c 'gh pr create --title "g2g:' "$PLUGIN_DIR/commands/build.md")
+    with_body_file=$(grep -c 'gh pr create --title "g2g:.*--body-file' "$PLUGIN_DIR/commands/build.md")
+    [[ "$invocations" -eq 3 ]] || { echo "expected 3 gh pr create invocations, found $invocations"; return 1; }
+    [[ "$invocations" -eq "$with_body_file" ]] || { echo "not every gh pr create invocation uses --body-file"; return 1; }
+    grep -q 'PR BODY COMPOSITION' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'mktemp -d' "$PLUGIN_DIR/commands/build.md"
+}
+
+@test "contract: the PR body gains a Needs your attention section with Decisions for you and Flags subsections" {
+    grep -q '## Needs your attention' "$PLUGIN_DIR/commands/build.md"
+    grep -q '### Decisions for you' "$PLUGIN_DIR/commands/build.md"
+    grep -q '### Flags' "$PLUGIN_DIR/commands/build.md"
+    grep -qi 'OMITTED ENTIRELY when both parts below are' "$PLUGIN_DIR/commands/build.md"
+}
+
+@test "contract: status.md reports needs-human tasks and gains no write instruction" {
+    grep -qi 'needs-human' "$PLUGIN_DIR/commands/status.md"
+    grep -q 'read-only (change nothing)' "$PLUGIN_DIR/commands/status.md"
+    # The needs-human step itself must read only — never write, commit, or
+    # edit the spec on a human's behalf.
+    needs_human_block=$(sed -n '/Needs-human tasks (read-only/,/never through this command\./p' "$PLUGIN_DIR/commands/status.md")
+    [[ -n "$needs_human_block" ]] || { echo "no Needs-human tasks step found"; return 1; }
+    echo "$needs_human_block" | grep -qi 'a human answers' \
+        || { echo "needs-human step does not say a human answers, not this command"; return 1; }
+    echo "$needs_human_block" | grep -qiE '\bwrite\b|\bcommit\b|\bmodify\b' \
+        && { echo "needs-human step picked up a write instruction"; return 1; }
+    true
+}
+
+@test "contract: writing-g2g-specs SKILL.md documents the needs-human convention and its recovery path" {
+    grep -qi 'needs-human' "$PLUGIN_DIR/skills/writing-g2g-specs/SKILL.md"
+    grep -q '\-\-continue-branch' "$PLUGIN_DIR/skills/writing-g2g-specs/SKILL.md"
+    grep -qi 'status back to' "$PLUGIN_DIR/skills/writing-g2g-specs/SKILL.md"
+    # The status field's documented values gain no new entry.
+    grep -q 'in_progress.*complete.*blocked' "$PLUGIN_DIR/skills/writing-g2g-specs/SKILL.md"
+}
+
+@test "contract: plugin/README.md and G2G_PLUGIN_REF.md document NEEDS_DECISION and FLAG lines" {
+    grep -q 'NEEDS_DECISION' "$REPO_DIR/plugin/README.md"
+    grep -qi 'FLAG' "$REPO_DIR/plugin/README.md"
+    grep -q 'NEEDS_DECISION' "$REPO_DIR/docs/G2G_PLUGIN_REF.md"
+    grep -qi 'FLAG' "$REPO_DIR/docs/G2G_PLUGIN_REF.md"
 }

@@ -50,6 +50,41 @@ which the allowlist cannot restrict.
   corresponding mutation evidence, via a new `flags:` line in the
   VERIFIER REPORT that `/g2g:build` Phase 4 reads and folds into both
   the completion and partial PR bodies.
+- `plugin/agents/g2g-builder.md` gains a third BUILDER REPORT exit,
+  `NEEDS_DECISION`, for a task that cannot be completed without a choice
+  the spec does not make — it requires `commit: none` and an untouched
+  tree, and a new `decision:` field (between `mutation:` and `notes:`)
+  carrying the question, the options, and the builder's own
+  recommendation (rule 10); a new rule 11 lets a builder leave a
+  `FLAG: ` notes line for anything it could not check outside the
+  acceptance criteria, never as a substitute for a criterion it could
+  not verify, which is still FAILED (T-003). `/g2g:build` Phase 3 step 7
+  treats a usable `NEEDS_DECISION` report the same as DONE/FAILED, and
+  step 8 never trusts the builder's own claim — it checks HEAD against
+  the DISPATCH BASELINE and the tree's cleanliness itself before moving
+  the task to `status: blocked` with `notes` prefixed `needs-human: `
+  and `attempts` left unchanged; a failed check scores the attempt
+  FAILED instead, exactly like any other broken builder contract.
+  `plugin/workflows/g2g-build.js` carries the same enum, `decision`
+  field, and check in code: the start writer now reports HEAD after its
+  commit, and a `NEEDS_DECISION` report is verified by a dedicated
+  writer agent before the task is scored. Every `gh pr create` in
+  build.md (Phase 4 steps 5 and 7, Phase 5 step 2) now composes its body
+  with `mktemp -d` + the Write tool + `--body-file`, never command-line
+  text, and the body gains a `## Needs your attention` section (omitted
+  when empty) holding `### Decisions for you` (needs-human tasks) and
+  `### Flags` (every builder `FLAG:` line plus the verifier's `flags:`
+  lines, which T-003 moves out of the inline body summary and into this
+  subsection). `plugin/commands/status.md` reports needs-human tasks
+  read-only. `plugin/skills/writing-g2g-specs/SKILL.md`,
+  `plugin/README.md`, and `docs/G2G_PLUGIN_REF.md` document the
+  needs-human convention, its recovery path (amend the task, clear
+  notes, set status back to `pending`, `--continue-branch`), and the
+  FLAG rule. `tests/commands.bats` pins all of the above, and a new
+  `tests/lib/wf-loop-runner.mjs` drives the shipped `g2g-build.js` under
+  `node:vm` with a scripted `agent()` queue (the same isolation as
+  `wf-dispatch-probe.mjs`) to assert the `NEEDS_DECISION` path end to
+  end in `tests/smoke_harness.bats`.
 
 ## 0.7.6 (2026-09-17)
 

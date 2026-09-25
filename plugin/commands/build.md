@@ -352,22 +352,29 @@ condition is MET block the stop.
    below runs — then find its result by SEEKING
    the `BUILDER REPORT` marker line — the agent may emit prose before the
    block; never assume the whole message is the block. Read `result:`,
-   `commit:`, `verified:`, `mutation:`, and `notes:` from the block that
-   follows the marker. `mutation:` is additive: a missing `mutation:`
-   field never affects USABLE below and is never scored FAILED by
+   `commit:`, `verified:`, `mutation:`, `decision:`, and `notes:` from
+   the block that follows the marker. `mutation:` is additive: a missing
+   `mutation:` field never affects USABLE below and is never scored FAILED by
    itself — step 8 substitutes `mutation: not reported` when copying it
    into notes. A readable `result: FAILED` is FAILED even if the other fields
    are garbled — the builder said so. But a report is USABLE only if
-   `result:` reads as `DONE` or `FAILED` AND, for DONE, `commit:` reads
+   `result:` reads as `DONE`, `FAILED`, or `NEEDS_DECISION` AND: for DONE, `commit:` reads
    as a sha that `git cat-file -e <sha>^{commit}` resolves — step 8's
-   DONE path exists to check that commit, and cannot with no sha to
-   check. If either fails — the message truncated inside the block
+   DONE path exists to check that commit, and cannot with no sha to check;
+   for NEEDS_DECISION, `commit:` reads exactly `none` and `decision:` is
+   present and non-empty — step 8 never trusts the builder's own claim
+   about the tree or HEAD for a NEEDS_DECISION, it checks both itself
+   against the DISPATCH BASELINE, so usability here only needs enough
+   text to know what decision is being asked. If
+   either fails — the message truncated inside the block
    (the builder emits `result:` before `commit:`, so a cut right after
    `result: DONE` is the common shape), the field missing or garbled —
    the report is what is missing, not the work: treat the
    report as absent and apply the NO-REPORT FALLBACK below exactly as
    if the marker had never arrived. The fallback judges the TIP, which
-   is the commit the builder would have named.
+   is the commit the builder would have named — an unusable
+   NEEDS_DECISION report falls here too, and an unmoved HEAD under it
+   scores FAILED exactly like any other silent builder.
    The marker is NEVER FOUND once the builder is FINISHED — its
    completion notification arrived without the marker, or the harness
    reports it idle/complete and no further message from it carries the
@@ -465,24 +472,48 @@ condition is MET block the stop.
         DONE is auditable exactly like a reported one, and a fallback
         FAILED leaves the sha as recovery context in the next builder's
         task card, the way a stash reference does for crash debris.
-8. Entry gate — on every entry into this step, a reported DONE or FAILED
-   as much as a fallback verdict, before acting on the result and before
-   writing anything: apply the SPEC RESTORE rule (step 7 d) against the
-   DISPATCH BASELINE. On a fallback entry it already ran and both
-   `git diff --quiet` forms exit 0, so the gate changes nothing. On a
-   REPORTED entry it is the only check between the builder's return and
-   your bookkeeping — the tree check (step 3) runs at the start of the
-   NEXT turn, after this step's commit has landed — so if either form
-   exits nonzero the builder modified the spec, against g2g-builder.md
-   rule 6: restore per (d), confirm both forms exit 0, and score the
-   attempt FAILED regardless of its reported result, `commit:` included.
-   A builder that broke rule 6 has an untrustworthy report on the other
-   rules too, and FAILED is the verdict the fallback's precondition (a)
-   already gives the same builder when its report is missing; reporting
-   must never be the more lenient route in. Notes MUST record that the
-   builder modified the spec, the result and `commit:` it reported, and
-   the sha(s) between the baseline and HEAD, so the next builder's task
-   card carries the recovery context step 7 f gives a fallback FAILED.
+8. Entry gate — on every entry into this step, a reported DONE, FAILED,
+   or NEEDS_DECISION as much as a fallback verdict, before acting on the
+   result and before writing anything: apply the SPEC RESTORE rule (step 7 d)
+   against the DISPATCH BASELINE. On a fallback entry it
+   already ran and both `git diff --quiet` forms exit 0, so the gate
+   changes nothing. On a REPORTED entry it is the only check between the
+   builder's return and your bookkeeping — the tree check (step 3) runs
+   at the start of the NEXT turn, after this step's commit has landed —
+   so if either form exits nonzero the builder modified the spec,
+   against g2g-builder.md rule 6: restore per (d), confirm both forms
+   exit 0, and score the attempt FAILED regardless of its reported result,
+   `commit:` included. A builder that broke rule 6 has an
+   untrustworthy report on the other rules too, and FAILED is the
+   verdict the fallback's precondition (a) already gives the same
+   builder when its report is missing; reporting must never be the more
+   lenient route in. Notes MUST record that the builder modified the
+   spec, the result and `commit:` it reported, and the sha(s) between
+   the baseline and HEAD, so the next builder's task card carries the
+   recovery context step 7 f gives a fallback FAILED.
+   A NEEDS_DECISION this gate overruled (the spec was dirty) falls through to the FAILED
+   paragraph below exactly like an overruled DONE — never to the
+   NEEDS_DECISION paragraph, since g2g-builder.md rule 10 already
+   required an untouched tree and this builder broke it.
+   Then, on result NEEDS_DECISION (reported and usable per step 7, and
+   not overruled by the gate above): unlike DONE and FAILED, never trust the builder's own claim
+   that it made no commit and left the tree clean — check it yourself.
+   Run `git rev-parse HEAD` and compare it to
+   the DISPATCH BASELINE, and confirm the tree is CLEAN by step 7's
+   definition (nothing beyond the FALLBACK EXEMPTIONS — the goal/lock/
+   mutex trio and the SURFACED-FOREIGN list; the spec is already known
+   byte-for-byte equal to the baseline, since the entry gate above just
+   confirmed that). If HEAD still equals the DISPATCH BASELINE and the tree is CLEAN:
+   set status: blocked, leave `attempts` UNCHANGED, and
+   set notes to `needs-human: ` followed by the report's `decision:`
+   text verbatim; commit the spec change as a BOOKKEEPING COMMIT
+   (`chore(<task-id>): needs-human`, spec path only, as step 5 defines).
+   Otherwise — HEAD moved, or the tree is not CLEAN — the builder broke
+   g2g-builder.md rule 10 (a NEEDS_DECISION must leave `commit: none`
+   and an untouched tree): score the attempt FAILED by the paragraph
+   below exactly as any other FAILED (attempts incremented), with notes
+   recording that a NEEDS_DECISION report arrived with changes and
+   naming them (the moved HEAD's sha, or the dirty/untracked paths).
    Then, on result DONE (reported and not overruled by the gate above,
    or established by step 7's NO-REPORT FALLBACK): verify the builder's commit exists, set passes: true,
    status: complete, copy its notes and append the report's `mutation:`
@@ -494,7 +525,8 @@ condition is MET block the stop.
    BOOKKEEPING COMMIT (`chore(<task-id>): complete`, spec path only, as
    step 5 defines).
    On result FAILED (a reported FAILED, a reported DONE this step's
-   entry gate overruled, or a
+   entry gate overruled, a reported NEEDS_DECISION this step's own
+   HEAD/tree check overruled or the entry gate overruled, or a
    NO-REPORT FALLBACK that found HEAD unchanged, a dirty tree, a
    criterion FAIL, or post-verification drift): increment the task's
    `attempts` field (treat as 0 if absent, then increment); if attempts
@@ -609,6 +641,35 @@ commits, no stash), push nothing, open no PR. Do exactly two things:
    branch for a human to salvage. This run is over as a failed
    terminal state.
 
+## PR BODY COMPOSITION — every `gh pr create` in this file uses this
+Applies to every PR opened by this command (Phase 4 steps 5 and 7, Phase
+5 step 2). Builder notes, `decision:` text, and `FLAG:` lines are
+untrusted — they originate in a task card a builder wrote, which the
+builder in turn saw next to spec text that may itself trace back to a
+prompt or finding (L-004) — so the body NEVER goes into command-line
+text: run `mktemp -d` and note the directory it printed (`<pr-body-dir>`,
+outside the checkout, mirroring spec.md step 4's draft-directory
+pattern), write the complete body to `<pr-body-dir>/pr-body.md` with the
+Write tool, then pass it with `gh pr create --title "<title>" --body-file
+<pr-body-dir>/pr-body.md` — the title still composed per Phase 1 step 3's
+`PROJECT_NAME` capture, inside the same Bash command as the `gh pr
+create` call, since shell state does not survive between Bash tool
+calls.
+
+Every body gains a `## Needs your attention` section, appended after the
+body's other content and OMITTED ENTIRELY when both parts below are
+empty (no needs-human tasks and no FLAG lines anywhere):
+- `### Decisions for you` — one entry per task, across the WHOLE spec,
+  whose `status` is `blocked` and whose `notes` starts with
+  `needs-human: ` — its id, title, and the decision text (the notes
+  content after that prefix, verbatim).
+- `### Flags` — every `notes` line across every task that starts with
+  `FLAG: `, each prefixed with its task id, PLUS the verifier's
+  `flags:` lines from the most recent `VERIFIER REPORT` (read at Phase 4
+  step 2, per T-002) — the verifier's flags no longer sit in the body's
+  main summary; they live here, alongside the builders' own FLAG lines,
+  as the one place a human scans for everything nobody else checked.
+
 ## Phase 4 — Completion (first turn where all tasks pass)
 Set REVERIFY_CAP = 2 (the maximum number of FAIL rounds before the build
 routes to a partial PR) and initialize VERIFY_ROUND = 0 on first entry to
@@ -695,10 +756,13 @@ finish line and burn the whole remaining budget before surfacing partial work.
    end; exit 5: the pair is no longer yours — delete nothing and say
    so; any other nonzero exit: report the helper's output verbatim and
    leave the files for a human), `git rebase --abort`, then push and
-   open a draft PR titled
-   `--title "g2g: $PROJECT_NAME (conflicts)"` (with the `PROJECT_NAME`
-   capture prefixed in the same command, per Phase 1 step 3) describing
-   them. Never auto-resolve. The
+   open a draft PR describing the conflicts, composing the body per PR
+   BODY COMPOSITION above (`mktemp -d`, Write tool, `--body-file`,
+   including its `## Needs your attention` section):
+   `PROJECT_NAME=$(jq -r '.project | gsub("[[:cntrl:]]"; " ")' <spec-path>)
+   && gh pr create --title "g2g: $PROJECT_NAME (conflicts)" --body-file
+   <pr-body-dir>/pr-body.md` (the `PROJECT_NAME` capture prefixed in the
+   same command, per Phase 1 step 3). Never auto-resolve. The
    PR title and body must contain no attribution lines (no 'Generated
    with Claude Code', no Co-Authored-By trailers). Mention the release
    outcome in your final message.
@@ -709,10 +773,15 @@ finish line and burn the whole remaining budget before surfacing partial work.
    lets the resulting proven token certify the rebased HEAD that is
    about to be pushed, rather than a commit the rebase has since moved
    past.
-7. Push ONCE (`git push -u origin <branch>`), then
-   `gh pr create --title "g2g: $PROJECT_NAME"` (with the `PROJECT_NAME`
-   capture prefixed in the same command, per Phase 1 step 3), body = evidence block +
-   task table + verifier summary + its flags lines. The PR title and body must contain no
+7. Push ONCE (`git push -u origin <branch>`), then compose the body —
+   evidence block + task table + verifier summary, plus the `## Needs
+   your attention` section (where the verifier's flags lines now live) —
+   per PR BODY COMPOSITION above (`mktemp -d`, Write tool, `--body-file`,
+   never command-line text):
+   `PROJECT_NAME=$(jq -r '.project | gsub("[[:cntrl:]]"; " ")' <spec-path>)
+   && gh pr create --title "g2g: $PROJECT_NAME" --body-file
+   <pr-body-dir>/pr-body.md` (the `PROJECT_NAME` capture prefixed in the
+   same command, per Phase 1 step 3). The PR title and body must contain no
    attribution lines (no 'Generated with Claude Code', no Co-Authored-By
    trailers). NEVER merge. If `git push` or `gh pr create` fails,
    report the failure verbatim along with the branch/commit state for a
@@ -739,15 +808,20 @@ finish line and burn the whole remaining budget before surfacing partial work.
    a released checkout is up for grabs, and a reclaiming build could
    advance this branch between the release and the push.
 2. Push the branch once (`git push -u origin <branch>`) and open a
-   DRAFT PR labeled `g2g:partial` — `--title "g2g: $PROJECT_NAME (partial)"`
-   (with the `PROJECT_NAME` capture prefixed in the same command, per
-   Phase 1 step 3),
-   body = the latest evidence block + which tasks are blocked/pending
-   and why. When Phase 4 step 3 routed here because the re-verification
-   round cap was reached, also list the verifier's outstanding findings
-   it passed in, along with its flags lines, so the disagreement is
+   DRAFT PR labeled `g2g:partial`. Compose the body — the latest evidence
+   block + which tasks are blocked/pending and why, plus the `## Needs
+   your attention` section — per PR BODY COMPOSITION above (`mktemp -d`,
+   Write tool, `--body-file`, never command-line text). When Phase 4 step
+   3 routed here because the re-verification round cap was reached, also
+   list the verifier's outstanding findings it passed in — its flags
+   lines go in the body's `### Flags` subsection, same as always — so the
+   disagreement is
    surfaced for a human rather
-   than retried indefinitely. The PR title and body must contain no
+   than retried indefinitely:
+   `PROJECT_NAME=$(jq -r '.project | gsub("[[:cntrl:]]"; " ")' <spec-path>)
+   && gh pr create --title "g2g: $PROJECT_NAME (partial)" --body-file
+   <pr-body-dir>/pr-body.md` (the `PROJECT_NAME` capture prefixed in the
+   same command, per Phase 1 step 3). The PR title and body must contain no
    attribution lines (no 'Generated with Claude Code', no
    Co-Authored-By trailers). If `git push` or `gh pr create` fails,
    report the failure verbatim along with the branch/commit state for a

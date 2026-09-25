@@ -365,6 +365,39 @@ elsewhere:
   the `g2g-verifier` subagent returns `PASS` at completion; absent (or
   `null` in `specs/example.json`, which was never built) until then.
 
+## NEEDS_DECISION and FLAG lines
+
+A builder normally reports `DONE` or `FAILED`, but a task can need a
+human judgment a spec cannot make on its own — keep vs. delete a
+deprecated path, which of two reasonable API shapes. For that, a
+builder may report `NEEDS_DECISION` instead: no commit (`commit: none`),
+an untouched tree, and a `decision:` field carrying the question, the
+options, and its own recommendation with a reason
+(`plugin/agents/g2g-builder.md` rule 10). `/g2g:build` never trusts a
+builder's own claim about the tree — it checks HEAD against the
+DISPATCH BASELINE and the tree's cleanliness itself before honoring it;
+a check that fails scores the attempt FAILED instead. On success there
+is no new spec status: the task moves to the existing `status: blocked`
+with `notes` prefixed `needs-human: ` and its `attempts` left unchanged
+(a needs-human block is not a failed attempt). `/g2g:status` surfaces
+every needs-human task read-only, and the completion PR body lists it
+under "Needs your attention" → "Decisions for you". The way out is a
+human edit: amend the task's `description`/`acceptanceCriteria` to
+answer the question, clear `notes`, set `status` back to `pending`, and
+`/g2g:build <spec> --continue-branch` to resume — see the
+`writing-g2g-specs` skill for the full convention.
+
+Separately, a builder may leave a `FLAG: ` line in its `notes` for
+anything it could not check that lies OUTSIDE the acceptance criteria —
+an environment or credential it could not reach, a follow-up it
+noticed, a mutation proof it could not perform
+(`plugin/agents/g2g-builder.md` rule 11). A FLAG never substitutes for
+a criterion: an acceptance criterion a builder could not verify is
+`FAILED`, never a FLAG. Every builder's FLAG lines, plus the verifier's
+own `flags:` lines (mutation-evidence gaps, T-002), are collected into
+the completion PR body's "Needs your attention" → "Flags" subsection —
+the one place a human scans for everything nobody else checked.
+
 ## Artifact tracking
 
 `specs/*.json` and `review-output/findings.json` must be **git-tracked**,
