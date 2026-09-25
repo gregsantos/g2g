@@ -787,8 +787,9 @@ finish line and burn the whole remaining budget before surfacing partial work.
    including its `## Needs your attention` section):
    `PROJECT_NAME=$(jq -r '.project | gsub("[[:cntrl:]]"; " ")' <spec-path>)
    && gh pr create --title "g2g: $PROJECT_NAME (conflicts)" --body-file
-   <pr-body-dir>/pr-body.md` (the `PROJECT_NAME` capture prefixed in the
-   same command, per Phase 1 step 3). Never auto-resolve. The
+   <pr-body-dir>/pr-body.md --draft` (the `PROJECT_NAME` capture prefixed in the
+   same command, per Phase 1 step 3; `--draft` is part of the command,
+   not optional — a conflicted build never opens a ready-for-review PR). Never auto-resolve. The
    PR title and body must contain no attribution lines (no 'Generated
    with Claude Code', no Co-Authored-By trailers). Mention the release
    outcome in your final message.
@@ -846,8 +847,18 @@ finish line and burn the whole remaining budget before surfacing partial work.
    than retried indefinitely:
    `PROJECT_NAME=$(jq -r '.project | gsub("[[:cntrl:]]"; " ")' <spec-path>)
    && gh pr create --title "g2g: $PROJECT_NAME (partial)" --body-file
-   <pr-body-dir>/pr-body.md` (the `PROJECT_NAME` capture prefixed in the
-   same command, per Phase 1 step 3). The PR title and body must contain no
+   <pr-body-dir>/pr-body.md --draft` (the `PROJECT_NAME` capture prefixed in the
+   same command, per Phase 1 step 3; `--draft` is part of the command,
+   not optional — a partial build never opens a ready-for-review PR).
+   Then label it as a separate, best-effort call on the URL that
+   `gh pr create` printed:
+   `gh label create g2g:partial --description "g2g partial build" ; gh pr edit <pr-url> --add-label g2g:partial`
+   — the label is created only if absent (no `--force`, so an existing
+   label's color and description are never overwritten; the "already
+   exists" error is expected and harmless). The label is never put on
+   `gh pr create` itself: a host repo without it would fail the PR
+   creation outright. If the label call fails, report it and continue —
+   a missing label never blocks step 3. The PR title and body must contain no
    attribution lines (no 'Generated with Claude Code', no
    Co-Authored-By trailers). If `git push` or `gh pr create` fails,
    report the failure verbatim along with the branch/commit state for a

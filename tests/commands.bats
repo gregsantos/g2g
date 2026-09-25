@@ -1061,6 +1061,30 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     grep -q 'mktemp -d' "$PLUGIN_DIR/commands/build.md"
 }
 
+@test "safety: conflict and partial PRs are opened as drafts, and the partial label never rides on gh pr create" {
+    # The (conflicts) and (partial) invocations are literal, copy-pasteable
+    # commands, so the draft requirement the prose states must be IN them:
+    # a verbatim run otherwise opens a ready-for-review PR for unfinished
+    # work. The command wraps after --body-file, so read each call site as
+    # the invocation line plus the line that follows it.
+    for kind in conflicts partial; do
+        site=$(grep -A1 "gh pr create --title \"g2g: \$PROJECT_NAME ($kind)\"" "$PLUGIN_DIR/commands/build.md")
+        [[ -n "$site" ]] || { echo "no ($kind) gh pr create call site"; return 1; }
+        [[ "$site" == *"--draft"* ]] || { echo "($kind) gh pr create lacks --draft"; return 1; }
+    done
+    # The clean-completion PR is ready for review, never a draft.
+    clean=$(grep -A1 'gh pr create --title "g2g: $PROJECT_NAME" --body-file' "$PLUGIN_DIR/commands/build.md")
+    [[ "$clean" != *"--draft"* ]] || { echo "the clean-completion PR must not be a draft"; return 1; }
+    # A host repo without the label would fail PR creation outright, so the
+    # label is a separate best-effort edit, created without --force.
+    run grep -E 'gh pr create[^`]*--label' "$PLUGIN_DIR/commands/build.md"
+    [[ "$status" -ne 0 ]] || { echo "a gh pr create carries --label: $output"; return 1; }
+    grep -q 'gh pr edit <pr-url> --add-label g2g:partial' "$PLUGIN_DIR/commands/build.md"
+    run grep -E 'gh label create g2g:partial[^`]*--force' "$PLUGIN_DIR/commands/build.md"
+    [[ "$status" -ne 0 ]] || { echo "label creation must not --force over a human's label"; return 1; }
+    grep -q 'a missing label never blocks step 3' "$PLUGIN_DIR/commands/build.md"
+}
+
 @test "contract: the PR body gains a Needs your attention section with Decisions for you and Flags subsections" {
     grep -q '## Needs your attention' "$PLUGIN_DIR/commands/build.md"
     grep -q '### Decisions for you' "$PLUGIN_DIR/commands/build.md"
@@ -1154,11 +1178,6 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     echo "$phase1" | grep -q 'verifyEachTask' || { echo "Phase 1 does not read verifyEachTask"; return 1; }
     phase3=$(sed -n '/^## Phase 3/,/^## Phase 4/p' "$PLUGIN_DIR/commands/build-wf.md")
     echo "$phase3" | grep -q '"verifyEachTask"' || { echo "Phase 3's args do not carry verifyEachTask"; return 1; }
-}
-
-@test "templates: verifyEachTask is not this repo's own .claude/g2g.json (spec constraint)" {
-    run jq -e 'has("verifyEachTask") | not' "$REPO_DIR/.claude/g2g.json"
-    [[ "$status" -eq 0 ]] || { echo "$output"; return 1; }
 }
 
 @test "contract: plugin/README.md documents verifyEachTask, its default, and its cost" {

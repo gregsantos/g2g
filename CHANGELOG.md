@@ -105,6 +105,15 @@ which the allowlist cannot restrict.
   `tests/templates.bats`, and `plugin/README.md`'s Config section
   documents the field, its default, and its cost (the full verification
   suite runs once more per task) (T-004).
+- `/g2g:build`'s conflict (Phase 4 step 5) and partial (Phase 5 step 2)
+  PR commands now carry `--draft` in the command itself, so a verbatim
+  run can no longer open a ready-for-review PR for unfinished work (the
+  prose always required a draft; the command text did not say so). The
+  `g2g:partial` label moves to a separate best-effort
+  `gh pr edit --add-label` after creation, with the label created only if
+  absent: putting `--label` on `gh pr create` would fail PR creation in any
+  host repo that lacks the label. A failed label call never blocks the
+  terminal release. Verifier findings on PR #44.
 
 ## 0.7.6 (2026-09-17)
 
