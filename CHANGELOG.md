@@ -36,6 +36,20 @@ which the allowlist cannot restrict.
 - `tests/commands.bats` pins the verifier's tools line, the PRE-VERIFY
   SNAPSHOT / compare check in build.md Phase 4, and its absence from
   build-wf.md.
+- `plugin/agents/g2g-builder.md` gains rule 9: before its single commit,
+  a builder must prove every test it added or strengthened actually
+  guards the behavior it claims — break the guarded behavior, run the
+  test and show it FAIL, restore, run it again and show it PASS — and
+  report the evidence in a new `mutation:` line in the BUILDER REPORT
+  (T-002). `/g2g:build` Phase 3 copies that line into the task's notes
+  on DONE, defaulting to `mutation: not reported` when it is absent;
+  absence alone never fails the task. `plugin/workflows/g2g-build.js`
+  carries the same optional `mutation` field through `builderSchema`
+  and its complete-writer agent. `plugin/agents/g2g-verifier.md` gains
+  a step that flags — never fails — a test the diff adds with no
+  corresponding mutation evidence, via a new `flags:` line in the
+  VERIFIER REPORT that `/g2g:build` Phase 4 reads and folds into both
+  the completion and partial PR bodies.
 
 ## 0.7.6 (2026-09-17)
 

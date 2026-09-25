@@ -352,8 +352,11 @@ condition is MET block the stop.
    below runs — then find its result by SEEKING
    the `BUILDER REPORT` marker line — the agent may emit prose before the
    block; never assume the whole message is the block. Read `result:`,
-   `commit:`, `verified:`, and `notes:` from the block that follows the
-   marker. A readable `result: FAILED` is FAILED even if the other fields
+   `commit:`, `verified:`, `mutation:`, and `notes:` from the block that
+   follows the marker. `mutation:` is additive: a missing `mutation:`
+   field never affects USABLE below and is never scored FAILED by
+   itself — step 8 substitutes `mutation: not reported` when copying it
+   into notes. A readable `result: FAILED` is FAILED even if the other fields
    are garbled — the builder said so. But a report is USABLE only if
    `result:` reads as `DONE` or `FAILED` AND, for DONE, `commit:` reads
    as a sha that `git cat-file -e <sha>^{commit}` resolves — step 8's
@@ -456,10 +459,12 @@ condition is MET block the stop.
      f. Either way the task's notes MUST record that the BUILDER REPORT
         never arrived, the commit sha(s), and one PASS/FAIL line per
         criterion naming the command or inspection used — the builder's
-        `verified:` shape — so a fallback DONE is auditable exactly like
-        a reported one, and a fallback FAILED leaves the sha as recovery
-        context in the next builder's task card, the way a stash
-        reference does for crash debris.
+        `verified:` shape — plus a
+        `mutation: not reported (BUILDER REPORT never arrived)` line,
+        since a fallback has no report to read one from — so a fallback
+        DONE is auditable exactly like a reported one, and a fallback
+        FAILED leaves the sha as recovery context in the next builder's
+        task card, the way a stash reference does for crash debris.
 8. Entry gate — on every entry into this step, a reported DONE or FAILED
    as much as a fallback verdict, before acting on the result and before
    writing anything: apply the SPEC RESTORE rule (step 7 d) against the
@@ -480,8 +485,11 @@ condition is MET block the stop.
    card carries the recovery context step 7 f gives a fallback FAILED.
    Then, on result DONE (reported and not overruled by the gate above,
    or established by step 7's NO-REPORT FALLBACK): verify the builder's commit exists, set passes: true,
-   status: complete, copy its notes (for a fallback DONE, write the
-   notes step 7 f requires — there is no report to copy from); commit
+   status: complete, copy its notes and append the report's `mutation:`
+   line — or `mutation: not reported` if the field is missing — (for a
+   fallback DONE, write the notes step 7 f requires, which already
+   supplies its own `mutation:` line; there is no report to copy from).
+   A missing `mutation:` field is never scored FAILED by itself. Commit
    the spec change as a
    BOOKKEEPING COMMIT (`chore(<task-id>): complete`, spec path only, as
    step 5 defines).
@@ -648,7 +656,10 @@ finish line and burn the whole remaining budget before surfacing partial work.
    paths from the porcelain diff, or the new HEAD sha if it moved) so
    the resulting partial PR lists it. Only when the two snapshots match
    do you proceed to find its result by SEEKING the
-   `VERIFIER REPORT` marker line, the same way as Phase 3 step 7.
+   `VERIFIER REPORT` marker line, the same way as Phase 3 step 7. Read
+   `verdict:`, `findings:`, `commands:`, and `flags:` from the block
+   that follows the marker; `flags:` is additive — a missing `flags:`
+   field is treated as none and never gates the verdict.
 3. verdict FAIL: first apply the round cap — if `VERIFY_ROUND >= REVERIFY_CAP`,
    do NOT dispatch another fix round; go to Phase 5 now, passing the
    verifier's outstanding findings so its draft partial PR body lists them.
@@ -701,7 +712,7 @@ finish line and burn the whole remaining budget before surfacing partial work.
 7. Push ONCE (`git push -u origin <branch>`), then
    `gh pr create --title "g2g: $PROJECT_NAME"` (with the `PROJECT_NAME`
    capture prefixed in the same command, per Phase 1 step 3), body = evidence block +
-   task table + verifier summary. The PR title and body must contain no
+   task table + verifier summary + its flags lines. The PR title and body must contain no
    attribution lines (no 'Generated with Claude Code', no Co-Authored-By
    trailers). NEVER merge. If `git push` or `gh pr create` fails,
    report the failure verbatim along with the branch/commit state for a
@@ -734,7 +745,8 @@ finish line and burn the whole remaining budget before surfacing partial work.
    body = the latest evidence block + which tasks are blocked/pending
    and why. When Phase 4 step 3 routed here because the re-verification
    round cap was reached, also list the verifier's outstanding findings
-   it passed in, so the disagreement is surfaced for a human rather
+   it passed in, along with its flags lines, so the disagreement is
+   surfaced for a human rather
    than retried indefinitely. The PR title and body must contain no
    attribution lines (no 'Generated with Claude Code', no
    Co-Authored-By trailers). If `git push` or `gh pr create` fails,

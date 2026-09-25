@@ -479,7 +479,7 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
 @test "workflow: builder schema fields agree with the agent contract" {
     # The structured result replaces BUILDER REPORT parsing; its fields
     # must track the report block in agents/g2g-builder.md.
-    for k in result commit verified notes; do
+    for k in result commit verified mutation notes; do
         grep -q "$k" "$PLUGIN_DIR/workflows/g2g-build.js" \
             || { echo "builder schema lost field: $k"; return 1; }
         grep -q "$k" "$PLUGIN_DIR/agents/g2g-builder.md" \
@@ -487,6 +487,17 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     done
     # Builders read the contract file at runtime — one source of truth.
     grep -q 'agents/g2g-builder.md' "$PLUGIN_DIR/workflows/g2g-build.js"
+}
+
+@test "workflow: builderSchema's mutation field is optional; required fields and result enum unchanged" {
+    grep -q "required: \['result', 'commit', 'verified', 'notes'\]" "$PLUGIN_DIR/workflows/g2g-build.js"
+    grep -q "result: { type: 'string', enum: \['DONE', 'FAILED'\] }" "$PLUGIN_DIR/workflows/g2g-build.js"
+    grep -q "mutation: { type: 'string' }" "$PLUGIN_DIR/workflows/g2g-build.js"
+}
+
+@test "workflow: the complete-writer agent copies the builder's mutation line into notes" {
+    grep -q 'report.mutation' "$PLUGIN_DIR/workflows/g2g-build.js"
+    grep -q "'not reported'" "$PLUGIN_DIR/workflows/g2g-build.js"
 }
 
 @test "workflow: caps and ownership loss are enforced in code" {
@@ -916,4 +927,55 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     # never be duplicated as prose here.
     ! grep -q 'PRE-VERIFY SNAPSHOT' "$PLUGIN_DIR/commands/build-wf.md"
     grep -q "build.md's Phase 4" "$PLUGIN_DIR/commands/build-wf.md"
+}
+
+# T-002: mutation proof for new tests. A test that would still pass
+# against broken code is not evidence; rule 9 requires break/FAIL/
+# restore/PASS before the single commit, reported via a new `mutation:`
+# field that is additive (never a hard gate) end to end.
+
+@test "contract: g2g-builder.md rule 9 requires break, FAIL, restore, PASS before the single commit" {
+    grep -q '^9\. Mutation proof' "$PLUGIN_DIR/agents/g2g-builder.md"
+    grep -q 'before your' "$PLUGIN_DIR/agents/g2g-builder.md"
+    grep -q 'run that test and show it FAIL' "$PLUGIN_DIR/agents/g2g-builder.md"
+    grep -q 'restore the code' "$PLUGIN_DIR/agents/g2g-builder.md"
+    grep -q 'run it again and show it PASS' "$PLUGIN_DIR/agents/g2g-builder.md"
+    grep -qi 'must be fixed before you commit' "$PLUGIN_DIR/agents/g2g-builder.md"
+}
+
+@test "contract: the BUILDER REPORT template has mutation: between verified: and notes:" {
+    v_line=$(grep -n '^verified:' "$PLUGIN_DIR/agents/g2g-builder.md" | tail -1 | cut -d: -f1)
+    m_line=$(grep -n '^mutation:' "$PLUGIN_DIR/agents/g2g-builder.md" | tail -1 | cut -d: -f1)
+    n_line=$(grep -n '^notes:' "$PLUGIN_DIR/agents/g2g-builder.md" | tail -1 | cut -d: -f1)
+    [[ -n "$v_line" && -n "$m_line" && -n "$n_line" ]] || { echo "missing one of verified:/mutation:/notes:"; return 1; }
+    [[ "$v_line" -lt "$m_line" ]] || { echo "mutation: is not after verified:"; return 1; }
+    [[ "$m_line" -lt "$n_line" ]] || { echo "mutation: is not before notes:"; return 1; }
+}
+
+@test "contract: build.md step 7 names mutation:, step 8 copies it or defaults to not reported, and never fails on absence alone" {
+    grep -q '`mutation:`' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'never scored FAILED by itself' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'mutation: not reported"' "$PLUGIN_DIR/commands/build.md" || grep -q '`mutation: not reported`' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'mutation: not reported (BUILDER REPORT never arrived)' "$PLUGIN_DIR/commands/build.md"
+}
+
+@test "contract: g2g-verifier.md sends missing mutation evidence to flags, never findings" {
+    grep -q '^6\. Mutation evidence check' "$PLUGIN_DIR/agents/g2g-verifier.md"
+    grep -qi 'never a finding' "$PLUGIN_DIR/agents/g2g-verifier.md"
+    grep -q 'under `flags:`' "$PLUGIN_DIR/agents/g2g-verifier.md"
+    grep -q 'still a FAIL finding under step 3' "$PLUGIN_DIR/agents/g2g-verifier.md"
+}
+
+@test "contract: the VERIFIER REPORT template has flags: after commands:" {
+    c_line=$(grep -n '^commands:' "$PLUGIN_DIR/agents/g2g-verifier.md" | tail -1 | cut -d: -f1)
+    f_line=$(grep -n '^flags:' "$PLUGIN_DIR/agents/g2g-verifier.md" | tail -1 | cut -d: -f1)
+    [[ -n "$c_line" && -n "$f_line" ]] || { echo "missing commands: or flags:"; return 1; }
+    [[ "$c_line" -lt "$f_line" ]] || { echo "flags: is not after commands:"; return 1; }
+}
+
+@test "contract: build.md Phase 4 reads the verifier's flags: field and both PR bodies include it" {
+    grep -q '`flags:`' "$PLUGIN_DIR/commands/build.md"
+    grep -qi 'treated as none' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'verifier summary + its flags lines' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'along with its flags lines' "$PLUGIN_DIR/commands/build.md"
 }

@@ -19,6 +19,14 @@ Procedure:
    builder commit (`feat(T-xxx): ...`). Spec/backlog metadata commits by the
    orchestrator are expected and exempt. Flag anything else.
 5. Run the spec's context.verificationCommands yourself; report real exit codes.
+6. Mutation evidence check (additive — never a finding, never a FAIL,
+   by itself): for every test the diff adds or strengthens, read the
+   owning task's `notes` in the spec for a `mutation:` line that covers
+   it with observed FAIL-then-PASS evidence. A test with no such
+   evidence: list it, one line per test, under `flags:` — never as a
+   finding. This is separate from step 3: a test the diff itself shows
+   is vacuous by reading it (not by missing mutation evidence) is
+   still a FAIL finding under step 3, as always.
 
 You MUST NOT edit any file. You only read, run read-only/verification
 commands, and report.
@@ -33,3 +41,4 @@ verdict: PASS | FAIL
 checked: <n> tasks, <n> acceptance criteria
 findings: <numbered list: severity, file:line, what is wrong — or "none">
 commands: <each verificationCommand -> exit code>
+flags: <one line per test added in the branch diff whose task notes carry no mutation evidence — or "none">
