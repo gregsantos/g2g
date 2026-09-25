@@ -33,6 +33,14 @@
 //   builderModel  models.builder value; 'inherit' omits the model option
 //   context       the spec's context block (passed into task cards)
 //   tasks         the spec's tasks[] array, current on-disk state
+//   verifyEachTask  optional boolean, default false (not in the required
+//     list above). When exactly true, a regression agent runs after every
+//     reported DONE and before the complete writer: it re-runs every
+//     context.verificationCommands entry against the builder's commit,
+//     read-only, with a CLEAN tree as both precondition and postcondition.
+//     Any non-zero exit or drift turns the report into FAILED and takes
+//     the existing FAILED branch (T-004) — the builder's commit stays on
+//     the branch either way.
 //
 // Returns (lands in the wrapper session as real tool output):
 //   { outcome, turnsUsed, elapsedMs, detail, tasks: [{id, status, passes,
@@ -154,6 +162,20 @@ const writerSchema = {
   },
 }
 
+// Opt-in per-task regression check (T-004, verifyEachTask). Runs after a
+// DONE report and before the complete writer; ok false turns the report
+// into FAILED and routes to the existing FAILED branch below.
+const regressionSchema = {
+  type: 'object',
+  required: ['ok', 'detail'],
+  properties: {
+    ok: { type: 'boolean' },
+    detail: { type: 'string' },
+    treeCleanBefore: { type: 'boolean' },
+    treeCleanAfter: { type: 'boolean' },
+  },
+}
+
 const builderOpts = model =>
   (model && model !== 'inherit')
     ? { schema: builderSchema, model }
@@ -258,6 +280,31 @@ while (true) {
     // any other FAILED report, naming what drifted.
     report.result = 'FAILED'
     report.notes = `${report.notes || ''} [orchestration: NEEDS_DECISION arrived with changes: ${checked.detail || 'HEAD or tree drifted from the DISPATCH BASELINE'}]`.trim()
+  }
+
+  if (report.result === 'DONE' && a.verifyEachTask === true) {
+    // T-004: opt-in per-task regression check. Runs after the DONE
+    // report and before the complete writer below, read-only, against
+    // the builder's own commit — the commit stays on the branch either
+    // way. Mirrors build.md Phase 3 step 8's OPT-IN REGRESSION CHECK:
+    // CLEAN (step 7's definition) as both precondition and
+    // postcondition around every context.verificationCommands entry.
+    const commands = Array.isArray(a.context?.verificationCommands)
+      ? a.context.verificationCommands : []
+    const regression = await agent(
+      `Opt-in per-task regression check (verifyEachTask). Work read-only against the current commit ${report.commit} — never edit, revert, stash, or commit anything. ` +
+      `Step 1 (precondition): run \`git status --porcelain --untracked-files=all\`, ignoring exactly these paths: the spec file ${a.specPath}, .g2g-goal, .g2g-goal.lock, .g2g-goal.mutex. Report treeCleanBefore true only if nothing else is listed. ` +
+      `Step 2: run, in order, each of these commands exactly as written, capturing each command's real exit code and the last 20 lines of its combined output: ${JSON.stringify(commands)}. ` +
+      `Step 3 (postcondition): run \`git rev-parse HEAD\` and confirm it still equals ${JSON.stringify(report.commit)}, then repeat step 1's status check and report the result as treeCleanAfter. ` +
+      `Report ok true only if treeCleanBefore, every command exited 0, HEAD is unchanged, AND treeCleanAfter; otherwise report ok false. In detail, on any failure, name the first offending command, its exit code, and the last 20 lines of its output — or, if HEAD moved or the tree drifted, name exactly what changed.`,
+      { schema: regressionSchema, label: `turn ${turn}: ${task.id} regression check` })
+    if (!regression.ok) {
+      // Any failure or drift turns the report into FAILED and takes the
+      // existing FAILED branch below — the second `if (report.result
+      // === 'DONE')` is then skipped, so the complete writer never runs.
+      report.result = 'FAILED'
+      report.notes = `${report.notes || ''} [orchestration: opt-in regression check (verifyEachTask) failed: ${regression.detail || 'a verification command failed or the checkout drifted'}]`.trim()
+    }
   }
 
   if (report.result === 'DONE') {

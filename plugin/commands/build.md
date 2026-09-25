@@ -515,7 +515,32 @@ condition is MET block the stop.
    recording that a NEEDS_DECISION report arrived with changes and
    naming them (the moved HEAD's sha, or the dirty/untracked paths).
    Then, on result DONE (reported and not overruled by the gate above,
-   or established by step 7's NO-REPORT FALLBACK): verify the builder's commit exists, set passes: true,
+   or established by step 7's NO-REPORT FALLBACK): verify the builder's
+   commit exists. OPT-IN REGRESSION CHECK — applies only to a REPORTED
+   DONE, never the NO-REPORT FALLBACK (step 7 (b) already ran every
+   `context.verificationCommands` entry against the TIP there): read
+   `.claude/g2g.json` → `verifyEachTask` (default `false` when the file
+   or field is absent). When it is exactly `true`, run this check now,
+   before writing `passes: true` below: confirm the precondition — the
+   tree is CLEAN by step 7's definition (it already is, from the entry
+   gate and the commit-exists check just above, but confirm it again
+   here) — then run every entry in `context.verificationCommands`, in
+   order, read-only, against the builder's commit, capturing each
+   command's real exit code and output. Confirm the postcondition —
+   after the last command, HEAD still equals the builder's commit and
+   the tree is CLEAN again (step 7 (c)'s definition). If every command
+   exited 0 and the postcondition holds, proceed to write `passes: true`
+   below. Otherwise — a non-zero exit from any command, or any drift in
+   the postcondition — the builder's commit stays on the branch (never
+   revert, amend, or otherwise fix it), but this attempt scores FAILED
+   by the paragraph below exactly like any other FAILED (`attempts`
+   incremented, blocked at 2 as usual), with notes naming the first
+   failing command, its exit code, and the last 20 lines of its output —
+   or, for a drift, the drifted paths or the new HEAD's sha — and skip
+   the rest of this DONE paragraph: its notes and `mutation:` line are
+   NOT written, since the task did not pass. When the check is skipped
+   (`verifyEachTask` absent, `false`, or any other value) or the check
+   passed: set passes: true,
    status: complete, copy its notes and append the report's `mutation:`
    line — or `mutation: not reported` if the field is missing — (for a
    fallback DONE, write the notes step 7 f requires, which already
@@ -525,7 +550,8 @@ condition is MET block the stop.
    BOOKKEEPING COMMIT (`chore(<task-id>): complete`, spec path only, as
    step 5 defines).
    On result FAILED (a reported FAILED, a reported DONE this step's
-   entry gate overruled, a reported NEEDS_DECISION this step's own
+   entry gate overruled, a reported DONE that failed the OPT-IN
+   REGRESSION CHECK above, a reported NEEDS_DECISION this step's own
    HEAD/tree check overruled or the entry gate overruled, or a
    NO-REPORT FALLBACK that found HEAD unchanged, a dirty tree, a
    criterion FAIL, or post-verification drift): increment the task's

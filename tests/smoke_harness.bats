@@ -847,6 +847,65 @@ BUILD_START_EPOCH_JSON='("2026-09-17T00:00:00Z"|fromdateiso8601)'
     [[ "$task_attempts" == "1" ]] || { echo "attempts: $task_attempts; $output"; return 1; }
 }
 
+# T-004: opt-in per-task regression check (verifyEachTask), same
+# wf-loop-runner.mjs harness driving the SHIPPED g2g-build.js to a real
+# return value — trace asserts which agent()s actually got dispatched,
+# not just the final outcome.
+
+@test "workflow loop: verifyEachTask absent dispatches no regression agent on a DONE report" {
+    command -v node >/dev/null 2>&1 || skip "node not installed"
+    now=$(jq -n "$BUILD_START_EPOCH_JSON")
+    args=$(jq -cn --argjson a "$LOOP_ARGS" \
+        '$a + {turnCap:8, tasks:[{id:"T-001",title:"t",description:"d",acceptanceCriteria:["x"],dependsOn:[],status:"pending",passes:false,attempts:0}]}')
+    queue=$(jq -cn --argjson now "$now" '[
+        {refreshExit:0, refreshLine:"g2g-lock: refreshed", treeDirty:false, now:$now},
+        {ok:true, detail:"", head:"abc123"},
+        {result:"DONE", commit:"abc123", verified:["x: pass"], mutation:"n/a (no tests added)", notes:""},
+        {ok:true, detail:"", commitExists:true}
+    ]')
+    input=$(jq -cn --argjson args "$args" --argjson queue "$queue" '{args:$args, queue:$queue}')
+    run bash -c "printf '%s' '$input' | node '$RUNNER' '$WORKFLOW_SCRIPT'"
+    [[ "$status" -eq 0 ]] || { echo "$output"; return 1; }
+    result_outcome=$(printf '%s' "$output" | jq -r '.result.outcome')
+    task_status=$(printf '%s' "$output" | jq -r '.result.tasks[0].status')
+    [[ "$result_outcome" == "complete" ]] || { echo "outcome: $result_outcome; $output"; return 1; }
+    [[ "$task_status" == "complete" ]] || { echo "status: $task_status; $output"; return 1; }
+    # The queue had exactly 4 entries (keeper, start, builder, complete
+    # writer) and the runner throws loudly on an unscripted 5th call — a
+    # regression agent dispatched here would exhaust the queue and fail
+    # the run, so a clean "returned/complete" already proves none was
+    # dispatched. Confirm it directly too, via the trace.
+    regression_calls=$(printf '%s' "$output" | jq '[.trace[] | select(contains("regression check"))] | length')
+    [[ "$regression_calls" == "0" ]] || { echo "unexpected regression agent dispatch(es): $output"; return 1; }
+}
+
+@test "workflow loop: verifyEachTask true with a failing command ends the task pending with attempts 1" {
+    command -v node >/dev/null 2>&1 || skip "node not installed"
+    now=$(jq -n "$BUILD_START_EPOCH_JSON")
+    args=$(jq -cn --argjson a "$LOOP_ARGS" \
+        '$a + {turnCap:2, verifyEachTask:true, context:{verificationCommands:["make check"]},
+               tasks:[{id:"T-001",title:"t",description:"d",acceptanceCriteria:["x"],dependsOn:[],status:"pending",passes:false,attempts:0}]}')
+    queue=$(jq -cn --argjson now "$now" '[
+        {refreshExit:0, refreshLine:"g2g-lock: refreshed", treeDirty:false, now:$now},
+        {ok:true, detail:"", head:"abc123"},
+        {result:"DONE", commit:"abc123", verified:["x: pass"], mutation:"n/a (no tests added)", notes:""},
+        {ok:false, detail:"make check exited 2; last 20 lines: ...regression tail...",
+         treeCleanBefore:true, treeCleanAfter:true},
+        {ok:true, detail:""}
+    ]')
+    input=$(jq -cn --argjson args "$args" --argjson queue "$queue" '{args:$args, queue:$queue}')
+    run bash -c "printf '%s' '$input' | node '$RUNNER' '$WORKFLOW_SCRIPT'"
+    [[ "$status" -eq 0 ]] || { echo "$output"; return 1; }
+    result_outcome=$(printf '%s' "$output" | jq -r '.result.outcome')
+    task_status=$(printf '%s' "$output" | jq -r '.result.tasks[0].status')
+    task_attempts=$(printf '%s' "$output" | jq -r '.result.tasks[0].attempts')
+    [[ "$result_outcome" == "cap-turns" ]] || { echo "outcome: $result_outcome; $output"; return 1; }
+    [[ "$task_status" == "pending" ]] || { echo "status: $task_status; $output"; return 1; }
+    [[ "$task_attempts" == "1" ]] || { echo "attempts: $task_attempts; $output"; return 1; }
+    regression_calls=$(printf '%s' "$output" | jq '[.trace[] | select(contains("regression check"))] | length')
+    [[ "$regression_calls" == "1" ]] || { echo "expected exactly one regression agent dispatch: $output"; return 1; }
+}
+
 @test "wf-loop-runner: never spawns anything — the scripted queue is the only side channel" {
     grep -q "node:vm" "$RUNNER"
     grep -q "'use strict'" "$RUNNER"

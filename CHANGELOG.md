@@ -85,6 +85,26 @@ which the allowlist cannot restrict.
   `node:vm` with a scripted `agent()` queue (the same isolation as
   `wf-dispatch-probe.mjs`) to assert the `NEEDS_DECISION` path end to
   end in `tests/smoke_harness.bats`.
+- New opt-in `verifyEachTask` flag in `.claude/g2g.json` (default
+  `false` in every template) relates to F-011: with it exactly `true`,
+  `/g2g:build` Phase 3 step 8 re-runs every `context.verificationCommands`
+  entry against a REPORTED DONE's own commit — read-only, a clean tree
+  required both before and after — before writing `passes: true`; any
+  non-zero exit or drift rescores the attempt FAILED (attempts + 1,
+  blocked at 2 as usual) with the failing command, its exit code, and
+  the last 20 lines of its output in the task's notes, catching a
+  regression at the task that caused it instead of only at the build's
+  finish line. A fallback DONE skips the check — step 7 (b) already ran
+  the commands. `plugin/workflows/g2g-build.js` accepts the same
+  optional `verifyEachTask` arg (not required) and dispatches a
+  regression agent after a DONE report and before the complete writer;
+  any failure converts the report to FAILED and takes the existing
+  FAILED branch. `build-wf.md` Phase 1 reads `verifyEachTask` alongside
+  `models.builder` and Phase 3's workflow args carry it through. Every
+  `plugin/templates/*.json` ships `"verifyEachTask": false`, pinned by
+  `tests/templates.bats`, and `plugin/README.md`'s Config section
+  documents the field, its default, and its cost (the full verification
+  suite runs once more per task) (T-004).
 
 ## 0.7.6 (2026-09-17)
 

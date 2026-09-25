@@ -1096,3 +1096,73 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     grep -q 'NEEDS_DECISION' "$REPO_DIR/docs/G2G_PLUGIN_REF.md"
     grep -qi 'FLAG' "$REPO_DIR/docs/G2G_PLUGIN_REF.md"
 }
+
+# T-004: opt-in per-task regression check (verifyEachTask). Absent or false,
+# behavior is unchanged from 0.7.6; exactly true re-runs the verification
+# suite against a REPORTED DONE's own commit before passes: true flips.
+
+@test "contract: build.md step 8 runs the OPT-IN REGRESSION CHECK only for a reported DONE, gated on verifyEachTask, before passes: true" {
+    grep -q 'OPT-IN REGRESSION CHECK' "$PLUGIN_DIR/commands/build.md"
+    grep -q '`verifyEachTask`' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'default `false` when the file' "$PLUGIN_DIR/commands/build.md"
+    # Never for the NO-REPORT FALLBACK — step 7 (b) already ran the suite.
+    grep -q 'never the NO-REPORT FALLBACK' "$PLUGIN_DIR/commands/build.md"
+    # Runs before passes: true is written.
+    check_line=$(grep -n 'OPT-IN REGRESSION CHECK' "$PLUGIN_DIR/commands/build.md" | head -1 | cut -d: -f1)
+    passes_line=$(sed -n "${check_line},\$p" "$PLUGIN_DIR/commands/build.md" | grep -n 'proceed to write `passes: true`' | head -1 | cut -d: -f1)
+    [[ -n "$passes_line" ]] || { echo "no passes: true write found after the regression check"; return 1; }
+}
+
+@test "contract: build.md's OPT-IN REGRESSION CHECK requires CLEAN before and after, and scores a failure or drift as FAILED with the command, exit code, and output tail" {
+    grep -q 'confirm the precondition' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'Confirm the postcondition' "$PLUGIN_DIR/commands/build.md"
+    grep -q "step 7's definition" "$PLUGIN_DIR/commands/build.md"
+    grep -q "step 7 (c)'s" "$PLUGIN_DIR/commands/build.md"
+    grep -q 'the last 20 lines of its output' "$PLUGIN_DIR/commands/build.md"
+    grep -qi 'the builder.s commit stays on the branch' "$PLUGIN_DIR/commands/build.md"
+    # The FAILED enumeration names this new trigger explicitly.
+    grep -q 'a reported DONE that failed the OPT-IN' "$PLUGIN_DIR/commands/build.md"
+}
+
+@test "workflow: g2g-build.js accepts an optional verifyEachTask arg not in the required list, and dispatches a regression agent before the complete writer" {
+    required_line=$(grep -n "for (const key of \['specPath', 'ownerToken', 'pluginRoot', 'branch'," "$PLUGIN_DIR/workflows/g2g-build.js" | head -1 | cut -d: -f1)
+    [[ -n "$required_line" ]] || { echo "missing the required-args validation loop"; return 1; }
+    required_text=$(sed -n "${required_line},+3p" "$PLUGIN_DIR/workflows/g2g-build.js")
+    echo "$required_text" | grep -q 'verifyEachTask' && { echo "verifyEachTask must not be a required arg"; return 1; }
+    grep -q 'a.verifyEachTask === true' "$PLUGIN_DIR/workflows/g2g-build.js"
+    grep -q 'regressionSchema' "$PLUGIN_DIR/workflows/g2g-build.js"
+    grep -q 'regression check' "$PLUGIN_DIR/workflows/g2g-build.js"
+    # Dispatched after a DONE report and before the complete writer.
+    regression_line=$(grep -n "report.result === 'DONE' && a.verifyEachTask === true" "$PLUGIN_DIR/workflows/g2g-build.js" | head -1 | cut -d: -f1)
+    writer_line=$(grep -n "label: \`turn \${turn}: \${task.id} complete\`" "$PLUGIN_DIR/workflows/g2g-build.js" | head -1 | cut -d: -f1)
+    [[ -n "$regression_line" && -n "$writer_line" ]] || { echo "missing regression dispatch or complete writer"; return 1; }
+    [[ "$regression_line" -lt "$writer_line" ]] || { echo "regression agent is not dispatched before the complete writer"; return 1; }
+}
+
+@test "workflow: a failed verifyEachTask regression check turns the report into FAILED and takes the existing FAILED branch" {
+    grep -q "report.result = 'FAILED'" "$PLUGIN_DIR/workflows/g2g-build.js"
+    grep -q 'opt-in regression check (verifyEachTask) failed' "$PLUGIN_DIR/workflows/g2g-build.js"
+    # No separate bookkeeping path — the bottom "FAILED (or malformed-DONE)"
+    # code is the only place task.attempts is incremented.
+    attempts_increments=$(grep -c 'task.attempts += 1' "$PLUGIN_DIR/workflows/g2g-build.js")
+    [[ "$attempts_increments" -eq 1 ]] || { echo "expected exactly one attempts-increment site, found $attempts_increments"; return 1; }
+}
+
+@test "contract: build-wf.md Phase 1 reads verifyEachTask and Phase 3's workflow args carry it" {
+    grep -q "'verifyEachTask'" "$PLUGIN_DIR/commands/build-wf.md" || grep -q '`verifyEachTask`' "$PLUGIN_DIR/commands/build-wf.md"
+    phase1=$(sed -n '/^## Phase 1/,/^## Phase 2/p' "$PLUGIN_DIR/commands/build-wf.md")
+    echo "$phase1" | grep -q 'verifyEachTask' || { echo "Phase 1 does not read verifyEachTask"; return 1; }
+    phase3=$(sed -n '/^## Phase 3/,/^## Phase 4/p' "$PLUGIN_DIR/commands/build-wf.md")
+    echo "$phase3" | grep -q '"verifyEachTask"' || { echo "Phase 3's args do not carry verifyEachTask"; return 1; }
+}
+
+@test "templates: verifyEachTask is not this repo's own .claude/g2g.json (spec constraint)" {
+    run jq -e 'has("verifyEachTask") | not' "$REPO_DIR/.claude/g2g.json"
+    [[ "$status" -eq 0 ]] || { echo "$output"; return 1; }
+}
+
+@test "contract: plugin/README.md documents verifyEachTask, its default, and its cost" {
+    grep -q '`verifyEachTask`' "$REPO_DIR/plugin/README.md"
+    grep -qi 'defaults to `false`' "$REPO_DIR/plugin/README.md"
+    grep -qi 'verification suite runs once' "$REPO_DIR/plugin/README.md"
+}

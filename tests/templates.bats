@@ -49,6 +49,19 @@ TEMPLATES_DIR="$BATS_TEST_DIRNAME/../plugin/templates"
     done
 }
 
+@test "templates: verifyEachTask defaults to false in every template" {
+    # T-004: the opt-in per-task regression check must ship OFF — with
+    # it absent or false, /g2g:build's behavior is unchanged from 0.7.6.
+    for f in "$TEMPLATES_DIR"/*.json; do
+        run jq -e '.verifyEachTask == false' "$f"
+        [[ "$status" -eq 0 ]] || {
+            echo "verifyEachTask must default to false: $f"
+            echo "$output"
+            return 1
+        }
+    done
+}
+
 @test "templates: every template lists exactly the five reviewFocus categories" {
     for f in "$TEMPLATES_DIR"/*.json; do
         run jq -e '
