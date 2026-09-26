@@ -312,6 +312,16 @@ while (true) {
     report.result = 'FAILED'
   }
 
+  // build.md Phase 3 step 7's usability rule: a NEEDS_DECISION is usable
+  // only with `commit: none` and non-empty decision text. Blocking on a
+  // blank decision would leave the human no question to answer and stall
+  // every dependent task, so an unusable one scores FAILED instead.
+  if (report.result === 'NEEDS_DECISION' &&
+      (String(report.commit || '').trim() !== 'none' || !String(report.decision || '').trim())) {
+    report.notes = `${report.notes || ''} [orchestration: unusable NEEDS_DECISION report — it needs commit "none" and non-empty decision text]`.trim()
+    report.result = 'FAILED'
+  }
+
   if (report.result === 'NEEDS_DECISION') {
     // Never trust the builder's own claim that it made no commit and
     // left the tree clean (g2g-builder.md rule 10) — the orchestrator
@@ -323,7 +333,7 @@ while (true) {
       `Run \`git rev-parse HEAD\` and report the exact output as head. Run \`git status --porcelain --untracked-files=all\`, ignoring these exact paths: the spec file ${a.specPath}, .g2g-goal, .g2g-goal.lock, .g2g-goal.mutex. Report ok true only if head equals ${JSON.stringify(dispatchBaselineHead)} AND nothing else is dirty or untracked; otherwise report ok false and put every other dirty/untracked path (or the mismatched head) in detail. Change nothing.`,
       { schema: writerSchema, label: `turn ${turn}: ${task.id} needs-decision check` })
     if (checked.ok && dispatchBaselineHead && checked.head === dispatchBaselineHead) {
-      const decisionText = String(report.decision || '').trim() || 'no decision text reported'
+      const decisionText = String(report.decision).trim()
       const notesText = `needs-human: ${decisionText}`
       const wroteBlocked = await agent(
         `In ${a.specPath}, set task ${task.id} to "status": "blocked" (leave "attempts" unchanged) and "notes" to ${JSON.stringify(notesText)}; change nothing else. Then \`git add ${a.specPath} && git commit -m "chore(${task.id}): needs-human" -- ${a.specPath}\`. Report ok true only if the commit succeeded.`,

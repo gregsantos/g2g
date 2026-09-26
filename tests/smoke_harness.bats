@@ -1115,6 +1115,33 @@ run_one_task_loop() {
         || { echo "a bookkeeping commit lacks the spec pathspec: $all_prompts"; return 1; }
 }
 
+@test "workflow loop: an unusable NEEDS_DECISION (no decision, blank decision, or a named commit) scores FAILED, never blocked" {
+    # build.md Phase 3 step 7: NEEDS_DECISION is usable only with
+    # `commit: none` and non-empty decision text. Blocking on anything less
+    # leaves the human no question and stalls every dependent task (Codex
+    # adversarial review of PR #44).
+    command -v node >/dev/null 2>&1 || skip "node not installed"
+    now=$(jq -n "$BUILD_START_EPOCH_JSON")
+    for report in \
+        '{"result":"NEEDS_DECISION","commit":"none","verified":[],"notes":""}' \
+        '{"result":"NEEDS_DECISION","commit":"none","verified":[],"decision":"   ","notes":""}' \
+        '{"result":"NEEDS_DECISION","commit":"abc1234","verified":[],"decision":"pick one","notes":""}'; do
+        queue=$(jq -cn --argjson now "$now" --argjson r "$report" '[
+            {refreshExit:0, refreshLine:"g2g-lock: refreshed", treeDirty:false, now:$now},
+            {ok:true, detail:"", head:"abc1234def"},
+            $r,
+            {specDrift:false, restored:false, detail:""},
+            {ok:true, detail:""}
+        ]')
+        run_one_task_loop '{}' "$queue"
+        [[ "$status" -eq 0 ]] || { echo "$report: $output"; return 1; }
+        [[ "$(printf '%s' "$output" | jq -r '.result.tasks[0].status')" == "pending" ]] || { echo "$report: $output"; return 1; }
+        [[ "$(printf '%s' "$output" | jq -r '.result.tasks[0].attempts')" == "1" ]] || { echo "$report: $output"; return 1; }
+        [[ "$(printf '%s' "$output" | jq '[.trace[] | select(contains("needs-decision"))] | length')" == "0" ]] \
+            || { echo "$report reached the needs-decision branch: $output"; return 1; }
+    done
+}
+
 @test "wf-loop-runner: never spawns anything — the scripted queue is the only side channel" {
     grep -q "node:vm" "$RUNNER"
     grep -q "'use strict'" "$RUNNER"

@@ -147,6 +147,12 @@ which the allowlist cannot restrict.
   verification command had staged rode into spec bookkeeping and out in
   the PR. The gap predates this release; the regression check made it
   easier to reach. Third Codex adversarial review of PR #44.
+- `g2g-build.js` now applies build.md Phase 3 step 7's usability rule to
+  NEEDS_DECISION: the report must carry `commit: none` and non-empty
+  decision text, or the attempt scores FAILED. The workflow used to accept
+  a blank decision, block the task with "no decision text reported", and
+  stall every dependent task with nothing for the human to answer. Fourth
+  Codex adversarial review of PR #44.
 
 ## 0.7.6 (2026-09-17)
 
