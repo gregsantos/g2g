@@ -32,7 +32,9 @@ TOKEN, clean-tree check with the exact-path exemptions, work branch /
 evidence-script validation, TURN_CAP / HOURS_CAP / BUILD_START
 computation — including its LOCK RELEASE ON PREFLIGHT ABORT rule).
 Additionally read `.claude/g2g.json` → `models.builder` (default
-`sonnet` when the file or field is absent) for Phase 3's args.
+`sonnet` when the file or field is absent) and `verifyEachTask` (default
+`false` when the file or field is absent, or when it is any value other
+than exactly `true`) for Phase 3's args.
 
 ## Phase 2 — Arm the goal
 Execute build.md's Phase 2 exactly as written (ownership-checked refresh
@@ -60,7 +62,8 @@ tasks with `passes: true` are skipped by the loop's own selection):
      "pluginRoot": ${CLAUDE_PLUGIN_ROOT}, "branch": <work-branch>,
      "turnCap": <TURN_CAP>, "hoursCap": <HOURS_CAP>,
      "buildStart": <BUILD_START>, "builderModel": <models.builder>,
-     "context": <spec context block>, "tasks": <spec tasks array> }
+     "context": <spec context block>, "tasks": <spec tasks array>,
+     "verifyEachTask": <verifyEachTask> }
 
 Wait for the workflow result. While it runs you dispatch NOTHING
 yourself — builders, spec commits, and heartbeat refreshes all happen

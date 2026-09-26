@@ -51,6 +51,30 @@ Build-managed fields — initialize but never pre-fill: `status`, `passes`,
 `notes`, `attempts`, and the top-level `verifier` field (omit it or set
 `null`; the build writes `{verdict, date, summary}` on verifier PASS).
 
+## The needs-human convention (NEEDS_DECISION)
+
+A builder can report `NEEDS_DECISION` instead of `DONE`/`FAILED` when a
+task cannot be completed without a choice the spec itself does not make
+(keep vs. delete a deprecated path, which of two reasonable API shapes).
+There is no new `status` value for this — the status field row above
+still lists only `pending` \| `in_progress` \| `complete` \| `blocked`.
+Instead, `/g2g:build` sets the task's `status` to the existing `blocked`
+value and prefixes its `notes` with `needs-human: ` followed by the
+builder's question, options, and recommendation, leaving `attempts`
+unchanged (a needs-human block is not a failed attempt). `/g2g:status`
+surfaces every task in this state read-only, and a completion PR's body
+lists it under "Needs your attention" → "Decisions for you".
+
+**The way out**: a human resolves a needs-human task by amending the
+spec directly — edit the task's `description` or `acceptanceCriteria` to
+answer the question the `notes` posed (e.g. "delete the deprecated flag,
+do not keep it"), clear its `notes` back to `""`, set its status back to `pending`,
+and re-run `/g2g:build <spec> --continue-branch` to resume
+the branch. Until that happens, a needs-human task blocks not only
+itself but every task whose `dependsOn` names it, exactly like any other
+`blocked` task — it is real backpressure on the build, not a note left
+on the side.
+
 ## Acceptance criteria quality
 
 Bad (vague, unfalsifiable):

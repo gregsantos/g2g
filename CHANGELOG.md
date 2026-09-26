@@ -1,5 +1,159 @@
 # Changelog
 
+## 0.8.0 (2026-09-25)
+
+Enforces a read-only verifier with two layers instead of one (T-001).
+Trusting the verifier's own restraint — nothing stopped it from editing
+the checkout it was supposed to only judge — was the gap: an agent
+frontmatter allowlist narrows what the verifier can invoke directly, and
+a snapshot-and-compare check in the orchestrator catches any change to
+the checkout regardless of how it got there, including through Bash,
+which the allowlist cannot restrict.
+
+### Changed
+- `plugin/agents/g2g-verifier.md` frontmatter gains
+  `tools: Read, Grep, Glob, Bash` — no `Edit`, `Write`, or
+  `NotebookEdit`, narrowing the verifier's directly available tools.
+  This alone is not the enforcement: Bash can still write files, so a
+  verifier could still touch the checkout through a shell command. The
+  actual enforcement is the snapshot check below.
+- `/g2g:build` Phase 4 adds a PRE-VERIFY SNAPSHOT / compare check around
+  the verifier dispatch: step 1 records `git rev-parse HEAD` plus
+  `git status --porcelain --untracked-files=all` (goal/lock/mutex trio
+  filtered out) immediately before dispatching the verifier, and step 2
+  takes the same snapshot again after the POST-WAIT REFRESH exits 0 and
+  before reading the verdict. Any difference — HEAD moved or the
+  porcelain status changed — means the verifier changed the checkout:
+  its verdict (PASS included) is ignored, nothing is written to the
+  spec, nothing is reverted, and the build goes straight to Phase 5 with
+  the drift named (changed paths, or the new HEAD sha) so the resulting
+  partial PR lists it. `/g2g:build-wf` executes build.md's Phase 4 by
+  reference, so it inherits this check without any copy in
+  `plugin/commands/build-wf.md`.
+- `plugin/README.md`'s Guardrails section and `docs/G2G_PLUGIN_REF.md`
+  section 9 (Safety model) document the tools allowlist and the
+  snapshot check.
+- `tests/commands.bats` pins the verifier's tools line, the PRE-VERIFY
+  SNAPSHOT / compare check in build.md Phase 4, and its absence from
+  build-wf.md.
+- `plugin/agents/g2g-builder.md` gains rule 9: before its single commit,
+  a builder must prove every test it added or strengthened actually
+  guards the behavior it claims — break the guarded behavior, run the
+  test and show it FAIL, restore, run it again and show it PASS — and
+  report the evidence in a new `mutation:` line in the BUILDER REPORT
+  (T-002). `/g2g:build` Phase 3 copies that line into the task's notes
+  on DONE, defaulting to `mutation: not reported` when it is absent;
+  absence alone never fails the task. `plugin/workflows/g2g-build.js`
+  carries the same optional `mutation` field through `builderSchema`
+  and its complete-writer agent. `plugin/agents/g2g-verifier.md` gains
+  a step that flags — never fails — a test the diff adds with no
+  corresponding mutation evidence, via a new `flags:` line in the
+  VERIFIER REPORT that `/g2g:build` Phase 4 reads and folds into both
+  the completion and partial PR bodies.
+- `plugin/agents/g2g-builder.md` gains a third BUILDER REPORT exit,
+  `NEEDS_DECISION`, for a task that cannot be completed without a choice
+  the spec does not make — it requires `commit: none` and an untouched
+  tree, and a new `decision:` field (between `mutation:` and `notes:`)
+  carrying the question, the options, and the builder's own
+  recommendation (rule 10); a new rule 11 lets a builder leave a
+  `FLAG: ` notes line for anything it could not check outside the
+  acceptance criteria, never as a substitute for a criterion it could
+  not verify, which is still FAILED (T-003). `/g2g:build` Phase 3 step 7
+  treats a usable `NEEDS_DECISION` report the same as DONE/FAILED, and
+  step 8 never trusts the builder's own claim — it checks HEAD against
+  the DISPATCH BASELINE and the tree's cleanliness itself before moving
+  the task to `status: blocked` with `notes` prefixed `needs-human: `
+  and `attempts` left unchanged; a failed check scores the attempt
+  FAILED instead, exactly like any other broken builder contract.
+  `plugin/workflows/g2g-build.js` carries the same enum, `decision`
+  field, and check in code: the start writer now reports HEAD after its
+  commit, and a `NEEDS_DECISION` report is verified by a dedicated
+  writer agent before the task is scored. Every `gh pr create` in
+  build.md (Phase 4 steps 5 and 7, Phase 5 step 2) now composes its body
+  with `mktemp -d` + the Write tool + `--body-file`, never command-line
+  text, and the body gains a `## Needs your attention` section (omitted
+  when empty) holding `### Decisions for you` (needs-human tasks) and
+  `### Flags` (every builder `FLAG:` line plus the verifier's `flags:`
+  lines, which T-003 moves out of the inline body summary and into this
+  subsection). `plugin/commands/status.md` reports needs-human tasks
+  read-only. `plugin/skills/writing-g2g-specs/SKILL.md`,
+  `plugin/README.md`, and `docs/G2G_PLUGIN_REF.md` document the
+  needs-human convention, its recovery path (amend the task, clear
+  notes, set status back to `pending`, `--continue-branch`), and the
+  FLAG rule. `tests/commands.bats` pins all of the above, and a new
+  `tests/lib/wf-loop-runner.mjs` drives the shipped `g2g-build.js` under
+  `node:vm` with a scripted `agent()` queue (the same isolation as
+  `wf-dispatch-probe.mjs`) to assert the `NEEDS_DECISION` path end to
+  end in `tests/smoke_harness.bats`.
+- New opt-in `verifyEachTask` flag in `.claude/g2g.json` (default
+  `false` in every template) relates to F-011: with it exactly `true`,
+  `/g2g:build` Phase 3 step 8 re-runs every `context.verificationCommands`
+  entry against a REPORTED DONE's own commit — read-only, a clean tree
+  required both before and after — before writing `passes: true`; any
+  non-zero exit or drift rescores the attempt FAILED (attempts + 1,
+  blocked at 2 as usual) with the failing command, its exit code, and
+  the last 20 lines of its output in the task's notes, catching a
+  regression at the task that caused it instead of only at the build's
+  finish line. A fallback DONE skips the check — step 7 (b) already ran
+  the commands. `plugin/workflows/g2g-build.js` accepts the same
+  optional `verifyEachTask` arg (not required) and dispatches a
+  regression agent after a DONE report and before the complete writer;
+  any failure converts the report to FAILED and takes the existing
+  FAILED branch. `build-wf.md` Phase 1 reads `verifyEachTask` alongside
+  `models.builder` and Phase 3's workflow args carry it through. Every
+  `plugin/templates/*.json` ships `"verifyEachTask": false`, pinned by
+  `tests/templates.bats`, and `plugin/README.md`'s Config section
+  documents the field, its default, and its cost (the full verification
+  suite runs once more per task) (T-004).
+- `/g2g:build`'s conflict (Phase 4 step 5) and partial (Phase 5 step 2)
+  PR commands now carry `--draft` in the command itself, so a verbatim
+  run can no longer open a ready-for-review PR for unfinished work (the
+  prose always required a draft; the command text did not say so). The
+  `g2g:partial` label moves to a separate best-effort
+  `gh pr edit --add-label` after creation, with the label created only if
+  absent: putting `--label` on `gh pr create` would fail PR creation in any
+  host repo that lacks the label. A failed label call never blocks the
+  terminal release. Verifier findings on PR #44.
+- `plugin/workflows/g2g-build.js` gains build.md's SPEC RESTORE entry
+  gate: after EVERY builder return, a spec that differs from the dispatch
+  baseline (committed, staged, or unstaged) is restored from it and the
+  attempt scores FAILED whatever the builder reported, before any
+  bookkeeping commit. Without it, a builder could edit criteria or pass
+  flags, report `NEEDS_DECISION` (or DONE/FAILED) without committing, and
+  the workflow's next writer committed the edit. A start commit that
+  reports no HEAD now stops the loop before a builder is spent, and a
+  DONE whose commit is not a hex sha scores FAILED instead of being pasted
+  into a git command. The verifyEachTask check (both engines) now resolves
+  the builder's short sha to a full hash before comparing it with HEAD;
+  compared directly they never match, so every passing task would have
+  scored FAILED. `tests/lib/wf-loop-runner.mjs` also records each agent
+  prompt, so tests assert what the shipped script tells an agent to run.
+  Codex adversarial review of PR #44.
+- The verifyEachTask check re-gates the spec after its verification
+  commands run, in both engines. Those commands execute arbitrary code
+  after the first SPEC RESTORE gate, so a command that rewrote criteria or
+  pass flags could reach the bookkeeping commit — `g2g-build.js` even
+  exempted the spec from the check's clean-tree test, contrary to build.md's
+  CLEAN definition. The workflow now runs the SPEC RESTORE gate again after
+  the check on every outcome (drift is restored and scores FAILED, with
+  notes blaming the verification command, not the builder), and the check
+  no longer exempts the spec; build.md applies the SPEC RESTORE rule before
+  scoring a regression failure or drift. Second Codex adversarial review of
+  PR #44.
+- Every bookkeeping commit in `g2g-build.js` (start, complete, needs-human,
+  failed) now ends `-- <spec-path>`, the BOOKKEEPING COMMIT shape build.md
+  Phase 3 step 5 has required since 0.7.3. Without the pathspec a commit
+  took whatever the index held, so a source change a builder or a
+  verification command had staged rode into spec bookkeeping and out in
+  the PR. The gap predates this release; the regression check made it
+  easier to reach. Third Codex adversarial review of PR #44.
+- `g2g-build.js` now applies build.md Phase 3 step 7's usability rule to
+  NEEDS_DECISION: the report must carry `commit: none` and non-empty
+  decision text, or the attempt scores FAILED. The workflow used to accept
+  a blank decision, block the task with "no decision text reported", and
+  stall every dependent task with nothing for the human to answer. Fourth
+  Codex adversarial review of PR #44.
+
 ## 0.7.6 (2026-09-17)
 
 Closes the gap between a build's proven evidence and its pull request

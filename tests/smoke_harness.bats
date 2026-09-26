@@ -17,6 +17,7 @@
 REPO_DIR="$BATS_TEST_DIRNAME/.."
 SMOKE="$BATS_TEST_DIRNAME/smoke.sh"
 PROBE="$BATS_TEST_DIRNAME/lib/wf-dispatch-probe.mjs"
+RUNNER="$BATS_TEST_DIRNAME/lib/wf-loop-runner.mjs"
 WORKFLOW_SCRIPT="$REPO_DIR/plugin/workflows/g2g-build.js"
 
 setup() {
@@ -777,4 +778,372 @@ EOF
     run bash "$SMOKE" --assert-only "$WORK"
     [[ "$status" -eq 1 ]]
     [[ "$output" == *".g2g-goal was not deleted"* ]]
+}
+
+# ---------------------------------------------------------------------------
+# NEEDS_DECISION under the real loop (T-003). wf-loop-runner.mjs drives the
+# SHIPPED plugin/workflows/g2g-build.js to a real return value under the
+# same node:vm isolation as wf-dispatch-probe.mjs, but with a scripted
+# QUEUE of agent() responses instead of a sentinel-throwing stub, so these
+# assert the loop's actual outcome across the several agent() calls a
+# NEEDS_DECISION report triggers, not merely that dispatch happened.
+# ---------------------------------------------------------------------------
+
+# The loop's turn-cap check runs BEFORE the loop dispatches any agent for
+# that turn, so buildStart just needs a real epoch second reading — reuse
+# the LOOP_ARGS timestamp via jq's fromdateiso8601 rather than hand-picking
+# a number that could drift from it.
+BUILD_START_EPOCH_JSON='("2026-09-17T00:00:00Z"|fromdateiso8601)'
+
+@test "workflow loop: NEEDS_DECISION with an unchanged HEAD ends the task blocked with attempts 0" {
+    command -v node >/dev/null 2>&1 || skip "node not installed"
+    now=$(jq -n "$BUILD_START_EPOCH_JSON")
+    args=$(jq -cn --argjson a "$LOOP_ARGS" \
+        '$a + {turnCap:8, tasks:[{id:"T-001",title:"t",description:"d",acceptanceCriteria:["x"],dependsOn:[],status:"pending",passes:false,attempts:0}]}')
+    queue=$(jq -cn --argjson now "$now" '[
+        {refreshExit:0, refreshLine:"g2g-lock: refreshed", treeDirty:false, now:$now},
+        {ok:true, detail:"", head:"abc123"},
+        {result:"NEEDS_DECISION", commit:"none", verified:[], mutation:"n/a (no tests added)",
+         decision:"Keep the deprecated flag or delete it? Options: keep one more release, or delete now. Recommend delete: nothing else references it.",
+         notes:""},
+        {specDrift:false, restored:false, detail:""},
+        {ok:true, detail:"", head:"abc123"},
+        {ok:true, detail:""}
+    ]')
+    input=$(jq -cn --argjson args "$args" --argjson queue "$queue" '{args:$args, queue:$queue}')
+    run bash -c "printf '%s' '$input' | node '$RUNNER' '$WORKFLOW_SCRIPT'"
+    [[ "$status" -eq 0 ]] || { echo "$output"; return 1; }
+    outcome=$(printf '%s' "$output" | jq -r '.outcome')
+    [[ "$outcome" == "returned" ]] || { echo "$output"; return 1; }
+    result_outcome=$(printf '%s' "$output" | jq -r '.result.outcome')
+    task_status=$(printf '%s' "$output" | jq -r '.result.tasks[0].status')
+    task_attempts=$(printf '%s' "$output" | jq -r '.result.tasks[0].attempts')
+    [[ "$result_outcome" == "blocked" ]] || { echo "outcome: $result_outcome; $output"; return 1; }
+    [[ "$task_status" == "blocked" ]] || { echo "status: $task_status; $output"; return 1; }
+    [[ "$task_attempts" == "0" ]] || { echo "attempts: $task_attempts; $output"; return 1; }
+}
+
+@test "workflow loop: NEEDS_DECISION with a moved HEAD ends it with attempts 1" {
+    command -v node >/dev/null 2>&1 || skip "node not installed"
+    now=$(jq -n "$BUILD_START_EPOCH_JSON")
+    args=$(jq -cn --argjson a "$LOOP_ARGS" \
+        '$a + {turnCap:2, tasks:[{id:"T-001",title:"t",description:"d",acceptanceCriteria:["x"],dependsOn:[],status:"pending",passes:false,attempts:0}]}')
+    queue=$(jq -cn --argjson now "$now" '[
+        {refreshExit:0, refreshLine:"g2g-lock: refreshed", treeDirty:false, now:$now},
+        {ok:true, detail:"", head:"abc123"},
+        {result:"NEEDS_DECISION", commit:"none", verified:[], mutation:"n/a (no tests added)",
+         decision:"Keep the deprecated flag or delete it? Options: keep one more release, or delete now. Recommend delete: nothing else references it.",
+         notes:""},
+        {specDrift:false, restored:false, detail:""},
+        {ok:false, detail:"src/foo.js modified", head:"def456"},
+        {ok:true, detail:""}
+    ]')
+    input=$(jq -cn --argjson args "$args" --argjson queue "$queue" '{args:$args, queue:$queue}')
+    run bash -c "printf '%s' '$input' | node '$RUNNER' '$WORKFLOW_SCRIPT'"
+    [[ "$status" -eq 0 ]] || { echo "$output"; return 1; }
+    result_outcome=$(printf '%s' "$output" | jq -r '.result.outcome')
+    task_status=$(printf '%s' "$output" | jq -r '.result.tasks[0].status')
+    task_attempts=$(printf '%s' "$output" | jq -r '.result.tasks[0].attempts')
+    [[ "$result_outcome" == "cap-turns" ]] || { echo "outcome: $result_outcome; $output"; return 1; }
+    [[ "$task_status" == "pending" ]] || { echo "status: $task_status; $output"; return 1; }
+    [[ "$task_attempts" == "1" ]] || { echo "attempts: $task_attempts; $output"; return 1; }
+}
+
+# T-004: opt-in per-task regression check (verifyEachTask), same
+# wf-loop-runner.mjs harness driving the SHIPPED g2g-build.js to a real
+# return value — trace asserts which agent()s actually got dispatched,
+# not just the final outcome.
+
+@test "workflow loop: verifyEachTask absent dispatches no regression agent on a DONE report" {
+    command -v node >/dev/null 2>&1 || skip "node not installed"
+    now=$(jq -n "$BUILD_START_EPOCH_JSON")
+    args=$(jq -cn --argjson a "$LOOP_ARGS" \
+        '$a + {turnCap:8, tasks:[{id:"T-001",title:"t",description:"d",acceptanceCriteria:["x"],dependsOn:[],status:"pending",passes:false,attempts:0}]}')
+    queue=$(jq -cn --argjson now "$now" '[
+        {refreshExit:0, refreshLine:"g2g-lock: refreshed", treeDirty:false, now:$now},
+        {ok:true, detail:"", head:"abc123"},
+        {result:"DONE", commit:"abc123", verified:["x: pass"], mutation:"n/a (no tests added)", notes:""},
+        {specDrift:false, restored:false, detail:""},
+        {ok:true, detail:"", commitExists:true}
+    ]')
+    input=$(jq -cn --argjson args "$args" --argjson queue "$queue" '{args:$args, queue:$queue}')
+    run bash -c "printf '%s' '$input' | node '$RUNNER' '$WORKFLOW_SCRIPT'"
+    [[ "$status" -eq 0 ]] || { echo "$output"; return 1; }
+    result_outcome=$(printf '%s' "$output" | jq -r '.result.outcome')
+    task_status=$(printf '%s' "$output" | jq -r '.result.tasks[0].status')
+    [[ "$result_outcome" == "complete" ]] || { echo "outcome: $result_outcome; $output"; return 1; }
+    [[ "$task_status" == "complete" ]] || { echo "status: $task_status; $output"; return 1; }
+    # The queue had exactly 5 entries (keeper, start, builder, spec gate,
+    # complete writer) and the runner throws loudly on an unscripted 6th call — a
+    # regression agent dispatched here would exhaust the queue and fail
+    # the run, so a clean "returned/complete" already proves none was
+    # dispatched. Confirm it directly too, via the trace.
+    regression_calls=$(printf '%s' "$output" | jq '[.trace[] | select(contains("regression check"))] | length')
+    [[ "$regression_calls" == "0" ]] || { echo "unexpected regression agent dispatch(es): $output"; return 1; }
+}
+
+@test "workflow loop: verifyEachTask true with a failing command ends the task pending with attempts 1" {
+    command -v node >/dev/null 2>&1 || skip "node not installed"
+    now=$(jq -n "$BUILD_START_EPOCH_JSON")
+    args=$(jq -cn --argjson a "$LOOP_ARGS" \
+        '$a + {turnCap:2, verifyEachTask:true, context:{verificationCommands:["make check"]},
+               tasks:[{id:"T-001",title:"t",description:"d",acceptanceCriteria:["x"],dependsOn:[],status:"pending",passes:false,attempts:0}]}')
+    queue=$(jq -cn --argjson now "$now" '[
+        {refreshExit:0, refreshLine:"g2g-lock: refreshed", treeDirty:false, now:$now},
+        {ok:true, detail:"", head:"abc123"},
+        {result:"DONE", commit:"abc123", verified:["x: pass"], mutation:"n/a (no tests added)", notes:""},
+        {specDrift:false, restored:false, detail:""},
+        {ok:false, detail:"make check exited 2; last 20 lines: ...regression tail...",
+         treeCleanBefore:true, treeCleanAfter:true},
+        {specDrift:false, restored:false, detail:""},
+        {ok:true, detail:""}
+    ]')
+    input=$(jq -cn --argjson args "$args" --argjson queue "$queue" '{args:$args, queue:$queue}')
+    run bash -c "printf '%s' '$input' | node '$RUNNER' '$WORKFLOW_SCRIPT'"
+    [[ "$status" -eq 0 ]] || { echo "$output"; return 1; }
+    result_outcome=$(printf '%s' "$output" | jq -r '.result.outcome')
+    task_status=$(printf '%s' "$output" | jq -r '.result.tasks[0].status')
+    task_attempts=$(printf '%s' "$output" | jq -r '.result.tasks[0].attempts')
+    [[ "$result_outcome" == "cap-turns" ]] || { echo "outcome: $result_outcome; $output"; return 1; }
+    [[ "$task_status" == "pending" ]] || { echo "status: $task_status; $output"; return 1; }
+    [[ "$task_attempts" == "1" ]] || { echo "attempts: $task_attempts; $output"; return 1; }
+    regression_calls=$(printf '%s' "$output" | jq '[.trace[] | select(contains("regression check"))] | length')
+    [[ "$regression_calls" == "1" ]] || { echo "expected exactly one regression agent dispatch: $output"; return 1; }
+}
+
+# SPEC RESTORE gate (Codex adversarial review of PR #44): build.md's step 8
+# entry gate, now also in the workflow, on EVERY builder result. A builder
+# that touched the spec scores FAILED whatever it reported, and the spec is
+# restored from the DISPATCH BASELINE before any bookkeeping commit.
+
+run_one_task_loop() {
+    # $1 = extra args (jq object), $2 = queue (JSON array)
+    args=$(jq -cn --argjson a "$LOOP_ARGS" --argjson extra "$1" \
+        '$a + {turnCap:2, tasks:[{id:"T-001",title:"t",description:"d",acceptanceCriteria:["x"],dependsOn:[],status:"pending",passes:false,attempts:0}]} + $extra')
+    input=$(jq -cn --argjson args "$args" --argjson queue "$2" '{args:$args, queue:$queue}')
+    run bash -c "printf '%s' '$input' | node '$RUNNER' '$WORKFLOW_SCRIPT'"
+}
+
+@test "workflow loop: NEEDS_DECISION with spec-only drift and an unchanged HEAD scores FAILED, never blocked" {
+    command -v node >/dev/null 2>&1 || skip "node not installed"
+    now=$(jq -n "$BUILD_START_EPOCH_JSON")
+    queue=$(jq -cn --argjson now "$now" '[
+        {refreshExit:0, refreshLine:"g2g-lock: refreshed", treeDirty:false, now:$now},
+        {ok:true, detail:"", head:"abc1234def"},
+        {result:"NEEDS_DECISION", commit:"none", verified:[], decision:"pick one", notes:""},
+        {specDrift:true, restored:true, detail:"working-tree form differed"},
+        {ok:true, detail:""}
+    ]')
+    run_one_task_loop '{}' "$queue"
+    [[ "$status" -eq 0 ]] || { echo "$output"; return 1; }
+    [[ "$(printf '%s' "$output" | jq -r '.result.tasks[0].status')" == "pending" ]] || { echo "$output"; return 1; }
+    [[ "$(printf '%s' "$output" | jq -r '.result.tasks[0].attempts')" == "1" ]] || { echo "$output"; return 1; }
+    # The needs-decision checker and blocked writer never ran: the gate
+    # already scored the attempt FAILED.
+    [[ "$(printf '%s' "$output" | jq '[.trace[] | select(contains("needs-decision"))] | length')" == "0" ]] || { echo "$output"; return 1; }
+    # The gate ran against the baseline commit, and the restore is from it.
+    printf '%s' "$output" | jq -e '[.prompts[] | select(contains("git restore --source=abc1234def --staged --worktree"))] | length == 1' >/dev/null \
+        || { echo "gate prompt does not restore from the baseline: $output"; return 1; }
+}
+
+@test "workflow loop: DONE with spec drift scores FAILED and never reaches the complete writer" {
+    command -v node >/dev/null 2>&1 || skip "node not installed"
+    now=$(jq -n "$BUILD_START_EPOCH_JSON")
+    queue=$(jq -cn --argjson now "$now" '[
+        {refreshExit:0, refreshLine:"g2g-lock: refreshed", treeDirty:false, now:$now},
+        {ok:true, detail:"", head:"abc1234def"},
+        {result:"DONE", commit:"abc1234", verified:["x: pass"], notes:""},
+        {specDrift:true, restored:true, detail:"a builder commit touched the spec"},
+        {ok:true, detail:""}
+    ]')
+    run_one_task_loop '{}' "$queue"
+    [[ "$status" -eq 0 ]] || { echo "$output"; return 1; }
+    [[ "$(printf '%s' "$output" | jq -r '.result.tasks[0].passes')" == "false" ]] || { echo "$output"; return 1; }
+    [[ "$(printf '%s' "$output" | jq -r '.result.tasks[0].attempts')" == "1" ]] || { echo "$output"; return 1; }
+    [[ "$(printf '%s' "$output" | jq '[.trace[] | select(endswith(" complete"))] | length')" == "0" ]] || { echo "$output"; return 1; }
+}
+
+@test "workflow loop: an unconfirmed spec restore stops the run as an error" {
+    command -v node >/dev/null 2>&1 || skip "node not installed"
+    now=$(jq -n "$BUILD_START_EPOCH_JSON")
+    queue=$(jq -cn --argjson now "$now" '[
+        {refreshExit:0, refreshLine:"g2g-lock: refreshed", treeDirty:false, now:$now},
+        {ok:true, detail:"", head:"abc1234def"},
+        {result:"FAILED", commit:"none", verified:[], notes:""},
+        {specDrift:true, restored:false, detail:"restore failed"}
+    ]')
+    run_one_task_loop '{}' "$queue"
+    [[ "$status" -eq 0 ]] || { echo "$output"; return 1; }
+    [[ "$(printf '%s' "$output" | jq -r '.result.outcome')" == "error" ]] || { echo "$output"; return 1; }
+}
+
+@test "workflow loop: a start commit that reports no HEAD stops before any builder is spent" {
+    command -v node >/dev/null 2>&1 || skip "node not installed"
+    now=$(jq -n "$BUILD_START_EPOCH_JSON")
+    queue=$(jq -cn --argjson now "$now" '[
+        {refreshExit:0, refreshLine:"g2g-lock: refreshed", treeDirty:false, now:$now},
+        {ok:true, detail:""}
+    ]')
+    run_one_task_loop '{}' "$queue"
+    [[ "$status" -eq 0 ]] || { echo "$output"; return 1; }
+    [[ "$(printf '%s' "$output" | jq -r '.result.outcome')" == "error" ]] || { echo "$output"; return 1; }
+    [[ "$(printf '%s' "$output" | jq '[.trace[] | select(contains("build T-001"))] | length')" == "0" ]] || { echo "$output"; return 1; }
+}
+
+@test "workflow loop: a DONE whose commit is not a hex sha scores FAILED and is never pasted into a command" {
+    command -v node >/dev/null 2>&1 || skip "node not installed"
+    now=$(jq -n "$BUILD_START_EPOCH_JSON")
+    queue=$(jq -cn --argjson now "$now" '[
+        {refreshExit:0, refreshLine:"g2g-lock: refreshed", treeDirty:false, now:$now},
+        {ok:true, detail:"", head:"abc1234def"},
+        {result:"DONE", commit:"abc; touch pwned", verified:["x: pass"], notes:""},
+        {specDrift:false, restored:false, detail:""},
+        {ok:true, detail:""}
+    ]')
+    run_one_task_loop '{}' "$queue"
+    [[ "$status" -eq 0 ]] || { echo "$output"; return 1; }
+    [[ "$(printf '%s' "$output" | jq -r '.result.tasks[0].attempts')" == "1" ]] || { echo "$output"; return 1; }
+    printf '%s' "$output" | jq -e '[.prompts[] | select(contains("touch pwned"))] | length == 0' >/dev/null \
+        || { echo "the malformed commit reached a prompt: $output"; return 1; }
+}
+
+@test "workflow loop: verifyEachTask resolves the builder's short sha to a full hash before comparing HEAD" {
+    command -v node >/dev/null 2>&1 || skip "node not installed"
+    now=$(jq -n "$BUILD_START_EPOCH_JSON")
+    queue=$(jq -cn --argjson now "$now" '[
+        {refreshExit:0, refreshLine:"g2g-lock: refreshed", treeDirty:false, now:$now},
+        {ok:true, detail:"", head:"abc1234def"},
+        {result:"DONE", commit:"abc1234", verified:["x: pass"], notes:""},
+        {specDrift:false, restored:false, detail:""},
+        {ok:true, detail:"", treeCleanBefore:true, treeCleanAfter:true},
+        {specDrift:false, restored:false, detail:""},
+        {ok:true, detail:"", commitExists:true}
+    ]')
+    run_one_task_loop '{"verifyEachTask":true,"context":{"verificationCommands":["make check"]}}' "$queue"
+    [[ "$status" -eq 0 ]] || { echo "$output"; return 1; }
+    [[ "$(printf '%s' "$output" | jq -r '.result.tasks[0].status')" == "complete" ]] || { echo "$output"; return 1; }
+    regression_prompt=$(printf '%s' "$output" | jq -r '.prompts[] | select(contains("verifyEachTask"))')
+    [[ "$regression_prompt" == *'git rev-parse abc1234^{commit}'* ]] || { echo "short sha is not resolved: $regression_prompt"; return 1; }
+    [[ "$regression_prompt" == *'still equals FULL'* ]] || { echo "postcondition does not compare the full hash: $regression_prompt"; return 1; }
+    [[ "$regression_prompt" != *'still equals "abc1234"'* ]] || { echo "postcondition compares the short sha: $regression_prompt"; return 1; }
+}
+
+@test "workflow loop: a verification command that rewrites the spec during a passing regression check scores FAILED, restored before bookkeeping" {
+    # Codex adversarial review of PR #44: the first SPEC RESTORE gate runs
+    # before the regression check, and the verification commands run
+    # arbitrary code after it. The spec is re-gated after the check on
+    # every outcome — here the check itself passed — so the complete
+    # writer never commits a rewritten spec.
+    command -v node >/dev/null 2>&1 || skip "node not installed"
+    now=$(jq -n "$BUILD_START_EPOCH_JSON")
+    queue=$(jq -cn --argjson now "$now" '[
+        {refreshExit:0, refreshLine:"g2g-lock: refreshed", treeDirty:false, now:$now},
+        {ok:true, detail:"", head:"abc1234def"},
+        {result:"DONE", commit:"abc1234", verified:["x: pass"], notes:""},
+        {specDrift:false, restored:false, detail:""},
+        {ok:true, detail:"", treeCleanBefore:true, treeCleanAfter:true},
+        {specDrift:true, restored:true, detail:"working-tree form differed"},
+        {ok:true, detail:""}
+    ]')
+    run_one_task_loop '{"verifyEachTask":true,"context":{"verificationCommands":["make check"]}}' "$queue"
+    [[ "$status" -eq 0 ]] || { echo "$output"; return 1; }
+    [[ "$(printf '%s' "$output" | jq -r '.result.tasks[0].status')" == "pending" ]] || { echo "$output"; return 1; }
+    [[ "$(printf '%s' "$output" | jq -r '.result.tasks[0].attempts')" == "1" ]] || { echo "$output"; return 1; }
+    [[ "$(printf '%s' "$output" | jq '[.trace[] | select(endswith(" complete"))] | length')" == "0" ]] || { echo "the complete writer ran: $output"; return 1; }
+    # The second gate runs AFTER the regression check, not only before it.
+    printf '%s' "$output" | jq -e '
+        (.trace | map(contains("regression check")) | index(true)) as $r
+        | (.trace | map(contains("spec re-gate after verification")) | index(true)) as $g
+        | $r != null and $g != null and $g > $r' >/dev/null \
+        || { echo "no spec gate after the regression check: $output"; return 1; }
+    # The notes blame the verification command, not the builder.
+    printf '%s' "$output" | jq -e '[.prompts[] | select(contains("a verification command modified the spec during the regression check"))] | length == 1' >/dev/null \
+        || { echo "FAILED notes do not attribute the drift to a verification command: $output"; return 1; }
+    # The regression check no longer exempts the spec from CLEAN.
+    printf '%s' "$output" | jq -e '[.prompts[] | select(contains("verifyEachTask") and contains("the spec is NOT exempt"))] | length == 1' >/dev/null \
+        || { echo "regression prompt still exempts the spec: $output"; return 1; }
+}
+
+@test "workflow loop: an unconfirmed spec restore after the regression check stops the run as an error" {
+    command -v node >/dev/null 2>&1 || skip "node not installed"
+    now=$(jq -n "$BUILD_START_EPOCH_JSON")
+    queue=$(jq -cn --argjson now "$now" '[
+        {refreshExit:0, refreshLine:"g2g-lock: refreshed", treeDirty:false, now:$now},
+        {ok:true, detail:"", head:"abc1234def"},
+        {result:"DONE", commit:"abc1234", verified:["x: pass"], notes:""},
+        {specDrift:false, restored:false, detail:""},
+        {ok:false, detail:"make check exited 1", treeCleanBefore:true, treeCleanAfter:false},
+        {specDrift:true, restored:false, detail:"restore failed"}
+    ]')
+    run_one_task_loop '{"verifyEachTask":true,"context":{"verificationCommands":["make check"]}}' "$queue"
+    [[ "$status" -eq 0 ]] || { echo "$output"; return 1; }
+    [[ "$(printf '%s' "$output" | jq -r '.result.outcome')" == "error" ]] || { echo "$output"; return 1; }
+}
+
+@test "workflow loop: every bookkeeping commit is restricted to the spec path on every writer path" {
+    # Codex adversarial review of PR #44: an unrestricted `git commit`
+    # takes whatever the index holds, so a source change a builder or a
+    # verification command staged rode into spec bookkeeping. Drive the
+    # real script down the start, complete, needs-human, and failed writer
+    # paths and check every commit it tells an agent to make.
+    command -v node >/dev/null 2>&1 || skip "node not installed"
+    now=$(jq -n "$BUILD_START_EPOCH_JSON")
+    keeper=$(jq -cn --argjson now "$now" '{refreshExit:0, refreshLine:"g2g-lock: refreshed", treeDirty:false, now:$now}')
+    clean_gate='{"specDrift":false,"restored":false,"detail":""}'
+    all_prompts='[]'
+    for scenario in done needs-decision failed; do
+        case "$scenario" in
+            done)           report='{"result":"DONE","commit":"abc1234","verified":["x: pass"],"notes":""}'
+                            tail='[{"ok":true,"detail":"","commitExists":true}]' ;;
+            needs-decision) report='{"result":"NEEDS_DECISION","commit":"none","verified":[],"decision":"pick","notes":""}'
+                            tail='[{"ok":true,"detail":"","head":"abc1234def"},{"ok":true,"detail":""}]' ;;
+            failed)         report='{"result":"FAILED","commit":"none","verified":[],"notes":"broke"}'
+                            tail='[{"ok":true,"detail":""}]' ;;
+        esac
+        queue=$(jq -cn --argjson k "$keeper" --argjson r "$report" --argjson g "$clean_gate" --argjson t "$tail" \
+            '[$k, {ok:true, detail:"", head:"abc1234def"}, $r, $g] + $t')
+        run_one_task_loop '{}' "$queue"
+        [[ "$status" -eq 0 ]] || { echo "$scenario: $output"; return 1; }
+        all_prompts=$(jq -cn --argjson acc "$all_prompts" --argjson run "$(printf '%s' "$output" | jq -c '.prompts')" '$acc + $run')
+    done
+    commit_prompts=$(printf '%s' "$all_prompts" | jq '[.[] | select(contains("git commit"))] | length')
+    [[ "$commit_prompts" -ge 4 ]] || { echo "expected the start, complete, needs-human and failed writers; saw $commit_prompts"; return 1; }
+    printf '%s' "$all_prompts" | jq -e '
+        [.[] | select(contains("git commit"))
+             | select(test("git commit -m \"[^\"]*\" -- specs/sandbox\\.json`") | not)]
+        | length == 0' >/dev/null \
+        || { echo "a bookkeeping commit lacks the spec pathspec: $all_prompts"; return 1; }
+}
+
+@test "workflow loop: an unusable NEEDS_DECISION (no decision, blank decision, or a named commit) scores FAILED, never blocked" {
+    # build.md Phase 3 step 7: NEEDS_DECISION is usable only with
+    # `commit: none` and non-empty decision text. Blocking on anything less
+    # leaves the human no question and stalls every dependent task (Codex
+    # adversarial review of PR #44).
+    command -v node >/dev/null 2>&1 || skip "node not installed"
+    now=$(jq -n "$BUILD_START_EPOCH_JSON")
+    for report in \
+        '{"result":"NEEDS_DECISION","commit":"none","verified":[],"notes":""}' \
+        '{"result":"NEEDS_DECISION","commit":"none","verified":[],"decision":"   ","notes":""}' \
+        '{"result":"NEEDS_DECISION","commit":"abc1234","verified":[],"decision":"pick one","notes":""}'; do
+        queue=$(jq -cn --argjson now "$now" --argjson r "$report" '[
+            {refreshExit:0, refreshLine:"g2g-lock: refreshed", treeDirty:false, now:$now},
+            {ok:true, detail:"", head:"abc1234def"},
+            $r,
+            {specDrift:false, restored:false, detail:""},
+            {ok:true, detail:""}
+        ]')
+        run_one_task_loop '{}' "$queue"
+        [[ "$status" -eq 0 ]] || { echo "$report: $output"; return 1; }
+        [[ "$(printf '%s' "$output" | jq -r '.result.tasks[0].status')" == "pending" ]] || { echo "$report: $output"; return 1; }
+        [[ "$(printf '%s' "$output" | jq -r '.result.tasks[0].attempts')" == "1" ]] || { echo "$report: $output"; return 1; }
+        [[ "$(printf '%s' "$output" | jq '[.trace[] | select(contains("needs-decision"))] | length')" == "0" ]] \
+            || { echo "$report reached the needs-decision branch: $output"; return 1; }
+    done
+}
+
+@test "wf-loop-runner: never spawns anything — the scripted queue is the only side channel" {
+    grep -q "node:vm" "$RUNNER"
+    grep -q "'use strict'" "$RUNNER"
+    ! grep -q "child_process\|process.env\|writeFileSync" "$RUNNER"
 }

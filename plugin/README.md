@@ -337,6 +337,7 @@ Optional `.claude/g2g.json` in the host repo (see [`.claude/g2g.json`](../.claud
 - `reviewFocus` — **live now**: the categories `/g2g:review` fans out across when `--focus` isn't given.
 - `sourceDirs` — **live now**: the default review targets when `--target` isn't given.
 - `models` — **live now** for `builder`, `verifier`, and `improveCycle`: `/g2g:build` dispatches builder subagents with `models.builder` (falls back to `sonnet` when the field is absent — tasks are pre-decomposed with explicit criteria, a Sonnet-shaped job; every shipped template sets `builder: "sonnet"` explicitly, matching this default) and the verifier with `models.verifier` (default `inherit` — adversarial judgment stays on the session model). `"inherit"` means use the invoking session's model. `models.improveCycle` (default `sonnet`) is passed as `--model` on the `claude -p` process the `/g2g:improve` launcher (and the nightly routine) spawns — it does not support `inherit`, and both spawn sites fail the launch on it: a separate headless process has no session to inherit from (unlike `models.verifier`, a subagent dispatch inside the session, where inheritance is real), and omitting the flag would silently select the machine's CLI default; set an explicit model or omit the field for the `sonnet` default. The value crosses into the spawn command line, so both spawn sites validate it against a strict token pattern (`^[A-Za-z0-9][A-Za-z0-9._-]*$`) and pass it only as a quoted variable — anything else fails the launch rather than being interpolated — it routes the *entire* headless cycle (orchestrator, parallel review subagents, spec generation, and any builder/verifier dispatch inside it that doesn't set its own model), separately from the per-dispatch `models.builder`/`models.verifier` fields above. `models.go` is not read: `/g2g:go` hardcodes `model: sonnet` in its frontmatter (go.md); `/g2g:status` likewise pins `haiku`.
+- `verifyEachTask` — **live now**: opt-in per-task regression check for `/g2g:build` and `/g2g:build-wf` (T-004). Defaults to `false` in every template. When it is exactly `true`, every reported DONE re-runs the full `context.verificationCommands` suite against the builder's own commit, read-only, with a clean tree required both before and after, before the task's `passes: true` is written; any non-zero exit or drift rescores the attempt FAILED (with the failing command, its exit code, and the last 20 lines of its output recorded in the task's notes) instead of letting a regression from this task surface only at the build's finish line. The cost is real: the full verification suite runs once per task in addition to the one run at completion, so turn it on only when a regression that slips past one task's own acceptance criteria is expensive enough to justify that.
 - Artifact locations are fixed at `specs/` and `review-output/` in v1. (An `artifactPaths` override was previously documented as reserved; it has been dropped from the templates until a command actually reads it — a config field with no consumer only invites misconfiguration.)
 
 ## Spec format
@@ -364,6 +365,39 @@ elsewhere:
 - **`verifier`** (top-level, `{verdict, date, summary}`) — written once
   the `g2g-verifier` subagent returns `PASS` at completion; absent (or
   `null` in `specs/example.json`, which was never built) until then.
+
+## NEEDS_DECISION and FLAG lines
+
+A builder normally reports `DONE` or `FAILED`, but a task can need a
+human judgment a spec cannot make on its own — keep vs. delete a
+deprecated path, which of two reasonable API shapes. For that, a
+builder may report `NEEDS_DECISION` instead: no commit (`commit: none`),
+an untouched tree, and a `decision:` field carrying the question, the
+options, and its own recommendation with a reason
+(`plugin/agents/g2g-builder.md` rule 10). `/g2g:build` never trusts a
+builder's own claim about the tree — it checks HEAD against the
+DISPATCH BASELINE and the tree's cleanliness itself before honoring it;
+a check that fails scores the attempt FAILED instead. On success there
+is no new spec status: the task moves to the existing `status: blocked`
+with `notes` prefixed `needs-human: ` and its `attempts` left unchanged
+(a needs-human block is not a failed attempt). `/g2g:status` surfaces
+every needs-human task read-only, and the completion PR body lists it
+under "Needs your attention" → "Decisions for you". The way out is a
+human edit: amend the task's `description`/`acceptanceCriteria` to
+answer the question, clear `notes`, set `status` back to `pending`, and
+`/g2g:build <spec> --continue-branch` to resume — see the
+`writing-g2g-specs` skill for the full convention.
+
+Separately, a builder may leave a `FLAG: ` line in its `notes` for
+anything it could not check that lies OUTSIDE the acceptance criteria —
+an environment or credential it could not reach, a follow-up it
+noticed, a mutation proof it could not perform
+(`plugin/agents/g2g-builder.md` rule 11). A FLAG never substitutes for
+a criterion: an acceptance criterion a builder could not verify is
+`FAILED`, never a FLAG. Every builder's FLAG lines, plus the verifier's
+own `flags:` lines (mutation-evidence gaps, T-002), are collected into
+the completion PR body's "Needs your attention" → "Flags" subsection —
+the one place a human scans for everything nobody else checked.
 
 ## Artifact tracking
 
@@ -530,6 +564,23 @@ algorithm backing it).
   There is no unlimited mode. The wall-clock cap is computed from the
   goal's `buildStart` and needs nothing from the transcript, so it holds
   even if everything else about a run has gone wrong.
+- **Read-only verifier, enforced in two layers** — since 0.8.0,
+  `plugin/agents/g2g-verifier.md`'s frontmatter carries
+  `tools: Read, Grep, Glob, Bash` (no `Edit`, `Write`, or
+  `NotebookEdit`), narrowing what the verifier can invoke directly. That
+  allowlist alone is not the enforcement: Bash remains available and
+  can still write files, so `/g2g:build` Phase 4 backs it with a
+  snapshot compare. Step 1 records a PRE-VERIFY SNAPSHOT — `git
+  rev-parse HEAD` plus `git status --porcelain --untracked-files=all`,
+  the goal/lock/mutex trio filtered out — immediately before dispatching
+  the verifier; step 2 takes the same snapshot again once the
+  POST-WAIT REFRESH exits 0, before reading the verdict. Any difference
+  means the verifier changed the checkout: its verdict (PASS included)
+  is ignored, nothing is written to the spec, nothing is reverted, and
+  the build goes straight to Phase 5 with the drift named (the changed
+  paths, or the new HEAD sha) so the resulting partial PR lists it.
+  `/g2g:build-wf` executes Phase 4 by reference, so it inherits the
+  check with no separate implementation in `plugin/commands/build-wf.md`.
 - **POSIX shell required** — the evidence script needs `bash`; pure
   Windows without git-bash/WSL is unsupported in v1.
 - **`.g2g-goal` and `.g2g-goal.lock`** are ephemeral, gitignored runtime

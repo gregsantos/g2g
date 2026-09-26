@@ -479,7 +479,7 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
 @test "workflow: builder schema fields agree with the agent contract" {
     # The structured result replaces BUILDER REPORT parsing; its fields
     # must track the report block in agents/g2g-builder.md.
-    for k in result commit verified notes; do
+    for k in result commit verified mutation notes; do
         grep -q "$k" "$PLUGIN_DIR/workflows/g2g-build.js" \
             || { echo "builder schema lost field: $k"; return 1; }
         grep -q "$k" "$PLUGIN_DIR/agents/g2g-builder.md" \
@@ -487,6 +487,34 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     done
     # Builders read the contract file at runtime — one source of truth.
     grep -q 'agents/g2g-builder.md' "$PLUGIN_DIR/workflows/g2g-build.js"
+}
+
+@test "workflow: builderSchema's mutation and decision fields are optional; required fields unchanged, result enum gains NEEDS_DECISION" {
+    grep -q "required: \['result', 'commit', 'verified', 'notes'\]" "$PLUGIN_DIR/workflows/g2g-build.js"
+    grep -q "result: { type: 'string', enum: \['DONE', 'FAILED', 'NEEDS_DECISION'\] }" "$PLUGIN_DIR/workflows/g2g-build.js"
+    grep -q "mutation: { type: 'string' }" "$PLUGIN_DIR/workflows/g2g-build.js"
+    grep -q "decision: { type: 'string' }" "$PLUGIN_DIR/workflows/g2g-build.js"
+}
+
+@test "workflow: the complete-writer agent copies the builder's mutation line into notes" {
+    grep -q 'report.mutation' "$PLUGIN_DIR/workflows/g2g-build.js"
+    grep -q "'not reported'" "$PLUGIN_DIR/workflows/g2g-build.js"
+}
+
+@test "workflow: writerSchema gains an optional head field, and the start writer reports HEAD" {
+    grep -q "head: { type: 'string' }" "$PLUGIN_DIR/workflows/g2g-build.js"
+    grep -q 'git rev-parse HEAD.*report the exact output as head' "$PLUGIN_DIR/workflows/g2g-build.js"
+}
+
+@test "workflow: a NEEDS_DECISION report is checked against the DISPATCH BASELINE before scoring" {
+    grep -q "report.result === 'NEEDS_DECISION'" "$PLUGIN_DIR/workflows/g2g-build.js"
+    grep -q 'needs-decision check' "$PLUGIN_DIR/workflows/g2g-build.js"
+    grep -q "task.status = 'blocked'" "$PLUGIN_DIR/workflows/g2g-build.js"
+    grep -q "notesText = \`needs-human: " "$PLUGIN_DIR/workflows/g2g-build.js"
+    # A failed check falls through to the exact same FAILED scoring path
+    # as a malformed DONE — never a separate, looser one.
+    grep -q "report.result = 'FAILED'" "$PLUGIN_DIR/workflows/g2g-build.js"
+    grep -q 'NEEDS_DECISION arrived with changes' "$PLUGIN_DIR/workflows/g2g-build.js"
 }
 
 @test "workflow: caps and ownership loss are enforced in code" {
@@ -872,4 +900,306 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     # is the sole handoff, after exit 0.
     ! grep -q 'then score it by that step' "$PLUGIN_DIR/commands/build.md"
     grep -q 'the ONLY handoff out of this section' "$PLUGIN_DIR/commands/build.md"
+}
+
+@test "safety: g2g-verifier.md frontmatter narrows tools to exactly Read, Grep, Glob, Bash" {
+    # T-001: the tools allowlist is layer one of the read-only-verifier
+    # enforcement — it must name exactly these four tools, no Edit,
+    # Write, or NotebookEdit that would let the verifier mutate the
+    # checkout through a direct tool call.
+    run sed -n '1,10p' "$PLUGIN_DIR/agents/g2g-verifier.md"
+    [[ "$output" == *$'\ntools: Read, Grep, Glob, Bash\n'* ]] \
+        || { echo "tools line missing or not exact in g2g-verifier.md frontmatter"; return 1; }
+    ! grep -qE '^tools:.*(Edit|Write|NotebookEdit)' "$PLUGIN_DIR/agents/g2g-verifier.md"
+}
+
+@test "safety: build.md Phase 4 records a PRE-VERIFY SNAPSHOT before the verifier dispatch" {
+    # Layer two of the read-only-verifier enforcement (T-001): Bash
+    # remains on the verifier's tools list and can still write files, so
+    # the allowlist alone proves nothing — this snapshot-and-compare is
+    # the actual check.
+    grep -q 'PRE-VERIFY SNAPSHOT' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'git rev-parse HEAD' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'git status --porcelain --untracked-files=all' "$PLUGIN_DIR/commands/build.md"
+    # Phase 4 step 1 must record it before dispatch, and reference the
+    # goal/lock/mutex trio as the filtered exemption.
+    grep -q 'goal/lock/mutex trio' "$PLUGIN_DIR/commands/build.md"
+}
+
+@test "safety: build.md Phase 4 compares the snapshot after POST-WAIT REFRESH and before the verdict" {
+    grep -q 'take the same snapshot' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'PRE-VERIFY SNAPSHOT from step 1' "$PLUGIN_DIR/commands/build.md"
+    grep -qi 'verifier changed the checkout' "$PLUGIN_DIR/commands/build.md"
+    # Any drift must ignore the verdict (PASS included), write nothing to
+    # the spec, revert nothing, and route to Phase 5 naming the drift.
+    grep -qi 'ignore its verdict entirely' "$PLUGIN_DIR/commands/build.md"
+    grep -qi 'write nothing to the spec, revert nothing' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'straight to Phase 5' "$PLUGIN_DIR/commands/build.md"
+    grep -qi 'naming the drift' "$PLUGIN_DIR/commands/build.md"
+}
+
+@test "safety: build-wf.md contains no copy of the PRE-VERIFY SNAPSHOT check" {
+    # build-wf.md executes build.md's Phase 4 by reference (F-046-style
+    # composition), so the snapshot check must reach it automatically —
+    # never be duplicated as prose here.
+    ! grep -q 'PRE-VERIFY SNAPSHOT' "$PLUGIN_DIR/commands/build-wf.md"
+    grep -q "build.md's Phase 4" "$PLUGIN_DIR/commands/build-wf.md"
+}
+
+# T-002: mutation proof for new tests. A test that would still pass
+# against broken code is not evidence; rule 9 requires break/FAIL/
+# restore/PASS before the single commit, reported via a new `mutation:`
+# field that is additive (never a hard gate) end to end.
+
+@test "contract: g2g-builder.md rule 9 requires break, FAIL, restore, PASS before the single commit" {
+    grep -q '^9\. Mutation proof' "$PLUGIN_DIR/agents/g2g-builder.md"
+    grep -q 'before your' "$PLUGIN_DIR/agents/g2g-builder.md"
+    grep -q 'run that test and show it FAIL' "$PLUGIN_DIR/agents/g2g-builder.md"
+    grep -q 'restore the code' "$PLUGIN_DIR/agents/g2g-builder.md"
+    grep -q 'run it again and show it PASS' "$PLUGIN_DIR/agents/g2g-builder.md"
+    grep -qi 'must be fixed before you commit' "$PLUGIN_DIR/agents/g2g-builder.md"
+}
+
+@test "contract: the BUILDER REPORT template has mutation: between verified: and notes:" {
+    v_line=$(grep -n '^verified:' "$PLUGIN_DIR/agents/g2g-builder.md" | tail -1 | cut -d: -f1)
+    m_line=$(grep -n '^mutation:' "$PLUGIN_DIR/agents/g2g-builder.md" | tail -1 | cut -d: -f1)
+    n_line=$(grep -n '^notes:' "$PLUGIN_DIR/agents/g2g-builder.md" | tail -1 | cut -d: -f1)
+    [[ -n "$v_line" && -n "$m_line" && -n "$n_line" ]] || { echo "missing one of verified:/mutation:/notes:"; return 1; }
+    [[ "$v_line" -lt "$m_line" ]] || { echo "mutation: is not after verified:"; return 1; }
+    [[ "$m_line" -lt "$n_line" ]] || { echo "mutation: is not before notes:"; return 1; }
+}
+
+@test "contract: build.md step 7 names mutation:, step 8 copies it or defaults to not reported, and never fails on absence alone" {
+    grep -q '`mutation:`' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'never scored FAILED by itself' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'mutation: not reported"' "$PLUGIN_DIR/commands/build.md" || grep -q '`mutation: not reported`' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'mutation: not reported (BUILDER REPORT never arrived)' "$PLUGIN_DIR/commands/build.md"
+}
+
+@test "contract: g2g-verifier.md sends missing mutation evidence to flags, never findings" {
+    grep -q '^6\. Mutation evidence check' "$PLUGIN_DIR/agents/g2g-verifier.md"
+    grep -qi 'never a finding' "$PLUGIN_DIR/agents/g2g-verifier.md"
+    grep -q 'under `flags:`' "$PLUGIN_DIR/agents/g2g-verifier.md"
+    grep -q 'still a FAIL finding under step 3' "$PLUGIN_DIR/agents/g2g-verifier.md"
+}
+
+@test "contract: the VERIFIER REPORT template has flags: after commands:" {
+    c_line=$(grep -n '^commands:' "$PLUGIN_DIR/agents/g2g-verifier.md" | tail -1 | cut -d: -f1)
+    f_line=$(grep -n '^flags:' "$PLUGIN_DIR/agents/g2g-verifier.md" | tail -1 | cut -d: -f1)
+    [[ -n "$c_line" && -n "$f_line" ]] || { echo "missing commands: or flags:"; return 1; }
+    [[ "$c_line" -lt "$f_line" ]] || { echo "flags: is not after commands:"; return 1; }
+}
+
+@test "contract: build.md Phase 4 reads the verifier's flags: field and folds it into the Flags subsection of every PR body (T-003)" {
+    grep -q '`flags:`' "$PLUGIN_DIR/commands/build.md"
+    grep -qi 'treated as none' "$PLUGIN_DIR/commands/build.md"
+    # T-003 moved the verifier's flags lines out of the inline body summary
+    # and into the dedicated ### Flags subsection of the Needs your
+    # attention section — pinned below, not the old inline phrasing.
+    grep -q '### Flags' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'Needs your attention' "$PLUGIN_DIR/commands/build.md"
+}
+
+# T-003: a NEEDS_DECISION exit for a task that cannot be completed without a
+# human choice, and FLAG lines for anything a builder could not check that
+# lies outside the acceptance criteria. Both surface in the PR body's
+# "Needs your attention" section instead of being invisible.
+
+@test "contract: g2g-builder.md allows NEEDS_DECISION, defines decision:, and requires commit: none plus an untouched tree" {
+    grep -q 'result: DONE | FAILED | NEEDS_DECISION' "$PLUGIN_DIR/agents/g2g-builder.md"
+    grep -q '^10\. NEEDS_DECISION' "$PLUGIN_DIR/agents/g2g-builder.md"
+    grep -q '`commit: none`' "$PLUGIN_DIR/agents/g2g-builder.md"
+    grep -qi 'leave the tree exactly as you found it' "$PLUGIN_DIR/agents/g2g-builder.md"
+    grep -q '^decision:' "$PLUGIN_DIR/agents/g2g-builder.md"
+    # Never a substitute for FAILED.
+    grep -qi 'never a substitute for FAILED' "$PLUGIN_DIR/agents/g2g-builder.md"
+}
+
+@test "contract: the BUILDER REPORT template has decision: between mutation: and notes:" {
+    m_line=$(grep -n '^mutation:' "$PLUGIN_DIR/agents/g2g-builder.md" | tail -1 | cut -d: -f1)
+    d_line=$(grep -n '^decision:' "$PLUGIN_DIR/agents/g2g-builder.md" | tail -1 | cut -d: -f1)
+    n_line=$(grep -n '^notes:' "$PLUGIN_DIR/agents/g2g-builder.md" | tail -1 | cut -d: -f1)
+    [[ -n "$m_line" && -n "$d_line" && -n "$n_line" ]] || { echo "missing one of mutation:/decision:/notes:"; return 1; }
+    [[ "$m_line" -lt "$d_line" ]] || { echo "decision: is not after mutation:"; return 1; }
+    [[ "$d_line" -lt "$n_line" ]] || { echo "decision: is not before notes:"; return 1; }
+}
+
+@test "contract: g2g-builder.md has the FLAG rule; an unverifiable criterion is FAILED, never a FLAG" {
+    grep -q '^11\. FLAG lines' "$PLUGIN_DIR/agents/g2g-builder.md"
+    grep -q '`FLAG: `' "$PLUGIN_DIR/agents/g2g-builder.md"
+    grep -qi 'a FLAG never substitutes for a criterion' "$PLUGIN_DIR/agents/g2g-builder.md"
+    grep -qi 'you could not verify with real.*output is FAILED, never a FLAG' "$PLUGIN_DIR/agents/g2g-builder.md"
+}
+
+@test "contract: build.md Phase 3 step 7 counts a NEEDS_DECISION report as usable" {
+    grep -q 'reads as `DONE`, `FAILED`, or `NEEDS_DECISION`' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'for NEEDS_DECISION, `commit:` reads exactly `none`' "$PLUGIN_DIR/commands/build.md"
+}
+
+@test "contract: build.md step 8 checks HEAD and tree itself before honoring a NEEDS_DECISION" {
+    grep -q 'Then, on result NEEDS_DECISION' "$PLUGIN_DIR/commands/build.md"
+    grep -qi 'never trust the builder.s own claim' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'HEAD still equals the DISPATCH BASELINE and the tree is CLEAN' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'set status: blocked, leave `attempts` UNCHANGED' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'notes to `needs-human: `' "$PLUGIN_DIR/commands/build.md"
+    # The entry gate still runs first, and a NEEDS_DECISION it overrules
+    # (spec was dirtied) falls to FAILED, never to the blocked path.
+    grep -qi 'A NEEDS_DECISION this gate overruled' "$PLUGIN_DIR/commands/build.md"
+    grep -q "a reported NEEDS_DECISION this step's own" "$PLUGIN_DIR/commands/build.md"
+}
+
+@test "contract: every gh pr create in build.md passes the body with --body-file from a mktemp -d file" {
+    # 'gh pr create --title "g2g: ...' is the real invocation shape at all
+    # three call sites (Phase 4 steps 5 and 7, Phase 5 step 2); the generic
+    # PR BODY COMPOSITION description uses a `<title>` placeholder instead,
+    # so this pattern counts real invocations only.
+    invocations=$(grep -c 'gh pr create --title "g2g:' "$PLUGIN_DIR/commands/build.md")
+    with_body_file=$(grep -c 'gh pr create --title "g2g:.*--body-file' "$PLUGIN_DIR/commands/build.md")
+    [[ "$invocations" -eq 3 ]] || { echo "expected 3 gh pr create invocations, found $invocations"; return 1; }
+    [[ "$invocations" -eq "$with_body_file" ]] || { echo "not every gh pr create invocation uses --body-file"; return 1; }
+    grep -q 'PR BODY COMPOSITION' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'mktemp -d' "$PLUGIN_DIR/commands/build.md"
+}
+
+@test "safety: conflict and partial PRs are opened as drafts, and the partial label never rides on gh pr create" {
+    # The (conflicts) and (partial) invocations are literal, copy-pasteable
+    # commands, so the draft requirement the prose states must be IN them:
+    # a verbatim run otherwise opens a ready-for-review PR for unfinished
+    # work. The command wraps after --body-file, so read each call site as
+    # the invocation line plus the line that follows it.
+    for kind in conflicts partial; do
+        site=$(grep -A1 "gh pr create --title \"g2g: \$PROJECT_NAME ($kind)\"" "$PLUGIN_DIR/commands/build.md")
+        [[ -n "$site" ]] || { echo "no ($kind) gh pr create call site"; return 1; }
+        [[ "$site" == *"--draft"* ]] || { echo "($kind) gh pr create lacks --draft"; return 1; }
+    done
+    # The clean-completion PR is ready for review, never a draft.
+    clean=$(grep -A1 'gh pr create --title "g2g: $PROJECT_NAME" --body-file' "$PLUGIN_DIR/commands/build.md")
+    [[ "$clean" != *"--draft"* ]] || { echo "the clean-completion PR must not be a draft"; return 1; }
+    # A host repo without the label would fail PR creation outright, so the
+    # label is a separate best-effort edit, created without --force.
+    run grep -E 'gh pr create[^`]*--label' "$PLUGIN_DIR/commands/build.md"
+    [[ "$status" -ne 0 ]] || { echo "a gh pr create carries --label: $output"; return 1; }
+    grep -q 'gh pr edit <pr-url> --add-label g2g:partial' "$PLUGIN_DIR/commands/build.md"
+    run grep -E 'gh label create g2g:partial[^`]*--force' "$PLUGIN_DIR/commands/build.md"
+    [[ "$status" -ne 0 ]] || { echo "label creation must not --force over a human's label"; return 1; }
+    grep -q 'a missing label never blocks step 3' "$PLUGIN_DIR/commands/build.md"
+}
+
+@test "contract: the PR body gains a Needs your attention section with Decisions for you and Flags subsections" {
+    grep -q '## Needs your attention' "$PLUGIN_DIR/commands/build.md"
+    grep -q '### Decisions for you' "$PLUGIN_DIR/commands/build.md"
+    grep -q '### Flags' "$PLUGIN_DIR/commands/build.md"
+    grep -qi 'OMITTED ENTIRELY when both parts below are' "$PLUGIN_DIR/commands/build.md"
+}
+
+@test "contract: status.md reports needs-human tasks and gains no write instruction" {
+    grep -qi 'needs-human' "$PLUGIN_DIR/commands/status.md"
+    grep -q 'read-only (change nothing)' "$PLUGIN_DIR/commands/status.md"
+    # The needs-human step itself must read only — never write, commit, or
+    # edit the spec on a human's behalf.
+    needs_human_block=$(sed -n '/Needs-human tasks (read-only/,/never through this command\./p' "$PLUGIN_DIR/commands/status.md")
+    [[ -n "$needs_human_block" ]] || { echo "no Needs-human tasks step found"; return 1; }
+    echo "$needs_human_block" | grep -qi 'a human answers' \
+        || { echo "needs-human step does not say a human answers, not this command"; return 1; }
+    echo "$needs_human_block" | grep -qiE '\bwrite\b|\bcommit\b|\bmodify\b' \
+        && { echo "needs-human step picked up a write instruction"; return 1; }
+    true
+}
+
+@test "contract: writing-g2g-specs SKILL.md documents the needs-human convention and its recovery path" {
+    grep -qi 'needs-human' "$PLUGIN_DIR/skills/writing-g2g-specs/SKILL.md"
+    grep -q '\-\-continue-branch' "$PLUGIN_DIR/skills/writing-g2g-specs/SKILL.md"
+    grep -qi 'status back to' "$PLUGIN_DIR/skills/writing-g2g-specs/SKILL.md"
+    # The status field's documented values gain no new entry.
+    grep -q 'in_progress.*complete.*blocked' "$PLUGIN_DIR/skills/writing-g2g-specs/SKILL.md"
+}
+
+@test "contract: plugin/README.md and G2G_PLUGIN_REF.md document NEEDS_DECISION and FLAG lines" {
+    grep -q 'NEEDS_DECISION' "$REPO_DIR/plugin/README.md"
+    grep -qi 'FLAG' "$REPO_DIR/plugin/README.md"
+    grep -q 'NEEDS_DECISION' "$REPO_DIR/docs/G2G_PLUGIN_REF.md"
+    grep -qi 'FLAG' "$REPO_DIR/docs/G2G_PLUGIN_REF.md"
+}
+
+# T-004: opt-in per-task regression check (verifyEachTask). Absent or false,
+# behavior is unchanged from 0.7.6; exactly true re-runs the verification
+# suite against a REPORTED DONE's own commit before passes: true flips.
+
+@test "contract: build.md step 8 runs the OPT-IN REGRESSION CHECK only for a reported DONE, gated on verifyEachTask, before passes: true" {
+    grep -q 'OPT-IN REGRESSION CHECK' "$PLUGIN_DIR/commands/build.md"
+    grep -q '`verifyEachTask`' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'default `false` when the file' "$PLUGIN_DIR/commands/build.md"
+    # Never for the NO-REPORT FALLBACK — step 7 (b) already ran the suite.
+    grep -q 'never the NO-REPORT FALLBACK' "$PLUGIN_DIR/commands/build.md"
+    # Runs before passes: true is written.
+    check_line=$(grep -n 'OPT-IN REGRESSION CHECK' "$PLUGIN_DIR/commands/build.md" | head -1 | cut -d: -f1)
+    passes_line=$(sed -n "${check_line},\$p" "$PLUGIN_DIR/commands/build.md" | grep -n 'proceed to write `passes: true`' | head -1 | cut -d: -f1)
+    [[ -n "$passes_line" ]] || { echo "no passes: true write found after the regression check"; return 1; }
+}
+
+@test "contract: build.md's OPT-IN REGRESSION CHECK requires CLEAN before and after, and scores a failure or drift as FAILED with the command, exit code, and output tail" {
+    grep -q 'confirm the precondition' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'Confirm the postcondition' "$PLUGIN_DIR/commands/build.md"
+    grep -q "step 7's definition" "$PLUGIN_DIR/commands/build.md"
+    grep -q "step 7 (c)'s" "$PLUGIN_DIR/commands/build.md"
+    grep -q 'the last 20 lines of its output' "$PLUGIN_DIR/commands/build.md"
+    grep -qi 'the builder.s commit stays on the branch' "$PLUGIN_DIR/commands/build.md"
+    # The FAILED enumeration names this new trigger explicitly.
+    grep -q 'a reported DONE that failed the OPT-IN' "$PLUGIN_DIR/commands/build.md"
+}
+
+@test "safety: build.md's OPT-IN REGRESSION CHECK restores the spec before scoring a failure or drift FAILED" {
+    # The entry gate ran before the verification commands; a spec they
+    # rewrote must never reach the FAILED bookkeeping commit (Codex
+    # adversarial review of PR #44).
+    grep -q 'first apply the SPEC RESTORE rule (step 7 d)' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'must never reach the FAILED' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'caused by a' "$PLUGIN_DIR/commands/build.md"
+}
+
+@test "contract: build.md's OPT-IN REGRESSION CHECK compares HEAD to the builder's commit as full hashes, never the short sha" {
+    # The builder reports a short sha; `git rev-parse HEAD` prints a full
+    # one. Compared directly they never match, so every passing task would
+    # score FAILED (Codex adversarial review of PR #44).
+    grep -q 'git rev-parse <sha>^{commit}' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'comparing full hashes' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'HEAD still equals that same full hash' "$PLUGIN_DIR/commands/build.md"
+}
+
+@test "workflow: g2g-build.js accepts an optional verifyEachTask arg not in the required list, and dispatches a regression agent before the complete writer" {
+    required_line=$(grep -n "for (const key of \['specPath', 'ownerToken', 'pluginRoot', 'branch'," "$PLUGIN_DIR/workflows/g2g-build.js" | head -1 | cut -d: -f1)
+    [[ -n "$required_line" ]] || { echo "missing the required-args validation loop"; return 1; }
+    required_text=$(sed -n "${required_line},+3p" "$PLUGIN_DIR/workflows/g2g-build.js")
+    echo "$required_text" | grep -q 'verifyEachTask' && { echo "verifyEachTask must not be a required arg"; return 1; }
+    grep -q 'a.verifyEachTask === true' "$PLUGIN_DIR/workflows/g2g-build.js"
+    grep -q 'regressionSchema' "$PLUGIN_DIR/workflows/g2g-build.js"
+    grep -q 'regression check' "$PLUGIN_DIR/workflows/g2g-build.js"
+    # Dispatched after a DONE report and before the complete writer.
+    regression_line=$(grep -n "report.result === 'DONE' && a.verifyEachTask === true" "$PLUGIN_DIR/workflows/g2g-build.js" | head -1 | cut -d: -f1)
+    writer_line=$(grep -n "label: \`turn \${turn}: \${task.id} complete\`" "$PLUGIN_DIR/workflows/g2g-build.js" | head -1 | cut -d: -f1)
+    [[ -n "$regression_line" && -n "$writer_line" ]] || { echo "missing regression dispatch or complete writer"; return 1; }
+    [[ "$regression_line" -lt "$writer_line" ]] || { echo "regression agent is not dispatched before the complete writer"; return 1; }
+}
+
+@test "workflow: a failed verifyEachTask regression check turns the report into FAILED and takes the existing FAILED branch" {
+    grep -q "report.result = 'FAILED'" "$PLUGIN_DIR/workflows/g2g-build.js"
+    grep -q 'opt-in regression check (verifyEachTask) failed' "$PLUGIN_DIR/workflows/g2g-build.js"
+    # No separate bookkeeping path — the bottom "FAILED (or malformed-DONE)"
+    # code is the only place task.attempts is incremented.
+    attempts_increments=$(grep -c 'task.attempts += 1' "$PLUGIN_DIR/workflows/g2g-build.js")
+    [[ "$attempts_increments" -eq 1 ]] || { echo "expected exactly one attempts-increment site, found $attempts_increments"; return 1; }
+}
+
+@test "contract: build-wf.md Phase 1 reads verifyEachTask and Phase 3's workflow args carry it" {
+    grep -q "'verifyEachTask'" "$PLUGIN_DIR/commands/build-wf.md" || grep -q '`verifyEachTask`' "$PLUGIN_DIR/commands/build-wf.md"
+    phase1=$(sed -n '/^## Phase 1/,/^## Phase 2/p' "$PLUGIN_DIR/commands/build-wf.md")
+    echo "$phase1" | grep -q 'verifyEachTask' || { echo "Phase 1 does not read verifyEachTask"; return 1; }
+    phase3=$(sed -n '/^## Phase 3/,/^## Phase 4/p' "$PLUGIN_DIR/commands/build-wf.md")
+    echo "$phase3" | grep -q '"verifyEachTask"' || { echo "Phase 3's args do not carry verifyEachTask"; return 1; }
+}
+
+@test "contract: plugin/README.md documents verifyEachTask, its default, and its cost" {
+    grep -q '`verifyEachTask`' "$REPO_DIR/plugin/README.md"
+    grep -qi 'defaults to `false`' "$REPO_DIR/plugin/README.md"
+    grep -qi 'verification suite runs once' "$REPO_DIR/plugin/README.md"
 }

@@ -52,6 +52,17 @@ commands participate in the lock.
    changes nothing and recommends nothing beyond the flag text itself —
    a flagged spec counts as "stuck" for the no-recommendations rule
    below.
+
+   Needs-human tasks (read-only, informational only): for each spec just
+   evaluated above, scan its `tasks[]` for any whose `status` is `blocked`
+   and whose `notes` starts with `needs-human: ` — these are NEEDS_DECISION
+   exits a build could not resolve itself (see the `writing-g2g-specs`
+   skill for the convention and how a human clears one). Report each as
+   its id, title, and the decision text (the notes content after the
+   `needs-human: ` prefix, verbatim). This is a read; a human answers by
+   editing the task (description or criteria) and its spec fields
+   directly, never through this command. A needs-human task counts as
+   "stuck" for the no-recommendations rule below.
 3. PRs: `gh pr list --state open --json headRefName,title,url,isDraft`
    filtered to branches starting with g2g/ (report "gh unavailable" if
    the command fails; don't guess).

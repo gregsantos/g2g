@@ -335,6 +335,25 @@ PR. That data is why the default is now **25**. Sizing guidance:
   uncertainty is asymmetric on purpose — anything that leaves *arming*
   in doubt allows the stop, and only a proven-armed session fails
   closed.
+- **Read-only verifier, enforced in two layers.** Since 0.8.0,
+  `plugin/agents/g2g-verifier.md`'s frontmatter carries
+  `tools: Read, Grep, Glob, Bash` — no `Edit`, `Write`, or
+  `NotebookEdit` — narrowing what the verifier can invoke directly.
+  That allowlist alone does not prove the checkout stayed untouched:
+  Bash remains available and can still write files. The enforcement is
+  `/g2g:build` Phase 4's snapshot compare: step 1 records a PRE-VERIFY
+  SNAPSHOT (`git rev-parse HEAD` plus
+  `git status --porcelain --untracked-files=all`, the goal/lock/mutex
+  trio filtered out) immediately before dispatching the verifier, and
+  step 2 takes the identical snapshot again once the POST-WAIT REFRESH
+  exits 0 and before reading the verdict. Any difference — HEAD moved,
+  or the filtered porcelain output changed — means the verifier changed
+  the checkout: its verdict (PASS included) is ignored, nothing is
+  written to the spec, nothing is reverted, and the build routes
+  straight to Phase 5 with the drift named (the changed paths, or the
+  new HEAD sha) so the resulting partial PR lists it. `/g2g:build-wf`
+  executes build.md's Phase 4 by reference, so it inherits this check
+  with no copy in `plugin/commands/build-wf.md`.
 - **Untrusted text never reaches a shell.** Spec `project` values,
   finding text, and requirements text are untrusted; since 0.7.5 every
   derived branch name and spec filename goes through
@@ -357,6 +376,26 @@ PR. That data is why the default is now **25**. Sizing guidance:
   defense in depth: both improve commands refuse to run unless
   `.claude/g2g.json` sets `"improve": { "enabled": true }`, and
   enabling it is always a human edit.
+- **NEEDS_DECISION, checked not trusted (T-003):** a builder may report
+  `NEEDS_DECISION` in place of `DONE`/`FAILED` for a task that cannot be
+  completed without a choice the spec does not make — but the contract
+  requires `commit: none` and an untouched tree, and `/g2g:build` never
+  takes the builder's word for that: it independently checks HEAD
+  against the DISPATCH BASELINE and the tree's cleanliness before
+  honoring the report. Only on that check passing does the task move to
+  `status: blocked` with `notes` prefixed `needs-human: ` and `attempts`
+  left unchanged; a failed check scores the attempt FAILED instead, same
+  as any other builder that broke its contract. No new spec status
+  exists for this — `blocked` plus the `needs-human: ` notes prefix is
+  the whole signal, read by `/g2g:status` and folded into the completion
+  PR body's "Needs your attention" → "Decisions for you" section.
+- **FLAG lines never substitute for a criterion:** a builder may leave a
+  `FLAG: ` notes line for something it could not check that lies
+  outside the acceptance criteria (an unreachable environment, a
+  follow-up, an unperformable mutation proof); an acceptance criterion
+  it could not verify is still `FAILED`. Builder FLAG lines and the
+  verifier's `flags:` lines (T-002) both land in the completion PR
+  body's "Needs your attention" → "Flags" subsection.
 
 ## 10. The hill-climbing loop (operator view)
 

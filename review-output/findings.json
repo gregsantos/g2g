@@ -14,11 +14,11 @@
     "lastReviewedSha": "23649449d506c9aa0aceeeb157ae08313ba7bf66"
   },
   "summary": {
-    "total": 67,
+    "total": 68,
     "critical": 0,
     "high": 3,
     "medium": 31,
-    "low": 33,
+    "low": 34,
     "info": 0
   },
   "findings": [
@@ -891,6 +891,22 @@
       "description": "Both copies of resolve_anchor() \u2014 plugin/scripts/g2g-lock.sh and plugin/scripts/g2g-stop.sh, added by PR #14 for F-064 \u2014 carry a comment asserting that GIT_DIR/GIT_WORK_TREE pointing elsewhere falls back to the CWD. That is factually wrong, reproduced during PR #14's adversarial verification: with GIT_WORK_TREE set to another repository and the CWD outside any repository, git rev-parse --show-toplevel SUCCEEDS and the lock is created at that other worktree's root rather than in the CWD. The runtime behavior is defensible (honoring an explicit GIT_WORK_TREE is arguably correct) and both scripts agree, so there is no helper/hook divergence and no safety hole today \u2014 but two load-bearing scripts document a safety property they do not have, which is exactly the kind of comment a future change would rely on. Also noted in the same review, and bundled here rather than filed separately: the new 'unresolvable anchor still allows the stop' test in tests/plugin_stop.bats writes no goal file, so it allows at Tier 0 and would pass even with the anchor removed; no test covers the non-repository fallback actually FINDING a goal at the starting directory.",
       "suggestion": "Correct the comment in both scripts to describe what actually happens: the anchor is whatever git resolves as the enclosing worktree root, INCLUDING an explicitly exported GIT_WORK_TREE, and the CWD fallback applies only when git cannot resolve a worktree root at all. Decide deliberately whether honoring an exported GIT_WORK_TREE is the wanted behavior and say so in the comment either way. Separately, strengthen the fallback test so it pins the behavior it names: arm a goal in a non-repository starting directory and assert the hook finds it there.",
       "effort": "small",
+      "addressed": null
+    },
+    {
+      "id": "F-068",
+      "category": "bug",
+      "severity": "low",
+      "confidence": "high",
+      "file": "plugin/commands/build.md",
+      "line": null,
+      "title": "PRE-VERIFY SNAPSHOT compares porcelain status, not file contents",
+      "description": "build.md Phase 4's PRE-VERIFY SNAPSHOT (0.8.0) compares HEAD plus `git status --porcelain --untracked-files=all` before and after the verifier. Porcelain is not content-sensitive: overwriting a file that was already modified (` M path`) or already untracked (`?? path`) leaves its entry identical, so a verifier or verification command that rewrites such a file passes the gate. Phase 4 imposes no clean-tree precondition (Phase 3 step 3's tree check runs at turn start, SURFACED-FOREIGN untracked files are deliberately left in place, and the build-wf path can reach Phase 4 straight after its last DONE). The implementation matches T-001's acceptance criterion, which specified the porcelain comparison. Exposure is limited to the contents of paths already dirty or untracked at Phase 4 entry: HEAD cannot move undetected, any new path appears as `??`, and Phase 4 step 5's rebase refuses unstaged tracked changes. Raised by the second and third Codex adversarial reviews of PR #44; the final branch review ruled it a non-blocking follow-up.",
+      "suggestion": "Either run Phase 3 step 3's tree check at Phase 4 entry so the snapshot starts from a classified tree and require clean tracked/index state before dispatch, or make the snapshot content-sensitive: add `git diff HEAD | git hash-object --stdin` and a hash of each remaining untracked file (`git ls-files -o --exclude-standard -z | xargs -0 git hash-object`) to both snapshots. Pin with a test where the verifier rewrites an already-dirty file without changing its status entry.",
+      "effort": "small",
+      "references": [
+        "https://github.com/gregsantos/g2g/pull/44"
+      ],
       "addressed": null
     }
   ]

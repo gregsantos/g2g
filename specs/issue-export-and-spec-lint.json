@@ -1,0 +1,92 @@
+{
+  "project": "Issue Export and Spec Lint",
+  "description": "Spec B of two (spec A: specs/build-loop-integrity.json, which must merge first and ships 0.8.0). An advisory spec lint that warns before any money is spent, and an opt-in one-way GitHub Issues export of the findings backlog (fixes F-013), with improve fix PRs closing the issues of the findings they address. findings.json stays the source of truth.",
+  "context": {
+    "currentState": "As of plugin 0.8.0 (spec A merged): nothing warns about acceptance criteria with no runnable command or observable outcome before a build spends money. review-output/findings.json is visible only in the repo (open finding F-013); nothing links findings to GitHub issues or closes them from fix PRs.",
+    "targetState": "g2g-spec-lint.sh warns on uncheckable criteria at /g2g:spec time and at build preflight, never blocking. An opt-in github.issueExport flag makes standalone /g2g:review export open findings to GitHub issues through a tested helper script, and improve fix PRs close the issues of the findings they address.",
+    "constraints": [
+      "Build this only after specs/build-loop-integrity.json has merged: its 0.8.0 release is the base.",
+      "build-wf.md executes build.md Phases 1, 2, 4 and 5 by reference; changes to those phases must NOT be copied into build-wf.md.",
+      "g2g-evidence.sh output and exit codes stay byte-identical: tests/plugin_evidence.bats and tests/plugin_stop.bats pass without modification.",
+      "The new config flag github.issueExport defaults to false in every plugin/templates/*.json, pinned by tests/templates.bats; with it absent or false, behavior is unchanged.",
+      "Untrusted text never enters shell command source (L-004, docs/learnings/commands/untrusted-text-in-shell-templates.md): finding text and spec criterion text are read by helper scripts from files, and reach gh only via --body-file or files.",
+      "Security-category findings are never exported to GitHub issues: a public issue discloses the vulnerability.",
+      "Headless improve ticks never create or close GitHub issues; only a standalone /g2g:review exports.",
+      "Version bump happens exactly once, in T-001, to 0.8.1 (or the next patch above the base if 0.8.1 is taken) with a matching CHANGELOG.md section. Later tasks append bullets to that section and never bump again.",
+      "Known debt, tracked and not fixed here: the new config default extends F-029. Do not refactor it in this spec.",
+      "make smoke and make smoke-wf are the human merge gate for this PR (commands change); they are not verification commands here."
+    ],
+    "verificationCommands": [
+      "make check"
+    ]
+  },
+  "tasks": [
+    {
+      "id": "T-001",
+      "title": "Lint specs for uncheckable criteria before building",
+      "description": "Warn before any money is spent when a task has nothing checkable in it. Add plugin/scripts/g2g-spec-lint.sh <spec.json>, heuristic and advisory. It reads criteria only through jq (criterion text is untrusted and never evaluated) and prints one line per warning, 'g2g-spec-lint: WARN <task-id>: <reason>', then a summary line 'g2g-spec-lint: <n> warning(s)'. Warnings: (a) a task none of whose acceptance criteria has a runnable or observable anchor: a backtick-quoted span, one of the spec's context.verificationCommands verbatim, a path-like token (contains '/' or ends in a file extension), or an outcome verb (exits, passes, fails, prints, outputs, returns, contains, lists, matches); (b) any criterion containing a vague phrase from a fixed list in the script (works correctly, as expected, properly, robust, clean, fast, efficient, intuitive, user-friendly, gracefully, appropriate), quoting the phrase; (c) a task with an empty acceptanceCriteria array. It exits 0 whether or not it warns, and 2 only when the file is missing or not JSON; it never blocks a build. Callers: plugin/commands/spec.md adds step 5a, which runs the lint after the evidence check, revises any warned criteria once, re-runs, and lists the remaining warnings in the report. build.md Phase 1 adds step 5a, which runs it and prints its output verbatim as a warning, never aborting; if the script cannot run, say so and continue, because it is advisory, unlike the evidence script. build-wf.md inherits Phase 1 by reference. g2g-evidence.sh is untouched. Document the lint in plugin/README.md and in writing-g2g-specs/SKILL.md's acceptance-criteria section. Owns the version bump for the whole spec: set plugin/.claude-plugin/plugin.json to 0.8.1 and add a matching CHANGELOG.md section in this task's commit; the other tasks append to it and never bump.",
+      "acceptanceCriteria": [
+        "plugin/scripts/g2g-spec-lint.sh exists, is shellcheck-clean, and its header documents the heuristics and exit codes",
+        "tests/plugin_spec_lint.bats covers, using fixture specs: a fully anchored spec gives 0 warnings and exit 0; a vague criterion gives a warning quoting the phrase and exit 0; a task with no anchored criterion gives a warning; an empty criteria array gives a warning; invalid JSON gives exit 2",
+        "tests/plugin_spec_lint.bats asserts that a criterion containing $(touch <marker>) and backticks leaves the marker file absent",
+        "spec.md step 5a and build.md Phase 1 step 5a call g2g-spec-lint.sh and state that warnings never abort",
+        "tests/plugin_evidence.bats passes unmodified",
+        "plugin/README.md and writing-g2g-specs/SKILL.md document the lint",
+        "plugin/.claude-plugin/plugin.json version is 0.8.1 and CHANGELOG.md has a 0.8.1 section describing the lint",
+        "make check passes"
+      ],
+      "dependsOn": [],
+      "status": "pending",
+      "passes": false,
+      "effort": "medium",
+      "notes": "",
+      "attempts": 0
+    },
+    {
+      "id": "T-002",
+      "title": "Export open findings to GitHub issues (opt-in, one-way)",
+      "description": "Fixes F-013 (phase 1 of its suggestion; its phase 3, importing human-filed issues, stays out of scope). A one-way export: findings.json stays the source of truth, and selection never reads issue state. (1) Add plugin/scripts/g2g-issues.sh as the sole implementation: 'g2g-issues.sh export <findings.json>'. It reads finding text only from the JSON (jq) and writes titles and bodies to files in a 'mktemp -d' directory; nothing from a finding ever appears in command source (L-004). For each open finding (addressed null or absent) with severity != info, confidence != low, category != security, and no 'issue' field: first look for an existing issue (gh issue list --label g2g --state all --search '<id> in:title' --json number,title, matching the exact '[<id>] ' title prefix) and reuse its number, so a lost write-back never creates a duplicate; otherwise create one titled '[<id>] <title>', labeled g2g, whose body holds the description, file:line and suggestion plus a footer saying findings.json is authoritative and this issue is a one-way export. Ensure the label exists first (gh label create g2g --force). Write each issue number back to that finding's 'issue' field (jq to a temp file, then mv). For every finding whose addressed is 'stale-<date>' or 'rejected-<date>' and whose issue is still open, close it as not planned with a one-line comment giving the reason. Security findings are never exported, because a public issue discloses the vulnerability. Exit codes: 0 done; 2 usage error or missing/invalid findings file; 3 skipped because gh is missing or 'gh auth status' fails, findings file untouched; 4 partial, some gh calls failed and only the successful numbers were written back. Output: one line per action and a summary line. (2) Add an optional 'issue' (number|null) field to the findings schema table in plugin/skills/reviewing-codebase/SKILL.md; reviews preserve it exactly like addressed. (3) Add an optional \"github\": {\"issueExport\": false} block to every plugin/templates/*.json. (4) plugin/commands/review.md: after step 6's validation and before step 7, when github.issueExport is exactly true, run the script, report its output, re-run step 6's jq validation, and never fail the review on exit 3 or 4. Amend review.md's opening ('You change NOTHING except two artifacts') to name this opt-in export as its one outward-facing action. (5) plugin/commands/improve-cycle.md Phase I-1 runs review.md with the export step skipped: headless ticks never create or close issues, and the next standalone /g2g:review picks up their findings and stale marks. Append a bullet to the CHANGELOG 0.8.1 section; no version bump.",
+      "acceptanceCriteria": [
+        "plugin/scripts/g2g-issues.sh exists, is shellcheck-clean, and its header documents usage, eligibility rules and exit codes",
+        "tests/plugin_issues.bats runs the script against a fake gh on PATH in a hermetic fixture (temp HOME, a repo dir distinct from HOME, the tool's env vars blanked, GIT_CONFIG_GLOBAL=/dev/null GIT_CONFIG_NOSYSTEM=1 on any git it spawns)",
+        "those tests assert: only eligible findings get issues (info, low-confidence, security, addressed and already-issued findings are skipped); an existing '[F-0XX] ' issue is reused, not duplicated; stale and rejected findings with an open issue get it closed",
+        "those tests assert: a finding title containing $(...) and backticks reaches the fake gh as literal text and a marker file it would create is absent; gh missing gives exit 3 with the findings file byte-identical; a partial gh failure gives exit 4 with only the successful numbers written",
+        "reviewing-codebase/SKILL.md documents the optional 'issue' field and that reviews preserve it",
+        "every plugin/templates/*.json contains \"github\": {\"issueExport\": false} and tests/templates.bats asserts it",
+        "review.md runs g2g-issues.sh only when github.issueExport is exactly true, re-validates findings.json afterwards, never fails on exit 3 or 4, and its opening names the export",
+        "improve-cycle.md Phase I-1 skips the export step",
+        "tests/commands.bats pins review.md's call to g2g-issues.sh, the absence of any 'gh issue' command written directly in review.md, and improve-cycle's skip",
+        "make check passes"
+      ],
+      "dependsOn": [
+        "T-001"
+      ],
+      "status": "pending",
+      "passes": false,
+      "effort": "large",
+      "notes": "",
+      "attempts": 0
+    },
+    {
+      "id": "T-003",
+      "title": "Close finding issues from improve PRs",
+      "description": "Completes F-013's phase 2 (closing issues from fix PRs). In plugin/commands/improve-cycle.md Phase I-5, after step 1 marks findings addressed, and only when github.issueExport is exactly true: collect the 'issue' numbers of those findings (each must match ^[0-9]+$; skip anything else), write the PR's current body (gh pr view <pr> --json body --jq .body) plus one 'Closes #<n>' line per issue to a file in a 'mktemp -d' directory, and apply it with 'gh pr edit <pr> --body-file <file>'. This is a GitHub API call, not a commit: it adds no commit and no push. A gh failure is reported and never fails the cycle. GitHub closes the issues only when a human merges the PR; a PR closed unmerged leaves them open, which is why Phase I-2 step 1a's reopen needs no issue step. Document the linkage in docs/G2G_PLUGIN_REF.md section 2 (findings backlog) and plugin/README.md's Review & the improve flywheel section: one-way export, findings.json authoritative, headless ticks never create issues, security findings never exported. Append a bullet to the CHANGELOG 0.8.1 section; no version bump.",
+      "acceptanceCriteria": [
+        "improve-cycle.md Phase I-5 appends 'Closes #<n>' lines via gh pr edit --body-file only when github.issueExport is exactly true, and validates each number against ^[0-9]+$",
+        "improve-cycle.md gains no git commit and no git push (its count of 'git push' is unchanged)",
+        "docs/G2G_PLUGIN_REF.md section 2 and plugin/README.md describe the issue linkage, that findings.json stays the source of truth, that headless ticks never create issues, and that security findings are never exported",
+        "a tests/commands.bats test pins the 'Closes #' step and its config gate",
+        "make check passes"
+      ],
+      "dependsOn": [
+        "T-002"
+      ],
+      "status": "pending",
+      "passes": false,
+      "effort": "small",
+      "notes": "",
+      "attempts": 0
+    }
+  ],
+  "verifier": null
+}
