@@ -536,7 +536,14 @@ condition is MET block the stop.
    the tree is CLEAN again (step 7 (c)'s definition). If every command
    exited 0 and the postcondition holds, proceed to write `passes: true`
    below. Otherwise — a non-zero exit from any command, or any drift in
-   the postcondition — the builder's commit stays on the branch (never
+   the postcondition — first apply the SPEC RESTORE rule (step 7 d)
+   against the DISPATCH BASELINE, even though (d) is otherwise scoped to
+   fallback outcomes: the verification commands ran arbitrary code after
+   the entry gate, and a spec they rewrote must never reach the FAILED
+   bookkeeping commit below. Confirm both `git diff --quiet` forms exit 0,
+   and have the notes name any restored spec drift as caused by a
+   verification command during this check, not by the builder.
+   The builder's commit stays on the branch (never
    revert, amend, or otherwise fix it), but this attempt scores FAILED
    by the paragraph below exactly like any other FAILED (`attempts`
    incremented, blocked at 2 as usual), with notes naming the first

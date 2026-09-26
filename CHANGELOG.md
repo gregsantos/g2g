@@ -129,6 +129,17 @@ which the allowlist cannot restrict.
   scored FAILED. `tests/lib/wf-loop-runner.mjs` also records each agent
   prompt, so tests assert what the shipped script tells an agent to run.
   Codex adversarial review of PR #44.
+- The verifyEachTask check re-gates the spec after its verification
+  commands run, in both engines. Those commands execute arbitrary code
+  after the first SPEC RESTORE gate, so a command that rewrote criteria or
+  pass flags could reach the bookkeeping commit — `g2g-build.js` even
+  exempted the spec from the check's clean-tree test, contrary to build.md's
+  CLEAN definition. The workflow now runs the SPEC RESTORE gate again after
+  the check on every outcome (drift is restored and scores FAILED, with
+  notes blaming the verification command, not the builder), and the check
+  no longer exempts the spec; build.md applies the SPEC RESTORE rule before
+  scoring a regression failure or drift. Second Codex adversarial review of
+  PR #44.
 
 ## 0.7.6 (2026-09-17)
 

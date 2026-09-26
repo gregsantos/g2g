@@ -895,6 +895,7 @@ BUILD_START_EPOCH_JSON='("2026-09-17T00:00:00Z"|fromdateiso8601)'
         {specDrift:false, restored:false, detail:""},
         {ok:false, detail:"make check exited 2; last 20 lines: ...regression tail...",
          treeCleanBefore:true, treeCleanAfter:true},
+        {specDrift:false, restored:false, detail:""},
         {ok:true, detail:""}
     ]')
     input=$(jq -cn --argjson args "$args" --argjson queue "$queue" '{args:$args, queue:$queue}')
@@ -1015,6 +1016,7 @@ run_one_task_loop() {
         {result:"DONE", commit:"abc1234", verified:["x: pass"], notes:""},
         {specDrift:false, restored:false, detail:""},
         {ok:true, detail:"", treeCleanBefore:true, treeCleanAfter:true},
+        {specDrift:false, restored:false, detail:""},
         {ok:true, detail:"", commitExists:true}
     ]')
     run_one_task_loop '{"verifyEachTask":true,"context":{"verificationCommands":["make check"]}}' "$queue"
@@ -1024,6 +1026,58 @@ run_one_task_loop() {
     [[ "$regression_prompt" == *'git rev-parse abc1234^{commit}'* ]] || { echo "short sha is not resolved: $regression_prompt"; return 1; }
     [[ "$regression_prompt" == *'still equals FULL'* ]] || { echo "postcondition does not compare the full hash: $regression_prompt"; return 1; }
     [[ "$regression_prompt" != *'still equals "abc1234"'* ]] || { echo "postcondition compares the short sha: $regression_prompt"; return 1; }
+}
+
+@test "workflow loop: a verification command that rewrites the spec during a passing regression check scores FAILED, restored before bookkeeping" {
+    # Codex adversarial review of PR #44: the first SPEC RESTORE gate runs
+    # before the regression check, and the verification commands run
+    # arbitrary code after it. The spec is re-gated after the check on
+    # every outcome — here the check itself passed — so the complete
+    # writer never commits a rewritten spec.
+    command -v node >/dev/null 2>&1 || skip "node not installed"
+    now=$(jq -n "$BUILD_START_EPOCH_JSON")
+    queue=$(jq -cn --argjson now "$now" '[
+        {refreshExit:0, refreshLine:"g2g-lock: refreshed", treeDirty:false, now:$now},
+        {ok:true, detail:"", head:"abc1234def"},
+        {result:"DONE", commit:"abc1234", verified:["x: pass"], notes:""},
+        {specDrift:false, restored:false, detail:""},
+        {ok:true, detail:"", treeCleanBefore:true, treeCleanAfter:true},
+        {specDrift:true, restored:true, detail:"working-tree form differed"},
+        {ok:true, detail:""}
+    ]')
+    run_one_task_loop '{"verifyEachTask":true,"context":{"verificationCommands":["make check"]}}' "$queue"
+    [[ "$status" -eq 0 ]] || { echo "$output"; return 1; }
+    [[ "$(printf '%s' "$output" | jq -r '.result.tasks[0].status')" == "pending" ]] || { echo "$output"; return 1; }
+    [[ "$(printf '%s' "$output" | jq -r '.result.tasks[0].attempts')" == "1" ]] || { echo "$output"; return 1; }
+    [[ "$(printf '%s' "$output" | jq '[.trace[] | select(endswith(" complete"))] | length')" == "0" ]] || { echo "the complete writer ran: $output"; return 1; }
+    # The second gate runs AFTER the regression check, not only before it.
+    printf '%s' "$output" | jq -e '
+        (.trace | map(contains("regression check")) | index(true)) as $r
+        | (.trace | map(contains("spec re-gate after verification")) | index(true)) as $g
+        | $r != null and $g != null and $g > $r' >/dev/null \
+        || { echo "no spec gate after the regression check: $output"; return 1; }
+    # The notes blame the verification command, not the builder.
+    printf '%s' "$output" | jq -e '[.prompts[] | select(contains("a verification command modified the spec during the regression check"))] | length == 1' >/dev/null \
+        || { echo "FAILED notes do not attribute the drift to a verification command: $output"; return 1; }
+    # The regression check no longer exempts the spec from CLEAN.
+    printf '%s' "$output" | jq -e '[.prompts[] | select(contains("verifyEachTask") and contains("the spec is NOT exempt"))] | length == 1' >/dev/null \
+        || { echo "regression prompt still exempts the spec: $output"; return 1; }
+}
+
+@test "workflow loop: an unconfirmed spec restore after the regression check stops the run as an error" {
+    command -v node >/dev/null 2>&1 || skip "node not installed"
+    now=$(jq -n "$BUILD_START_EPOCH_JSON")
+    queue=$(jq -cn --argjson now "$now" '[
+        {refreshExit:0, refreshLine:"g2g-lock: refreshed", treeDirty:false, now:$now},
+        {ok:true, detail:"", head:"abc1234def"},
+        {result:"DONE", commit:"abc1234", verified:["x: pass"], notes:""},
+        {specDrift:false, restored:false, detail:""},
+        {ok:false, detail:"make check exited 1", treeCleanBefore:true, treeCleanAfter:false},
+        {specDrift:true, restored:false, detail:"restore failed"}
+    ]')
+    run_one_task_loop '{"verifyEachTask":true,"context":{"verificationCommands":["make check"]}}' "$queue"
+    [[ "$status" -eq 0 ]] || { echo "$output"; return 1; }
+    [[ "$(printf '%s' "$output" | jq -r '.result.outcome')" == "error" ]] || { echo "$output"; return 1; }
 }
 
 @test "wf-loop-runner: never spawns anything — the scripted queue is the only side channel" {

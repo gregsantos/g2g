@@ -1148,6 +1148,15 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     grep -q 'a reported DONE that failed the OPT-IN' "$PLUGIN_DIR/commands/build.md"
 }
 
+@test "safety: build.md's OPT-IN REGRESSION CHECK restores the spec before scoring a failure or drift FAILED" {
+    # The entry gate ran before the verification commands; a spec they
+    # rewrote must never reach the FAILED bookkeeping commit (Codex
+    # adversarial review of PR #44).
+    grep -q 'first apply the SPEC RESTORE rule (step 7 d)' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'must never reach the FAILED' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'caused by a' "$PLUGIN_DIR/commands/build.md"
+}
+
 @test "contract: build.md's OPT-IN REGRESSION CHECK compares HEAD to the builder's commit as full hashes, never the short sha" {
     # The builder reports a short sha; `git rev-parse HEAD` prints a full
     # one. Compared directly they never match, so every passing task would

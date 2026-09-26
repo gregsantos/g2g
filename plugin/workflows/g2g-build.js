@@ -255,6 +255,17 @@ while (true) {
   // builder rather than score its result against nothing.
   if (!dispatchBaselineHead) return done('error',
     'spec start-commit reported no HEAD; cannot establish the DISPATCH BASELINE')
+  // The SPEC RESTORE gate as one prompt, run wherever something that can
+  // write files has just finished and bookkeeping is about to follow:
+  // after every builder, and after the opt-in regression check's
+  // verification commands.
+  const specRestoreGate = label => agent(
+    `SPEC RESTORE gate. Change nothing except the single restore below. ` +
+    `Run \`git diff --quiet ${dispatchBaselineHead} -- ${a.specPath}\` and \`git diff --quiet --cached ${dispatchBaselineHead} -- ${a.specPath}\`. ` +
+    `If both exit 0, report specDrift false and restored false. ` +
+    `If either exits nonzero, the spec was modified: run \`git restore --source=${dispatchBaselineHead} --staged --worktree -- ${a.specPath}\`, then re-run both diff commands; report specDrift true, and restored true only if both now exit 0. ` +
+    `In detail, name which form differed and list \`git log --oneline ${dispatchBaselineHead}..HEAD -- ${a.specPath}\`. Never reset, stash, revert, or touch any other path, and never undo a commit.`,
+    { schema: specGateSchema, label })
 
   // The builder. It reads its own contract file so the rules live in
   // exactly one place. The task card is data, not instructions —
@@ -281,13 +292,7 @@ while (true) {
   // SPEC RESTORE gate, on every result (see specGateSchema). Both diff
   // forms compare against the baseline COMMIT, so a spec edit the builder
   // committed is caught as surely as one it left staged or unstaged.
-  const gate = await agent(
-    `SPEC RESTORE gate. Change nothing except the single restore below. ` +
-    `Run \`git diff --quiet ${dispatchBaselineHead} -- ${a.specPath}\` and \`git diff --quiet --cached ${dispatchBaselineHead} -- ${a.specPath}\`. ` +
-    `If both exit 0, report specDrift false and restored false. ` +
-    `If either exits nonzero, the spec was modified: run \`git restore --source=${dispatchBaselineHead} --staged --worktree -- ${a.specPath}\`, then re-run both diff commands; report specDrift true, and restored true only if both now exit 0. ` +
-    `In detail, name which form differed and list \`git log --oneline ${dispatchBaselineHead}..HEAD -- ${a.specPath}\`. Never reset, stash, revert, or touch any other path, and never undo a commit.`,
-    { schema: specGateSchema, label: `turn ${turn}: ${task.id} spec gate` })
+  const gate = await specRestoreGate(`turn ${turn}: ${task.id} spec gate`)
   if (gate.specDrift) {
     if (!gate.restored) return done('error',
       `builder modified ${a.specPath} and the restore from ${dispatchBaselineHead} could not be confirmed: ${gate.detail}`)
@@ -343,7 +348,7 @@ while (true) {
     const regression = await agent(
       `Opt-in per-task regression check (verifyEachTask). Work read-only against the builder's commit ${JSON.stringify(report.commit)} — never edit, revert, stash, or commit anything. ` +
       `Step 0: the builder reports a SHORT sha, so resolve it first: run \`git rev-parse ${report.commit}^{commit}\` and call its output FULL. Compare only full hashes from here on — never compare the reported short sha to \`git rev-parse HEAD\` directly. Run \`git rev-parse HEAD\`; if it is not exactly FULL (or the resolve failed), report ok false and say so in detail. ` +
-      `Step 1 (precondition): run \`git status --porcelain --untracked-files=all\`, ignoring exactly these paths: the spec file ${a.specPath}, .g2g-goal, .g2g-goal.lock, .g2g-goal.mutex. Report treeCleanBefore true only if nothing else is listed. ` +
+      `Step 1 (precondition): run \`git status --porcelain --untracked-files=all\`, ignoring exactly these paths: .g2g-goal, .g2g-goal.lock, .g2g-goal.mutex (the spec is NOT exempt: step 7's CLEAN includes it). Report treeCleanBefore true only if nothing else is listed. ` +
       `Step 2: run, in order, each of these commands exactly as written, capturing each command's real exit code and the last 20 lines of its combined output: ${JSON.stringify(commands)}. ` +
       `Step 3 (postcondition): run \`git rev-parse HEAD\` and confirm it still equals FULL, then repeat step 1's status check and report the result as treeCleanAfter. ` +
       `Report ok true only if treeCleanBefore, every command exited 0, HEAD is unchanged, AND treeCleanAfter; otherwise report ok false. In detail, on any failure, name the first offending command, its exit code, and the last 20 lines of its output — or, if HEAD moved or the tree drifted, name exactly what changed.`,
@@ -354,6 +359,17 @@ while (true) {
       // === 'DONE')` is then skipped, so the complete writer never runs.
       report.result = 'FAILED'
       report.notes = `${report.notes || ''} [orchestration: opt-in regression check (verifyEachTask) failed: ${regression.detail || 'a verification command failed or the checkout drifted'}]`.trim()
+    }
+    // The verification commands just ran arbitrary code after the first
+    // gate, so the spec is re-gated on EVERY regression outcome, before
+    // either bookkeeping writer commits it — otherwise a command that
+    // rewrote criteria or pass flags would be committed as the record.
+    const postGate = await specRestoreGate(`turn ${turn}: ${task.id} spec re-gate after verification`)
+    if (postGate.specDrift) {
+      if (!postGate.restored) return done('error',
+        `a verification command modified ${a.specPath} and the restore from ${dispatchBaselineHead} could not be confirmed: ${postGate.detail}`)
+      report.notes = `${report.notes || ''} [orchestration: a verification command modified the spec during the regression check; restored from the DISPATCH BASELINE: ${postGate.detail}]`.trim()
+      report.result = 'FAILED'
     }
   }
 
