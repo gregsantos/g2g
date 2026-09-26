@@ -1080,6 +1080,41 @@ run_one_task_loop() {
     [[ "$(printf '%s' "$output" | jq -r '.result.outcome')" == "error" ]] || { echo "$output"; return 1; }
 }
 
+@test "workflow loop: every bookkeeping commit is restricted to the spec path on every writer path" {
+    # Codex adversarial review of PR #44: an unrestricted `git commit`
+    # takes whatever the index holds, so a source change a builder or a
+    # verification command staged rode into spec bookkeeping. Drive the
+    # real script down the start, complete, needs-human, and failed writer
+    # paths and check every commit it tells an agent to make.
+    command -v node >/dev/null 2>&1 || skip "node not installed"
+    now=$(jq -n "$BUILD_START_EPOCH_JSON")
+    keeper=$(jq -cn --argjson now "$now" '{refreshExit:0, refreshLine:"g2g-lock: refreshed", treeDirty:false, now:$now}')
+    clean_gate='{"specDrift":false,"restored":false,"detail":""}'
+    all_prompts='[]'
+    for scenario in done needs-decision failed; do
+        case "$scenario" in
+            done)           report='{"result":"DONE","commit":"abc1234","verified":["x: pass"],"notes":""}'
+                            tail='[{"ok":true,"detail":"","commitExists":true}]' ;;
+            needs-decision) report='{"result":"NEEDS_DECISION","commit":"none","verified":[],"decision":"pick","notes":""}'
+                            tail='[{"ok":true,"detail":"","head":"abc1234def"},{"ok":true,"detail":""}]' ;;
+            failed)         report='{"result":"FAILED","commit":"none","verified":[],"notes":"broke"}'
+                            tail='[{"ok":true,"detail":""}]' ;;
+        esac
+        queue=$(jq -cn --argjson k "$keeper" --argjson r "$report" --argjson g "$clean_gate" --argjson t "$tail" \
+            '[$k, {ok:true, detail:"", head:"abc1234def"}, $r, $g] + $t')
+        run_one_task_loop '{}' "$queue"
+        [[ "$status" -eq 0 ]] || { echo "$scenario: $output"; return 1; }
+        all_prompts=$(jq -cn --argjson acc "$all_prompts" --argjson run "$(printf '%s' "$output" | jq -c '.prompts')" '$acc + $run')
+    done
+    commit_prompts=$(printf '%s' "$all_prompts" | jq '[.[] | select(contains("git commit"))] | length')
+    [[ "$commit_prompts" -ge 4 ]] || { echo "expected the start, complete, needs-human and failed writers; saw $commit_prompts"; return 1; }
+    printf '%s' "$all_prompts" | jq -e '
+        [.[] | select(contains("git commit"))
+             | select(test("git commit -m \"[^\"]*\" -- specs/sandbox\\.json`") | not)]
+        | length == 0' >/dev/null \
+        || { echo "a bookkeeping commit lacks the spec pathspec: $all_prompts"; return 1; }
+}
+
 @test "wf-loop-runner: never spawns anything — the scripted queue is the only side channel" {
     grep -q "node:vm" "$RUNNER"
     grep -q "'use strict'" "$RUNNER"

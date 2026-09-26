@@ -140,6 +140,13 @@ which the allowlist cannot restrict.
   no longer exempts the spec; build.md applies the SPEC RESTORE rule before
   scoring a regression failure or drift. Second Codex adversarial review of
   PR #44.
+- Every bookkeeping commit in `g2g-build.js` (start, complete, needs-human,
+  failed) now ends `-- <spec-path>`, the BOOKKEEPING COMMIT shape build.md
+  Phase 3 step 5 has required since 0.7.3. Without the pathspec a commit
+  took whatever the index held, so a source change a builder or a
+  verification command had staged rode into spec bookkeeping and out in
+  the PR. The gap predates this release; the regression check made it
+  easier to reach. Third Codex adversarial review of PR #44.
 
 ## 0.7.6 (2026-09-17)
 

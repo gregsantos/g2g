@@ -240,12 +240,16 @@ while (true) {
   }
   if (keeper.treeDirty && keeper.stashRef) stashRef = keeper.stashRef
 
+  // Every bookkeeping commit below ends `-- ${a.specPath}`: build.md Phase
+  // 3 step 5's BOOKKEEPING COMMIT shape. A commit with no pathspec takes
+  // whatever the index holds, so a path a builder or a verification
+  // command staged would ride into spec bookkeeping and out in the PR.
   // Mark in_progress and commit the spec transition (durable state).
   // Reports HEAD after its own commit — the DISPATCH BASELINE a
   // NEEDS_DECISION report is later checked against, mirroring build.md
   // Phase 3 step 5's "record the resulting HEAD" instruction.
   const started = await agent(
-    `In ${a.specPath}, set the task with id ${task.id} to "status": "in_progress" (change nothing else), then run \`git add ${a.specPath} && git commit -m "chore(${task.id}): start"\`. Then run \`git rev-parse HEAD\` and report the exact output as head. Report ok true only if the commit succeeded; put any error text in detail.`,
+    `In ${a.specPath}, set the task with id ${task.id} to "status": "in_progress" (change nothing else), then run \`git add ${a.specPath} && git commit -m "chore(${task.id}): start" -- ${a.specPath}\`. Then run \`git rev-parse HEAD\` and report the exact output as head. Report ok true only if the commit succeeded; put any error text in detail.`,
     { schema: writerSchema, label: `turn ${turn}: ${task.id} start` })
   if (!started.ok) return done('error', `spec start-commit failed: ${started.detail}`)
   task.status = 'in_progress'
@@ -322,7 +326,7 @@ while (true) {
       const decisionText = String(report.decision || '').trim() || 'no decision text reported'
       const notesText = `needs-human: ${decisionText}`
       const wroteBlocked = await agent(
-        `In ${a.specPath}, set task ${task.id} to "status": "blocked" (leave "attempts" unchanged) and "notes" to ${JSON.stringify(notesText)}; change nothing else. Then \`git add ${a.specPath} && git commit -m "chore(${task.id}): needs-human"\`. Report ok true only if the commit succeeded.`,
+        `In ${a.specPath}, set task ${task.id} to "status": "blocked" (leave "attempts" unchanged) and "notes" to ${JSON.stringify(notesText)}; change nothing else. Then \`git add ${a.specPath} && git commit -m "chore(${task.id}): needs-human" -- ${a.specPath}\`. Report ok true only if the commit succeeded.`,
         { schema: writerSchema, label: `turn ${turn}: ${task.id} needs-decision blocked` })
       if (!wroteBlocked.ok) return done('error', `spec needs-decision commit failed: ${wroteBlocked.detail}`)
       task.status = 'blocked'
@@ -381,7 +385,7 @@ while (true) {
       `${report.notes || ''}\nmutation: ${String(report.mutation || '').trim() || 'not reported'}`.trim()
     // Trust but verify: the commit must exist before passes flips.
     const wrote = await agent(
-      `Run \`git cat-file -e ${report.commit}^{commit}\` and report commitExists. If it exists: in ${a.specPath} set task ${task.id} to "status": "complete", "passes": true, and set its "notes" to ${JSON.stringify(notesWithMutation)}; then \`git add ${a.specPath} && git commit -m "chore(${task.id}): complete"\` and report ok true. If it does not exist, change nothing and report ok false with detail "builder commit not found".`,
+      `Run \`git cat-file -e ${report.commit}^{commit}\` and report commitExists. If it exists: in ${a.specPath} set task ${task.id} to "status": "complete", "passes": true, and set its "notes" to ${JSON.stringify(notesWithMutation)}; then \`git add ${a.specPath} && git commit -m "chore(${task.id}): complete" -- ${a.specPath}\` and report ok true. If it does not exist, change nothing and report ok false with detail "builder commit not found".`,
       { schema: writerSchema, label: `turn ${turn}: ${task.id} complete` })
     if (wrote.ok && wrote.commitExists) {
       task.status = 'complete'
@@ -401,7 +405,7 @@ while (true) {
   task.status = blocked ? 'blocked' : 'pending'
   task.notes = report.notes || 'builder failed without notes'
   const failed = await agent(
-    `In ${a.specPath}, set task ${task.id} to "attempts": ${task.attempts}, "status": ${JSON.stringify(task.status)}, and "notes": ${JSON.stringify(String(task.notes))} (change nothing else), then \`git add ${a.specPath} && git commit -m "chore(${task.id}): attempt ${task.attempts}${blocked ? ', blocked' : ''}"\`. Report ok true only if the commit succeeded.`,
+    `In ${a.specPath}, set task ${task.id} to "attempts": ${task.attempts}, "status": ${JSON.stringify(task.status)}, and "notes": ${JSON.stringify(String(task.notes))} (change nothing else), then \`git add ${a.specPath} && git commit -m "chore(${task.id}): attempt ${task.attempts}${blocked ? ', blocked' : ''}" -- ${a.specPath}\`. Report ok true only if the commit succeeded.`,
     { schema: writerSchema, label: `turn ${turn}: ${task.id} failed (attempt ${task.attempts})` })
   if (!failed.ok) return done('error', `spec failure-commit failed: ${failed.detail}`)
 }
