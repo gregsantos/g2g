@@ -14,11 +14,11 @@
     "lastReviewedSha": "23649449d506c9aa0aceeeb157ae08313ba7bf66"
   },
   "summary": {
-    "total": 68,
+    "total": 70,
     "critical": 0,
     "high": 3,
-    "medium": 31,
-    "low": 34,
+    "medium": 32,
+    "low": 35,
     "info": 0
   },
   "findings": [
@@ -903,6 +903,38 @@
       "title": "PRE-VERIFY SNAPSHOT compares porcelain status, not file contents",
       "description": "build.md Phase 4's PRE-VERIFY SNAPSHOT (0.8.0) compares HEAD plus `git status --porcelain --untracked-files=all` before and after the verifier. Porcelain is not content-sensitive: overwriting a file that was already modified (` M path`) or already untracked (`?? path`) leaves its entry identical, so a verifier or verification command that rewrites such a file passes the gate. Phase 4 imposes no clean-tree precondition (Phase 3 step 3's tree check runs at turn start, SURFACED-FOREIGN untracked files are deliberately left in place, and the build-wf path can reach Phase 4 straight after its last DONE). The implementation matches T-001's acceptance criterion, which specified the porcelain comparison. Exposure is limited to the contents of paths already dirty or untracked at Phase 4 entry: HEAD cannot move undetected, any new path appears as `??`, and Phase 4 step 5's rebase refuses unstaged tracked changes. Raised by the second and third Codex adversarial reviews of PR #44; the final branch review ruled it a non-blocking follow-up.",
       "suggestion": "Either run Phase 3 step 3's tree check at Phase 4 entry so the snapshot starts from a classified tree and require clean tracked/index state before dispatch, or make the snapshot content-sensitive: add `git diff HEAD | git hash-object --stdin` and a hash of each remaining untracked file (`git ls-files -o --exclude-standard -z | xargs -0 git hash-object`) to both snapshots. Pin with a test where the verifier rewrites an already-dirty file without changing its status entry.",
+      "effort": "small",
+      "references": [
+        "https://github.com/gregsantos/g2g/pull/44"
+      ],
+      "addressed": null
+    },
+    {
+      "id": "F-069",
+      "category": "bug",
+      "severity": "medium",
+      "confidence": "high",
+      "file": "plugin/commands/build.md",
+      "line": null,
+      "title": "Phase 4 fix-builder commits fail the verifier's own commit-hygiene check",
+      "description": "build.md Phase 4 step 3 tells the orchestrator to 'treat [each verifier finding] as a fix task' and dispatch a fix-builder, but never says which task id the fix-builder's commit carries or how the fix is recorded in the spec. g2g-builder.md rule 6 requires a `feat(<task-id>): <title>` commit, so a fix-builder invents an id (observed: 'FIX-1'). g2g-verifier.md procedure step 4 then flags it: every commit touching source files must be a `feat(T-xxx)` builder commit for a task in the spec. Result: a correct fix makes the re-verify round FAIL on hygiene alone, and with REVERIFY_CAP 2 the build routes to a partial PR. Observed in the 2026-09-26 `make smoke-wf` run for PR #44: round 1 found a real hang, the fix-builder fixed it (a737de4), and round 2 passed every criterion but failed only because 'a737de4 isn't a feat(T-xxx) commit and FIX-1 isn't a task in the spec'. Any build whose first verification finds anything therefore cannot complete. Applies to both engines (build-wf runs build.md's Phase 4 by reference).",
+      "suggestion": "Give fix rounds a defined identity in both the contract and the check: build.md Phase 4 step 3 hands each fix-builder the task id its finding traces to (or the verifier's finding number when it spans tasks) and requires a `fix(<task-id>): <finding summary>` commit, then appends the fix commit sha and the finding to that task's notes as bookkeeping; g2g-verifier.md step 4 accepts `fix(T-xxx)` commits whose task exists in the spec, alongside `feat(T-xxx)`. Pin with commands.bats for both files and add a smoke assertion that a FAIL-then-fix run can still reach COMPLETE.",
+      "effort": "small",
+      "references": [
+        "https://github.com/gregsantos/g2g/pull/44"
+      ],
+      "addressed": null
+    },
+    {
+      "id": "F-070",
+      "category": "code-quality",
+      "severity": "low",
+      "confidence": "medium",
+      "file": "plugin/workflows/g2g-build.js",
+      "line": null,
+      "title": "Workflow copies a builder's whole report into the task's notes",
+      "description": "In the 2026-09-26 `make smoke-wf` run for PR #44, the orchestrator reported that the build-loop 'pasted T-002's entire builder report into that task's notes field'. g2g-build.js copies the structured `notes` field verbatim into the spec (complete writer and FAILED writer), and nothing bounds what a builder puts there, so a builder that fills `notes` with its whole report (verified lines, mutation proof, prose) bloats the durable spec record, and every later builder's task card and the PR body's FLAG scan read that text. Cause not confirmed beyond the one observation (the sandbox was not preserved): either the builder filled the structured field with its full report, or the writer prompt's instruction was read loosely.",
+      "suggestion": "Tighten the builder prompt in g2g-build.js to say the structured `notes` is the report's `notes:` field only (conflicts, follow-ups, FLAG lines), not the verified/mutation lines, which already have their own fields; optionally cap the stored notes length in the writer and append '[truncated]'. Add a wf-loop-runner test asserting the complete writer's prompt carries the notes and mutation fields separately.",
       "effort": "small",
       "references": [
         "https://github.com/gregsantos/g2g/pull/44"
