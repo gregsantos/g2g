@@ -2,12 +2,14 @@
 # body that is not the test's last statement. bash's errexit ignores the
 # status of a '!' pipeline, so such a statement can never fail its test:
 # the assert is vacuous (D9, the F-060 class). A negation that ends the
-# test (bats then reads its status as the test's) is enforced, and so is
-# one guarded by a '||' operator whose right side fails the test: it
-# must reach 'return <nonzero>', 'false', 'exit' or 'fail', inline or in
-# a '|| {' block closed on a later line. '||' inside a comment or quoted
-# text is not an operator, and '|| true' is no guard, so both are still
-# reported.
+# test (bats then reads its status as the test's) is enforced. So is one
+# whose '||' guard has the suite's idiom as its final command,
+# 'return <nonzero>': alone ('|| return 1'), closing a brace group
+# ('|| { echo ...; return 1; }'), or as the last statement of a '|| {'
+# block closed on a later line. This is an allowlist, not a search for
+# failure words: any other guard ('|| true', '|| echo fail',
+# '|| { false || true; }') is reported, and so is '||' that appears only
+# in a comment or quoted text. Rewrite a reported line to the idiom.
 #
 # Usage: awk -f find-vacuous-negations.awk tests/*.bats
 
@@ -30,8 +32,14 @@ function code_only(text,    result) {
     return result
 }
 
-function fails_the_test(code) {
-    return code ~ /(^|[^[:alnum:]_])(return[[:space:]]+[1-9][0-9]*|false|exit|fail)([^[:alnum:]_]|$)/
+function trim(text) {
+    sub(/^[[:space:]]+/, "", text)
+    sub(/[[:space:]]+$/, "", text)
+    return text
+}
+
+function is_return_nonzero(code) {
+    return trim(code) ~ /^return[[:space:]]+[1-9][0-9]*[[:space:]]*;?$/
 }
 
 # 1 when statement number `position` is a '!' negation with no guard
@@ -40,13 +48,15 @@ function is_vacuous(position,    code, guard, block_index, block_code) {
     code = code_only(statement_text[position])
     if (code !~ /^[[:space:]]*![[:space:]]/) return 0
     if (index(code, "||") == 0) return 1
-    guard = substr(code, index(code, "||") + 2)
-    if (fails_the_test(guard)) return 0
-    if (guard !~ /^[[:space:]]*\{[[:space:]]*$/) return 1
+    guard = trim(substr(code, index(code, "||") + 2))
+    if (is_return_nonzero(guard)) return 0
+    if (guard ~ /^\{.*[{;][[:space:]]*return[[:space:]]+[1-9][0-9]*[[:space:]]*;[[:space:]]*\}$/) return 0
+    if (guard != "{") return 1
     for (block_index = position + 1; block_index <= statement_count; block_index++) {
-        block_code = code_only(statement_text[block_index])
-        if (fails_the_test(block_code)) return 0
-        if (block_code ~ /^[[:space:]]*\}/) return 1
+        block_code = trim(code_only(statement_text[block_index]))
+        if (block_code ~ /^\}/) {
+            return !(block_index > position + 1 && is_return_nonzero(code_only(statement_text[block_index - 1])))
+        }
     }
     return 1
 }
