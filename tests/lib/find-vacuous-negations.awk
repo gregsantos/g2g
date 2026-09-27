@@ -86,6 +86,7 @@ function is_unenforced(position, is_last,    code, head, guard, block_index, blo
     for (block_index = position + 1; block_index <= statement_count; block_index++) {
         block_code = trim(code_only(statement_text[block_index]))
         if (block_code ~ /^\}/) {
+            if (block_code != "}") return 1
             return !(block_index > position + 1 && is_return_nonzero(code_only(statement_text[block_index - 1])))
         }
     }
@@ -104,7 +105,7 @@ function report_unterminated() {
 
 FNR == 1 { report_unterminated() }
 
-/^@test / {
+/^[[:space:]]*@test[[:space:]]/ {
     report_unterminated()
     if ($0 !~ /\{[[:space:]]*$/) {
         print FILENAME ":" FNR ": unsupported @test layout (end the line with '{'): " $0
