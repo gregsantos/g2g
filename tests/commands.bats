@@ -898,7 +898,8 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     # handoff that reached step 7's fallback and step 8's restore before
     # step 5's refresh ran. Step 4 must end at detecting FINISHED; step 5
     # is the sole handoff, after exit 0.
-    ! grep -q 'then score it by that step' "$PLUGIN_DIR/commands/build.md"
+    ! grep -q 'then score it by that step' "$PLUGIN_DIR/commands/build.md" \
+        || { echo "step 4 hands off to scoring again"; return 1; }
     grep -q 'the ONLY handoff out of this section' "$PLUGIN_DIR/commands/build.md"
 }
 
@@ -942,7 +943,8 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     # build-wf.md executes build.md's Phase 4 by reference (F-046-style
     # composition), so the snapshot check must reach it automatically —
     # never be duplicated as prose here.
-    ! grep -q 'PRE-VERIFY SNAPSHOT' "$PLUGIN_DIR/commands/build-wf.md"
+    ! grep -q 'PRE-VERIFY SNAPSHOT' "$PLUGIN_DIR/commands/build-wf.md" \
+        || { echo "build-wf.md duplicates the PRE-VERIFY SNAPSHOT check"; return 1; }
     grep -q "build.md's Phase 4" "$PLUGIN_DIR/commands/build-wf.md"
 }
 
