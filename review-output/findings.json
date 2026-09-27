@@ -14,10 +14,10 @@
     "lastReviewedSha": "23649449d506c9aa0aceeeb157ae08313ba7bf66"
   },
   "summary": {
-    "total": 70,
+    "total": 71,
     "critical": 0,
     "high": 3,
-    "medium": 32,
+    "medium": 33,
     "low": 35,
     "info": 0
   },
@@ -938,6 +938,24 @@
       "effort": "small",
       "references": [
         "https://github.com/gregsantos/g2g/pull/44"
+      ],
+      "addressed": null
+    },
+    {
+      "id": "F-071",
+      "category": "test-coverage",
+      "severity": "medium",
+      "confidence": "high",
+      "file": "plugin/agents/g2g-verifier.md",
+      "line": 22,
+      "title": "Verifier checks that mutation evidence exists, never that it is true",
+      "description": "The 2026-09-26 case study (g2g vs plain Opus on spec build-loop-integrity, ~/Dev/g2g-case-study/grading/WRITEUP.md) found the verifier passed a build containing a test that could never fail: tests/commands.bats:945 asserted a negation with a mid-test `! grep`, which bash errexit ignores (D9, the F-060/L-002 class). A blinded grader proved it by editing the guarded file and watching the test stay `ok`; the same pattern was also live at commands.bats:901. The verifier caught only two presentation-level findings in that run, and every correctness defect was found by adversarial review instead. Step 6 of g2g-verifier.md reads the owning task's notes for a `mutation:` line and flags a test that has none, but never re-executes a mutation, so a builder's self-reported FAIL-then-PASS is taken on trust, and the read-only rule stops the verifier from mutating the checkout to test it.",
+      "suggestion": "Add a verifier step that independently re-runs mutations in an isolated scratch worktree (`git worktree add <tmp> HEAD --detach`, outside the checkout, removed afterwards, so the PRE-VERIFY SNAPSHOT still holds): for a bounded sample of tests the diff adds (e.g. up to 5, preferring negations, safety pins and tests with no `mutation:` line), apply the smallest edit that should break the guarded behavior, run only that test, and require `not ok`. A surviving mutation is a FAIL finding under step 3. Execute mutations rather than scan test text: a static scanner for mid-test bare negations was tried in PR #46 and dropped after seven Codex rounds each found a valid bash form that bypassed it (compound guards, reserved words, test layouts, heredoc braces), because a regex cannot parse bash; only running a mutation is independent of how the test is written. Keep the sample and the time bounded so the verifier's cost stays predictable.",
+      "effort": "medium",
+      "references": [
+        "~/Dev/g2g-case-study/grading/WRITEUP.md",
+        "F-060",
+        "L-002"
       ],
       "addressed": null
     }
