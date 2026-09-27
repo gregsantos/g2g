@@ -1,9 +1,13 @@
 # Prints file:line for every bare '! command' statement in a bats test
 # body that is not the test's last statement. bash's errexit ignores the
 # status of a '!' pipeline, so such a statement can never fail its test:
-# the assert is vacuous (D9, the F-060 class). A negation guarded by
-# '|| { ...; return 1; }', or one that ends the test (bats then reads its
-# status as the test's), is enforced and is not reported.
+# the assert is vacuous (D9, the F-060 class). A negation that ends the
+# test (bats then reads its status as the test's) is enforced, and so is
+# one guarded by a '||' operator whose right side fails the test: it
+# must reach 'return <nonzero>', 'false', 'exit' or 'fail', inline or in
+# a '|| {' block closed on a later line. '||' inside a comment or quoted
+# text is not an operator, and '|| true' is no guard, so both are still
+# reported.
 #
 # Usage: awk -f find-vacuous-negations.awk tests/*.bats
 
@@ -16,6 +20,37 @@ function flush_statement() {
     pending = ""
 }
 
+# The statement with quoted text blanked and any trailing comment
+# removed, so only real shell operators remain.
+function code_only(text,    result) {
+    result = text
+    gsub(/'[^']*'/, "''", result)
+    gsub(/"([^"\\]|\\.)*"/, "\"\"", result)
+    sub(/(^|[[:space:]])#.*$/, "", result)
+    return result
+}
+
+function fails_the_test(code) {
+    return code ~ /(^|[^[:alnum:]_])(return[[:space:]]+[1-9][0-9]*|false|exit|fail)([^[:alnum:]_]|$)/
+}
+
+# 1 when statement number `position` is a '!' negation with no guard
+# that can fail the test.
+function is_vacuous(position,    code, guard, block_index, block_code) {
+    code = code_only(statement_text[position])
+    if (code !~ /^[[:space:]]*![[:space:]]/) return 0
+    if (index(code, "||") == 0) return 1
+    guard = substr(code, index(code, "||") + 2)
+    if (fails_the_test(guard)) return 0
+    if (guard !~ /^[[:space:]]*\{[[:space:]]*$/) return 1
+    for (block_index = position + 1; block_index <= statement_count; block_index++) {
+        block_code = code_only(statement_text[block_index])
+        if (fails_the_test(block_code)) return 0
+        if (block_code ~ /^[[:space:]]*\}/) return 1
+    }
+    return 1
+}
+
 /^@test / {
     in_test = 1
     statement_count = 0
@@ -25,10 +60,9 @@ function flush_statement() {
 
 in_test && /^}/ {
     flush_statement()
-    for (index_in_test = 1; index_in_test < statement_count; index_in_test++) {
-        text = statement_text[index_in_test]
-        if (text ~ /^[[:space:]]*![[:space:]]/ && text !~ /\|\|/) {
-            print FILENAME ":" statement_line[index_in_test] ": " text
+    for (position = 1; position < statement_count; position++) {
+        if (is_vacuous(position)) {
+            print FILENAME ":" statement_line[position] ": " statement_text[position]
         }
     }
     in_test = 0

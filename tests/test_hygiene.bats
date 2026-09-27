@@ -16,19 +16,43 @@ SCANNER="$BATS_TEST_DIRNAME/lib/find-vacuous-negations.awk"
         '    ! grep -q needle haystack' \
         '    true' \
         '}' \
-        '@test "guarded" {' \
+        '@test "guarded inline" {' \
         '    ! grep -q needle haystack \' \
         '        || { echo "found"; return 1; }' \
+        '    true' \
+        '}' \
+        '@test "guarded block" {' \
+        '    ! grep -q needle haystack || {' \
+        '        echo "found"' \
+        '        return 1' \
+        '    }' \
+        '    true' \
+        '}' \
+        '@test "operator only in a comment" {' \
+        '    ! grep -q needle haystack # use || return 1 to enforce this' \
+        '    true' \
+        '}' \
+        '@test "operator only in quoted text" {' \
+        '    ! grep -q "a||b; return 1" haystack' \
+        '    true' \
+        '}' \
+        '@test "a guard that cannot fail" {' \
+        '    ! grep -q needle haystack || true' \
         '    true' \
         '}' \
         '@test "last statement" {' \
         '    true' \
         '    ! grep -q needle haystack' \
         '}' > "$fixture"
+    expected="$fixture:2:     ! grep -q needle haystack
+$fixture:18:     ! grep -q needle haystack # use || return 1 to enforce this
+$fixture:22:     ! grep -q \"a||b; return 1\" haystack
+$fixture:26:     ! grep -q needle haystack || true"
     run awk -f "$SCANNER" "$fixture"
     [[ "$status" -eq 0 ]]
-    [[ "$output" == "$fixture:2:     ! grep -q needle haystack" ]] || {
-        echo "unexpected scanner output: $output"
+    [[ "$output" == "$expected" ]] || {
+        echo "unexpected scanner output:"
+        echo "$output"
         return 1
     }
 }
