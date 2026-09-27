@@ -48,16 +48,28 @@ SCANNER="$BATS_TEST_DIRNAME/lib/find-vacuous-negations.awk"
         '    ! grep -q needle haystack || { false || true; }' \
         '    true' \
         '}' \
+        '@test "a last line that runs a command after the negation" {' \
+        '    ! grep -q needle haystack; true' \
+        '}' \
+        '@test "a negation after another command on its line" {' \
+        '    true; ! grep -q needle haystack' \
+        '    true' \
+        '}' \
         '@test "last statement" {' \
         '    true' \
         '    ! grep -q needle haystack' \
         '}' > "$fixture"
-    expected="$fixture:2:     ! grep -q needle haystack
-$fixture:18:     ! grep -q needle haystack # use || return 1 to enforce this
-$fixture:22:     ! grep -q \"a||b; return 1\" haystack
-$fixture:26:     ! grep -q needle haystack || true
-$fixture:30:     ! grep -q needle haystack || echo fail
-$fixture:34:     ! grep -q needle haystack || { false || true; }"
+    # One quoted entry per line: the scanner reads line by line, so a
+    # multi-line string literal would be scanned as code.
+    expected=$(printf '%s\n' \
+        "$fixture:2:     ! grep -q needle haystack" \
+        "$fixture:18:     ! grep -q needle haystack # use || return 1 to enforce this" \
+        "$fixture:22:     ! grep -q \"a||b; return 1\" haystack" \
+        "$fixture:26:     ! grep -q needle haystack || true" \
+        "$fixture:30:     ! grep -q needle haystack || echo fail" \
+        "$fixture:34:     ! grep -q needle haystack || { false || true; }" \
+        "$fixture:38:     ! grep -q needle haystack; true" \
+        "$fixture:41:     true; ! grep -q needle haystack")
     run awk -f "$SCANNER" "$fixture"
     [[ "$status" -eq 0 ]]
     [[ "$output" == "$expected" ]] || {

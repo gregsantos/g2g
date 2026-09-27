@@ -1,15 +1,24 @@
-# Prints file:line for every bare '! command' statement in a bats test
-# body that is not the test's last statement. bash's errexit ignores the
-# status of a '!' pipeline, so such a statement can never fail its test:
-# the assert is vacuous (D9, the F-060 class). A negation that ends the
-# test (bats then reads its status as the test's) is enforced. So is one
-# whose '||' guard has the suite's idiom as its final command,
-# 'return <nonzero>': alone ('|| return 1'), closing a brace group
-# ('|| { echo ...; return 1; }'), or as the last statement of a '|| {'
-# block closed on a later line. This is an allowlist, not a search for
-# failure words: any other guard ('|| true', '|| echo fail',
-# '|| { false || true; }') is reported, and so is '||' that appears only
-# in a comment or quoted text. Rewrite a reported line to the idiom.
+# Prints file:line for every '!' negation in a bats test body that bash
+# cannot enforce. errexit ignores the status of a '!' pipeline, so a
+# negation that neither ends the test nor carries a failing guard can
+# never fail its test: the assert is vacuous (D9, the F-060 class).
+#
+# This is an allowlist of two shapes, each a line holding one simple
+# statement that starts with '!':
+#   - the test's last statement, '! cmd' (bats reads its status as the
+#     test's);
+#   - '! cmd || <guard>', where the guard's final command is the suite's
+#     idiom 'return <nonzero>': alone ('|| return 1'), closing a brace
+#     group ('|| { echo ...; return 1; }'), or as the last statement of
+#     a '|| {' block closed on a later line.
+# Everything else that contains a negation is reported: any other guard
+# ('|| true', '|| echo fail', '|| { false || true; }'), '||' that appears
+# only in a comment or quoted text, and a negation joined to other
+# commands by ';', '&&', a subshell or a group ('! cmd; true',
+# 'true; ! cmd'). Rewrite a reported line to one of the two shapes.
+# It reads one line at a time (joining '\' continuations), so a line
+# inside a multi-line string literal is scanned as code: that can only
+# over-report, so keep such strings one quoted entry per line.
 #
 # Usage: awk -f find-vacuous-negations.awk tests/*.bats
 
@@ -42,12 +51,16 @@ function is_return_nonzero(code) {
     return trim(code) ~ /^return[[:space:]]+[1-9][0-9]*[[:space:]]*;?$/
 }
 
-# 1 when statement number `position` is a '!' negation with no guard
-# that can fail the test.
-function is_vacuous(position,    code, guard, block_index, block_code) {
+# 1 when statement number `position` contains a negation outside the
+# two allowed shapes above; `is_last` marks the test's final statement.
+function is_unenforced(position, is_last,    code, head, guard, block_index, block_code) {
     code = code_only(statement_text[position])
-    if (code !~ /^[[:space:]]*![[:space:]]/) return 0
-    if (index(code, "||") == 0) return 1
+    if (code !~ /(^|[;&|({])[[:space:]]*![[:space:]]/) return 0
+    if (code !~ /^[[:space:]]*![[:space:]]/) return 1
+    head = code
+    if (index(code, "||") > 0) head = substr(code, 1, index(code, "||") - 1)
+    if (head ~ /[;&(){}]/) return 1
+    if (index(code, "||") == 0) return !is_last
     guard = trim(substr(code, index(code, "||") + 2))
     if (is_return_nonzero(guard)) return 0
     if (guard ~ /^\{.*[{;][[:space:]]*return[[:space:]]+[1-9][0-9]*[[:space:]]*;[[:space:]]*\}$/) return 0
@@ -70,8 +83,8 @@ function is_vacuous(position,    code, guard, block_index, block_code) {
 
 in_test && /^}/ {
     flush_statement()
-    for (position = 1; position < statement_count; position++) {
-        if (is_vacuous(position)) {
+    for (position = 1; position <= statement_count; position++) {
+        if (is_unenforced(position, position == statement_count)) {
             print FILENAME ":" statement_line[position] ": " statement_text[position]
         }
     }
