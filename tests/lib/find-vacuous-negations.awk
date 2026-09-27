@@ -92,8 +92,28 @@ function is_unenforced(position, is_last,    code, head, guard, block_index, blo
     return 1
 }
 
+# Fail closed on any layout this line-based reader cannot bound: a body
+# that does not open at the end of its @test line, or one that never
+# reaches a column-0 closing brace, is reported rather than skipped.
+function report_unterminated() {
+    if (in_test) {
+        print test_file ":" test_line ": unterminated test body (close it with '}' at column 0): " test_text
+    }
+    in_test = 0
+}
+
+FNR == 1 { report_unterminated() }
+
 /^@test / {
+    report_unterminated()
+    if ($0 !~ /\{[[:space:]]*$/) {
+        print FILENAME ":" FNR ": unsupported @test layout (end the line with '{'): " $0
+        next
+    }
     in_test = 1
+    test_file = FILENAME
+    test_line = FNR
+    test_text = $0
     statement_count = 0
     pending = ""
     next
@@ -124,3 +144,5 @@ in_test {
         flush_statement()
     }
 }
+
+END { report_unterminated() }

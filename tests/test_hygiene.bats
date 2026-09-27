@@ -65,10 +65,15 @@ SCANNER="$BATS_TEST_DIRNAME/lib/find-vacuous-negations.awk"
         '    run ! grep -q needle haystack' \
         '    true' \
         '}' \
+        '@test "one line" { ! grep -q needle haystack; true; }' \
         '@test "last statement" {' \
         '    true' \
         '    ! grep -q needle haystack' \
-        '}' > "$fixture"
+        '}' \
+        '@test "indented close" {' \
+        '    ! grep -q needle haystack' \
+        '    true' \
+        '    }' > "$fixture"
     # One quoted entry per line: the scanner reads line by line, so a
     # multi-line string literal would be scanned as code.
     expected=$(printf '%s\n' \
@@ -80,7 +85,9 @@ SCANNER="$BATS_TEST_DIRNAME/lib/find-vacuous-negations.awk"
         "$fixture:34:     ! grep -q needle haystack || { false || true; }" \
         "$fixture:38:     ! grep -q needle haystack; true" \
         "$fixture:41:     true; ! grep -q needle haystack" \
-        "$fixture:45:     if true; then ! grep -q needle haystack; fi")
+        "$fixture:45:     if true; then ! grep -q needle haystack; fi" \
+        "$fixture:54: unsupported @test layout (end the line with '{'): @test \"one line\" { ! grep -q needle haystack; true; }" \
+        "$fixture:59: unterminated test body (close it with '}' at column 0): @test \"indented close\" {")
     run awk -f "$SCANNER" "$fixture"
     [[ "$status" -eq 0 ]]
     [[ "$output" == "$expected" ]] || {
@@ -94,7 +101,7 @@ SCANNER="$BATS_TEST_DIRNAME/lib/find-vacuous-negations.awk"
     run awk -f "$SCANNER" "$BATS_TEST_DIRNAME"/*.bats
     [[ "$status" -eq 0 ]]
     [[ -z "$output" ]] || {
-        echo "vacuous negations (guard with '|| { echo ...; return 1; }'):"
+        echo "unenforced negations or unscannable test layouts (the allowed shapes are in lib/find-vacuous-negations.awk):"
         echo "$output"
         return 1
     }
