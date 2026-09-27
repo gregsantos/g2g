@@ -55,6 +55,16 @@ SCANNER="$BATS_TEST_DIRNAME/lib/find-vacuous-negations.awk"
         '    true; ! grep -q needle haystack' \
         '    true' \
         '}' \
+        '@test "a negation inside an inline conditional" {' \
+        '    if true; then ! grep -q needle haystack; fi' \
+        '    true' \
+        '}' \
+        '@test "negations bash or bats enforce" {' \
+        '    [[ ! -e haystack ]]' \
+        '    if ! grep -q needle haystack; then return 1; fi' \
+        '    run ! grep -q needle haystack' \
+        '    true' \
+        '}' \
         '@test "last statement" {' \
         '    true' \
         '    ! grep -q needle haystack' \
@@ -69,7 +79,8 @@ SCANNER="$BATS_TEST_DIRNAME/lib/find-vacuous-negations.awk"
         "$fixture:30:     ! grep -q needle haystack || echo fail" \
         "$fixture:34:     ! grep -q needle haystack || { false || true; }" \
         "$fixture:38:     ! grep -q needle haystack; true" \
-        "$fixture:41:     true; ! grep -q needle haystack")
+        "$fixture:41:     true; ! grep -q needle haystack" \
+        "$fixture:45:     if true; then ! grep -q needle haystack; fi")
     run awk -f "$SCANNER" "$fixture"
     [[ "$status" -eq 0 ]]
     [[ "$output" == "$expected" ]] || {

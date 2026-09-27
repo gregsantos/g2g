@@ -14,8 +14,15 @@
 # Everything else that contains a negation is reported: any other guard
 # ('|| true', '|| echo fail', '|| { false || true; }'), '||' that appears
 # only in a comment or quoted text, and a negation joined to other
-# commands by ';', '&&', a subshell or a group ('! cmd; true',
-# 'true; ! cmd'). Rewrite a reported line to one of the two shapes.
+# commands by ';', '&&', a subshell, a group or a reserved word
+# ('! cmd; true', 'true; ! cmd', 'if x; then ! cmd; fi'). Rewrite a
+# reported line to one of the two shapes.
+#
+# Detection is conservative too: any '!' followed by whitespace, at line
+# start or after whitespace or an operator, is a negation, except where
+# bash or bats enforces the status itself: a condition negation inside
+# '[[ ... ]]' or '[ ... ]', 'run ! cmd', and 'if', 'elif', 'while' or
+# 'until' followed by '! cmd'.
 # It reads one line at a time (joining '\' continuations), so a line
 # inside a multi-line string literal is scanned as code: that can only
 # over-report, so keep such strings one quoted entry per line.
@@ -51,11 +58,22 @@ function is_return_nonzero(code) {
     return trim(code) ~ /^return[[:space:]]+[1-9][0-9]*[[:space:]]*;?$/
 }
 
+# `code` with the negations bash or bats enforces removed, so that any
+# '!' word left over is a pipeline negation.
+function without_enforced_negations(code) {
+    gsub(/\[\[[^]]*\]\]/, "[[ ]]", code)
+    gsub(/\[[[:space:]][^]]*[[:space:]]\]/, "[ ]", code)
+    while (match(code, /(^|[^[:alnum:]_])(run|if|elif|while|until)[[:space:]]+![[:space:]]/)) {
+        code = substr(code, 1, RSTART - 1) " enforced " substr(code, RSTART + RLENGTH)
+    }
+    return code
+}
+
 # 1 when statement number `position` contains a negation outside the
 # two allowed shapes above; `is_last` marks the test's final statement.
 function is_unenforced(position, is_last,    code, head, guard, block_index, block_code) {
     code = code_only(statement_text[position])
-    if (code !~ /(^|[;&|({])[[:space:]]*![[:space:]]/) return 0
+    if (without_enforced_negations(code) !~ /(^|[[:space:];&|({])![[:space:]]/) return 0
     if (code !~ /^[[:space:]]*![[:space:]]/) return 1
     head = code
     if (index(code, "||") > 0) head = substr(code, 1, index(code, "||") - 1)
