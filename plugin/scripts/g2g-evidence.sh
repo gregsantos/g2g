@@ -124,6 +124,52 @@ VACUOUS=$(jq -r '["", "true", ":", "/bin/true", "/usr/bin/true", "exit", "exit 0
 VERIFY_COUNT=$(jq '(.context.verificationCommands // []) | length' "$SPEC")
 [[ "$VERIFY_COUNT" -gt 0 ]] || fail 3 "context.verificationCommands is missing or empty — builds are unverifiable without it"
 
+# Pin the commands to the build that armed them (issue #23). The
+# commands-hash line is the first 16 hex digits of the SHA-256 of the
+# compact JSON array, so it changes when any command is added, removed,
+# reordered, or edited. /g2g:build copies it into .g2g-goal as
+# verifyCommandsHash when it arms, before any builder runs; from then on
+# a block whose hash differs from the armed one cannot be proven, here
+# (via the goal, below) or in g2g-stop.sh (via this line). Without a
+# SHA-256 tool the line reads "unavailable", which never matches a pin.
+commands_hash() {
+    local json
+    json=$(jq -c '.context.verificationCommands' "$SPEC" 2>/dev/null) || { echo "unavailable"; return; }
+    if command -v sha256sum >/dev/null 2>&1; then
+        printf '%s' "$json" | sha256sum | cut -c1-16
+    elif command -v shasum >/dev/null 2>&1; then
+        printf '%s' "$json" | shasum -a 256 | cut -c1-16
+    elif command -v openssl >/dev/null 2>&1; then
+        printf '%s' "$json" | openssl dgst -sha256 -r | cut -c1-16
+    else
+        echo "unavailable"
+    fi
+}
+COMMANDS_HASH=$(commands_hash)
+
+# The armed pin, if a goal for THIS spec is armed in this worktree. The
+# goal lives at the enclosing worktree root, the anchor g2g-lock.sh and
+# g2g-stop.sh resolve (falling back to $PWD outside a repository). A goal
+# for another spec, an unparsable goal, or a goal written before the pin
+# existed has no pin to enforce, so nothing changes; g2g-stop.sh applies
+# the same check to the block's commands-hash line on its own.
+GOAL_ANCHOR=$(git rev-parse --show-toplevel 2>/dev/null || true)
+[[ -n "$GOAL_ANCHOR" && -d "$GOAL_ANCHOR" ]] || GOAL_ANCHOR=$PWD
+ARMED_HASH=""
+if [[ -f "$GOAL_ANCHOR/.g2g-goal" ]]; then
+    ARMED_HASH=$(jq -r --arg spec "$SPEC" \
+        'select(type == "object" and .specPath == $spec) | .verifyCommandsHash // empty | strings' \
+        "$GOAL_ANCHOR/.g2g-goal" 2>/dev/null || true)
+fi
+# PIN_DRIFT names the armed value in the verdict, so it is sanitized
+# like every other goal- or spec-sourced string that reaches the block,
+# and a pin that sanitizes to nothing still counts as drift.
+PIN_DRIFT=""
+if [[ -n "$ARMED_HASH" && ( "$COMMANDS_HASH" == "unavailable" || "$COMMANDS_HASH" != "$ARMED_HASH" ) ]]; then
+    PIN_DRIFT=$(printf '%s' "$ARMED_HASH" | tr -cd '[:alnum:]' | cut -c1-16)
+    PIN_DRIFT=${PIN_DRIFT:-invalid}
+fi
+
 TOTAL=$(jq '.tasks | length' "$SPEC")
 PASSED=$(jq '[.tasks[] | select(.passes == true)] | length' "$SPEC")
 IN_PROGRESS=$(jq '[.tasks[] | select(.passes != true and .status == "in_progress")] | length' "$SPEC")
@@ -143,6 +189,7 @@ if [[ -n "$HEAD_SHA" ]]; then
 else
     echo "head: none"
 fi
+echo "commands-hash: $COMMANDS_HASH"
 echo "tasks: $TOTAL total | $PASSED passed | $IN_PROGRESS in_progress | $PENDING pending | $BLOCKED blocked"
 
 # Task ids, statuses, and titles come from the spec JSON; gsub strips
@@ -199,6 +246,8 @@ if [[ "$MODE" == "--full" ]]; then
             STATE_DRIFT="task counts"
         elif [[ "$VERIFIER_AFTER" != "$VERIFIER_PRE" ]]; then
             STATE_DRIFT="verifier field"
+        elif [[ "$(commands_hash)" != "$COMMANDS_HASH" ]]; then
+            STATE_DRIFT="verification commands"
         fi
     fi
 fi
@@ -219,6 +268,8 @@ fi
 if [[ "$MODE" == "--full" ]]; then
     if [[ "$ALL_TASKS_PASS" -ne 1 ]]; then
         echo "verdict: incomplete [tasks $PASSED/$TOTAL]"
+    elif [[ -n "$PIN_DRIFT" ]]; then
+        echo "verdict: incomplete [tasks $PASSED/$TOTAL; verification commands changed since arming: $PIN_DRIFT -> $COMMANDS_HASH]"
     elif [[ "$VERIFY_ALL_OK" -ne 1 ]]; then
         echo "verdict: incomplete [tasks $PASSED/$TOTAL; verify: $FIRST_FAIL_CMD -> exit $FIRST_FAIL_CODE]"
     elif [[ "$VERIFY_EXECUTED" -ne "$VERIFY_COUNT" ]]; then
@@ -238,6 +289,8 @@ if [[ "$MODE" == "--full" ]]; then
 else
     if [[ "$ALL_TASKS_PASS" -ne 1 ]]; then
         echo "verdict: incomplete [tasks $PASSED/$TOTAL]"
+    elif [[ -n "$PIN_DRIFT" ]]; then
+        echo "verdict: incomplete [tasks $PASSED/$TOTAL; verification commands changed since arming: $PIN_DRIFT -> $COMMANDS_HASH]"
     elif [[ "$VERIFIER_VERDICT" != "PASS" ]]; then
         echo "verdict: incomplete [tasks $PASSED/$TOTAL; verifier $VERIFIER_VERDICT]"
     else

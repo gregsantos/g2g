@@ -331,7 +331,10 @@ PR. That data is why the default is now **25**. Sizing guidance:
   Phase 4 rebases onto the default branch before running the final
   `--full` evidence — the proven token must certify the tree that is
   actually pushed, not a pre-rebase snapshot the rebase has since moved
-  past. Since 0.7.6 a complete build additionally cannot stop until a
+  past. Since 0.12.0 the verification commands are pinned the same way:
+  `/g2g:build` records the block's `commands-hash:` as the goal's
+  `verifyCommandsHash` at arming, and a later block whose hash differs
+  is `incomplete` and never satisfies the hook (issue #23). Since 0.7.6 a complete build additionally cannot stop until a
   `gh pr create` result (paired by tool-use id, after the arming point)
   is in the transcript (F-038) — completion and "a PR exists" can no
   longer come apart across a turn boundary. The hook is a deterministic

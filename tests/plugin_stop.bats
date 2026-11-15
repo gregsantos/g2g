@@ -40,6 +40,16 @@ write_goal() {
 EOF
 }
 
+# Write a goal that pins the verification commands, as build.md Phase 2
+# does from version 2 on. Args: token specPath verifyCommandsHash
+write_pinned_goal() {
+    cat > "$WORK/.g2g-goal" <<EOF
+{"version": 2, "ownerToken": "$1", "specPath": "$2",
+ "taskTotal": 2, "turnCap": 40, "hoursCap": 6, "buildStart": "$NOW",
+ "verifyCommandsHash": "$3"}
+EOF
+}
+
 # Run the hook with a payload pointing at $WORK and $TRANSCRIPT.
 run_hook() {
     local transcript="${1:-$TRANSCRIPT}"
@@ -87,14 +97,21 @@ EOF
 # and tracked-dirty state, per T-001's head-binding check) so a proven block
 # is honest by default; pass "" for no head line at all, or an arbitrary
 # string to simulate a tree that has since moved.
+# commandsLine (issue #23) defaults to none, the shape of every block a
+# goal without a pin is checked against; pass "commands-hash: <hex>" to
+# emit the line a current g2g-evidence.sh prints.
 # The command uses the hook's own sibling evidence script — the only
 # path the hook pairs, so a lookalike script elsewhere cannot vouch.
 evidence_records() {
     local verdict="${3:-verdict: complete (proven) [tasks 2/2; verify all exit 0; verifier PASS]}"
     local head_line="${4-$WORK_HEAD_LINE}"
+    local commands_line="${5:-}"
     local head_segment=""
     if [[ -n "$head_line" ]]; then
         head_segment="\n$head_line"
+    fi
+    if [[ -n "$commands_line" ]]; then
+        head_segment="$head_segment\n$commands_line"
     fi
     cat <<EOF
 {"type":"assistant","timestamp":"$NOW","message":{"content":[{"type":"tool_use","id":"tu_ev","name":"Bash","input":{"command":"$REPO_DIR/plugin/scripts/g2g-evidence.sh $1 --full"}}]}}
@@ -368,6 +385,81 @@ EOF
         || { echo "block reason does not name the missing head line: $output"; return 1; }
     [[ "$output" == *"g2g-evidence.sh specs/x.json --full"* ]] \
         || { echo "block reason does not name the --full re-run remedy: $output"; return 1; }
+}
+
+# --- commands pin (issue #23) ------------------------------------------------
+#
+# build.md copies the evidence block's commands-hash into the goal at
+# arming, before any builder runs. A proven block that ran a different set
+# of verification commands must never satisfy the goal; a goal armed
+# before the pin existed is checked as it always was.
+
+PINNED_HASH="0123456789abcdef"
+PROVEN_LINE="verdict: complete (proven) [tasks 2/2; verify all exit 0; verifier PASS]"
+DONE_SUMMARY="2 total | 2 passed | 0 in_progress | 0 pending | 0 blocked"
+
+@test "stop: a pinned goal and a proven block with the same commands-hash allows the stop" {
+    write_pinned_goal "$TOKEN" "specs/x.json" "$PINNED_HASH"
+    { arming_record
+      evidence_records "specs/x.json" "$DONE_SUMMARY" "$PROVEN_LINE" "$WORK_HEAD_LINE" "commands-hash: $PINNED_HASH"
+      verifier_pass_record
+      pr_created_record
+    } > "$TRANSCRIPT"
+    run_hook
+    assert_allowed
+}
+
+@test "stop: a proven block whose commands changed since arming blocks, naming both hashes" {
+    write_pinned_goal "$TOKEN" "specs/x.json" "$PINNED_HASH"
+    { arming_record
+      evidence_records "specs/x.json" "$DONE_SUMMARY" "$PROVEN_LINE" "$WORK_HEAD_LINE" "commands-hash: fedcba9876543210"
+      verifier_pass_record
+      pr_created_record
+    } > "$TRANSCRIPT"
+    run_hook
+    assert_blocked
+    [[ "$output" == *"changed since the goal was armed"* ]] \
+        || { echo "block reason does not name the commands drift: $output"; return 1; }
+    [[ "$output" == *"armed $PINNED_HASH"* && "$output" == *"evidence fedcba9876543210"* ]] \
+        || { echo "block reason does not name both hashes: $output"; return 1; }
+}
+
+@test "stop: a pinned goal and a proven block with no commands-hash line blocks" {
+    write_pinned_goal "$TOKEN" "specs/x.json" "$PINNED_HASH"
+    { arming_record
+      evidence_records "specs/x.json" "$DONE_SUMMARY" "$PROVEN_LINE" "$WORK_HEAD_LINE" ""
+      verifier_pass_record
+      pr_created_record
+    } > "$TRANSCRIPT"
+    run_hook
+    assert_blocked
+    [[ "$output" == *"no commands-hash line"* ]] \
+        || { echo "block reason does not name the missing line: $output"; return 1; }
+}
+
+@test "stop: an unavailable commands-hash never satisfies a pin, even one that reads unavailable" {
+    write_pinned_goal "$TOKEN" "specs/x.json" "unavailable"
+    { arming_record
+      evidence_records "specs/x.json" "$DONE_SUMMARY" "$PROVEN_LINE" "$WORK_HEAD_LINE" "commands-hash: unavailable"
+      verifier_pass_record
+      pr_created_record
+    } > "$TRANSCRIPT"
+    run_hook
+    assert_blocked
+    [[ "$output" == *"changed since the goal was armed"* ]] || { echo "$output"; return 1; }
+}
+
+@test "stop: a goal armed without a pin is not held to one" {
+    # Goals written before verifyCommandsHash existed (version 1) keep
+    # their old contract, whatever the block's commands-hash says.
+    write_goal "$TOKEN" "specs/x.json" 40 6 "$NOW"
+    { arming_record
+      evidence_records "specs/x.json" "$DONE_SUMMARY" "$PROVEN_LINE" "$WORK_HEAD_LINE" "commands-hash: fedcba9876543210"
+      verifier_pass_record
+      pr_created_record
+    } > "$TRANSCRIPT"
+    run_hook
+    assert_allowed
 }
 
 @test "stop: armed with no evidence blocks and names what is missing" {

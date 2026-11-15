@@ -279,6 +279,7 @@ setup() {
     expected="=== G2G EVIDENCE ===
 spec: $GOLD
 head: none
+commands-hash: b1f3a03269f6e61a
 tasks: 2 total | 1 passed | 0 in_progress | 1 pending | 0 blocked
 T-001 [passed] First
 T-002 [pending] Second
@@ -609,4 +610,118 @@ make_full_spec() {
     [[ "$status" -eq 2 ]] || { echo "expected exit 2, got $status: $output"; return 1; }
     [[ "$output" == *"unknown argument: --exit-staus"* ]]
     [[ "$output" != *"=== G2G EVIDENCE ==="* ]]
+}
+
+# --- commands pin (issue #23) ------------------------------------------------
+# /g2g:build copies the block's commands-hash into .g2g-goal as
+# verifyCommandsHash when it arms; a goal for the same spec whose pin no
+# longer matches the spec's commands forfeits 'proven' (and 'assumed').
+
+# pin_repo <commands-json>: a git repo at $PIN with spec.json carrying the
+# given commands on an all-passed, verifier-PASS spec; cd's into it so the
+# spec path is the relative "spec.json" a goal would record.
+pin_repo() {
+    PIN="$BATS_TEST_TMPDIR/pin-repo"
+    mkdir -p "$PIN"
+    cd "$PIN" || return 1
+    git init -q -b main
+    jq -n --argjson cmds "$1" '{
+        context: { verificationCommands: $cmds },
+        tasks: [{"id":"T-001","title":"First","status":"complete","passes":true}],
+        verifier: {"verdict":"PASS"}
+    }' > spec.json
+    git add spec.json
+    git -c user.email=t@t -c user.name=t commit -qm init
+}
+
+# hash_of: the commands-hash line's value for spec.json in the cwd.
+hash_of() { "$EVIDENCE" "${1:-spec.json}" | sed -n 's/^commands-hash: //p'; }
+
+# write_pin <specPath> <hash>: a goal shaped like build.md Phase 2 writes.
+write_pin() {
+    jq -n --arg spec "$1" --arg hash "$2" '{version: 2, ownerToken: "g2g-t-1",
+        specPath: $spec, taskTotal: 1, turnCap: 2, hoursCap: 2,
+        buildStart: "2026-11-15T00:00:00Z", verifyCommandsHash: $hash}' > "$PIN/.g2g-goal"
+}
+
+@test "evidence: commands-hash is 16 hex digits, stable across spec formatting, and moves with any command change (issue #23)" {
+    pin_repo '["echo ok", "echo two"]'
+    base=$(hash_of)
+    [[ "$base" =~ ^[0-9a-f]{16}$ ]] || { echo "not 16 hex digits: [$base]"; return 1; }
+    jq . spec.json > pretty.json
+    [[ "$(hash_of pretty.json)" == "$base" ]] || { echo "formatting changed the hash"; return 1; }
+    for cmds in '["echo ok"]' '["echo two", "echo ok"]' '["echo ok", "echo  two"]' '["echo ok", "echo two", "echo three"]'; do
+        jq --argjson cmds "$cmds" '.context.verificationCommands = $cmds' spec.json > other.json
+        [[ "$(hash_of other.json)" != "$base" ]] || { echo "cmds=$cmds kept the hash $base"; return 1; }
+    done
+}
+
+@test "evidence --full: a goal pinning this spec's current commands still proves (issue #23)" {
+    pin_repo '["echo ok"]'
+    write_pin spec.json "$(hash_of)"
+    run "$EVIDENCE" spec.json --full
+    [[ "$output" == *"verdict: complete (proven)"* ]] || { echo "$output"; return 1; }
+}
+
+@test "evidence --full: commands changed since arming forfeit proven, naming both hashes (issue #23)" {
+    pin_repo '["echo ok"]'
+    armed=$(hash_of)
+    write_pin spec.json "$armed"
+    jq '.context.verificationCommands = ["echo weakened"]' spec.json > s.tmp && mv s.tmp spec.json
+    now=$(hash_of)
+    run "$EVIDENCE" spec.json --full
+    [[ "$status" -eq 0 ]]
+    [[ "$output" != *"complete (proven)"* ]]
+    [[ "$output" == *"verdict: incomplete [tasks 1/1; verification commands changed since arming: $armed -> $now]"* ]] \
+        || { echo "verdict does not name the pin drift: $output"; return 1; }
+    run "$EVIDENCE" spec.json --full --exit-status
+    [[ "$status" -eq 4 ]] || { echo "expected exit 4, got $status"; return 1; }
+}
+
+@test "evidence: status mode also refuses 'assumed' when commands changed since arming (issue #23)" {
+    pin_repo '["echo ok"]'
+    write_pin spec.json "0000000000000000"
+    run "$EVIDENCE" spec.json
+    [[ "$output" != *"complete (assumed)"* ]]
+    [[ "$output" == *"verification commands changed since arming: 0000000000000000 ->"* ]] || { echo "$output"; return 1; }
+}
+
+@test "evidence --full: the pin is found at the worktree root when run from a subdirectory (issue #23)" {
+    pin_repo '["echo ok"]'
+    write_pin ../spec.json "0000000000000000"
+    mkdir -p sub && cd sub
+    run "$EVIDENCE" ../spec.json --full
+    [[ "$output" == *"verification commands changed since arming"* ]] || { echo "$output"; return 1; }
+}
+
+@test "evidence --full: a goal for another spec, without a pin, or unparsable pins nothing (issue #23)" {
+    pin_repo '["echo ok"]'
+    write_pin specs/other.json "0000000000000000"
+    run "$EVIDENCE" spec.json --full
+    [[ "$output" == *"verdict: complete (proven)"* ]] || { echo "other spec: $output"; return 1; }
+    jq 'del(.verifyCommandsHash) | .specPath = "spec.json" | .version = 1' "$PIN/.g2g-goal" > g.tmp && mv g.tmp "$PIN/.g2g-goal"
+    run "$EVIDENCE" spec.json --full
+    [[ "$output" == *"verdict: complete (proven)"* ]] || { echo "unpinned goal: $output"; return 1; }
+    echo 'not json' > "$PIN/.g2g-goal"
+    run "$EVIDENCE" spec.json --full
+    [[ "$output" == *"verdict: complete (proven)"* ]] || { echo "unparsable goal: $output"; return 1; }
+}
+
+@test "evidence --full: a pin that sanitizes to nothing still forfeits proven (issue #23)" {
+    pin_repo '["echo ok"]'
+    write_pin spec.json "--- ---"
+    run "$EVIDENCE" spec.json --full
+    [[ "$output" == *"verification commands changed since arming: invalid ->"* ]] || { echo "$output"; return 1; }
+}
+
+@test "evidence --full: a command that rewrites the spec's commands during the run forfeits proven (issue #23)" {
+    # An untracked spec, so the rewrite moves neither HEAD nor the
+    # tracked-dirty count: only the commands check can catch it.
+    pin_repo '["echo ok"]'
+    jq --arg cmd "jq '.context.verificationCommands += [\"echo added\"]' $PIN/live.json > $PIN/s.tmp && mv $PIN/s.tmp $PIN/live.json" \
+        '.context.verificationCommands = [$cmd]' spec.json > live.json
+    run "$EVIDENCE" live.json --full
+    [[ "$output" != *"complete (proven)"* ]]
+    [[ "$output" == *"verdict: incomplete [tasks 1/1; state changed during verify: verification commands]"* ]] \
+        || { echo "$output"; return 1; }
 }
