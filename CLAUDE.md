@@ -118,9 +118,15 @@ shipped with the plugin.
   exact failure mode it exists to catch (F-060, L-002).
 - **Safety invariants — never weaken:** branch-first and PR-gated (no
   writes to the default branch, nothing merges itself, one push at PR
-  time); caps on every autonomous run (turns, hours, dollars — no
-  unlimited mode); the improve flywheel is strictly opt-in
-  (`improve.enabled` must be exactly `true`; enabling it is always a
+  time); caps on every autonomous run, no unlimited mode — every goal
+  carries turn and wall-clock caps, and headless spawns add a dollar
+  cap (`--max-budget-usd`). Be exact about who enforces what: an
+  interactive `/g2g:build` has no dollar cap, and its turn cap is
+  enforced by the orchestrator checking its own `G2G TURN` line; the
+  Stop hook only *permits* a stop at either cap, never forces one, and
+  computes the hours cap from `buildStart` itself (#22). Never describe
+  a cap as code-enforced where it is not; the improve flywheel is
+  strictly opt-in (`improve.enabled` must be exactly `true`; enabling it is always a
   human edit — the gate is defense in depth for the finding-text
   injection boundary; see the trust caveat in plugin/README.md); no
   detached processes
