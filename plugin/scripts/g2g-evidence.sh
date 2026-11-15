@@ -106,6 +106,21 @@ jq -e '(.context.verificationCommands // [])
          and all(.[]?; type == "string" and length > 0 and (test("[[:cntrl:]]") | not))' \
     "$SPEC" >/dev/null \
     || fail 2 "context.verificationCommands must be an array of non-empty single-line command strings: $SPEC"
+# A command that always exits 0 without running anything makes 'proven'
+# meaningless: every structural check downstream (pairing, head binding,
+# the Stop hook) genuinely passes, so the token would certify nothing
+# (issue #23). Refuse the degenerate forms as an invalid spec. This is a
+# floor, not an adequacy judgment: whitespace is trimmed and collapsed,
+# then the command must not be exactly one of these. Anything subtler
+# (a weakened suite one level down) is the verifier's job. The prior gate
+# guarantees single-line strings, so the echoed command cannot inject a
+# line into the transcript.
+VACUOUS=$(jq -r '["", "true", ":", "/bin/true", "/usr/bin/true", "exit", "exit 0",
+                  "bash -c \"\"", "bash -c '"''"'", "sh -c \"\"", "sh -c '"''"'"] as $deny
+    | first(.context.verificationCommands[]?
+            | select(gsub("^\\s+|\\s+$"; "") | gsub("\\s+"; " ") | . as $c | any($deny[]; . == $c)))
+      // empty' "$SPEC")
+[[ -z "$VACUOUS" ]] || fail 2 "context.verificationCommands entry \"$VACUOUS\" verifies nothing (always exits 0) — list a command that runs real checks: $SPEC"
 VERIFY_COUNT=$(jq '(.context.verificationCommands // []) | length' "$SPEC")
 [[ "$VERIFY_COUNT" -gt 0 ]] || fail 3 "context.verificationCommands is missing or empty — builds are unverifiable without it"
 

@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.11.0 (2026-11-15)
+
+Refuses verification commands that verify nothing (first half of #23).
+`g2g-evidence.sh` checked only the shape of `context.verificationCommands`,
+so a spec whose only command was `true` earned `verdict: complete
+(proven)` with every structural check intact, and the Stop hook rightly
+allowed the stop. The degenerate case is now an invalid spec.
+
+### Changed
+- `g2g-evidence.sh` exits 2 (invalid spec) when any
+  `context.verificationCommands` entry, after trimming and collapsing
+  whitespace, is exactly `true`, `:`, `/bin/true`, `/usr/bin/true`,
+  `exit`, `exit 0`, an empty `bash -c`/`sh -c` (`''` or `""`), or empty.
+  The diagnostic names the entry. It runs in both modes, before any
+  output, so `/g2g:spec`'s validation and `/g2g:build`'s Phase 1 preflight
+  already abort on it through their existing exit-2 handling. This is a
+  floor, not an adequacy check: a command that merely contains one of
+  these words (`true && make test`) still runs. The output format and
+  the other exit codes are unchanged.
+- `tests/plugin_evidence.bats` fixtures use `echo ok` instead of `true`
+  as their passing command, and two new tests pin the refusal and its
+  whole-command matching.
+
 ## 0.10.1 (2026-11-15)
 
 Adds an opt-in strict exit status to the evidence script (#24).

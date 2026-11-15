@@ -30,7 +30,9 @@ intent later — for an autonomous build, no one will be.
 `context.verificationCommands` is REQUIRED and must be non-empty:
 `/g2g:build` refuses to start without it (its evidence script exits 3 —
 unverifiable builds don't run). List only commands that actually exist
-in the target repo.
+in the target repo. A command that verifies nothing (`true`, `:`,
+`exit 0`, an empty `bash -c`, and similar) makes the spec invalid (exit
+2): every entry must run a real check.
 
 ## Task fields
 
