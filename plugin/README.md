@@ -664,10 +664,26 @@ algorithm backing it).
   bare `g2g-evidence.sh <spec> --full` invocation, so builds never pass
   the flag.
 - **Caps everywhere** — every goal carries turn and wall-clock caps as
-  data the Stop hook enforces itself; headless spawns add a dollar cap.
-  There is no unlimited mode. The wall-clock cap is computed from the
-  goal's `buildStart` and needs nothing from the transcript, so it holds
-  even if everything else about a run has gone wrong.
+  data, and headless spawns add a dollar cap (`--max-budget-usd`).
+  There is no unlimited mode. Who enforces each cap differs, and in an
+  interactive `/g2g:build` the guarantees are weaker than in a headless
+  one:
+  - **Turns** — the orchestrator prints `G2G TURN k/TURN_CAP` each turn
+    and routes itself to the partial-PR path once `k >= TURN_CAP`. The
+    Stop hook reads that same self-printed line, so it can only
+    *permit* the stop at the cap; nothing forces the orchestrator to
+    stop, and a missing or malformed turn line disables the turn cap.
+  - **Hours** — the hook computes elapsed wall-clock time from the
+    goal's `buildStart` and needs nothing from the transcript, so it
+    holds even if everything else about a run has gone wrong. It too
+    permits the stop rather than forcing it, deliberately, so a build
+    can never wedge.
+  - **Dollars** — only the CLI's `--max-budget-usd` on a headless spawn
+    (the improve tick, and the documented headless build shape). An
+    interactive `/g2g:build` has no dollar cap.
+
+  `/g2g:build-wf` moves the turn and hours checks into the workflow
+  script's counters, which is the code-enforced shape (#22).
 - **Read-only verifier, enforced in two layers** — since 0.8.0,
   `plugin/agents/g2g-verifier.md`'s frontmatter carries
   `tools: Read, Grep, Glob, Bash` (no `Edit`, `Write`, or
