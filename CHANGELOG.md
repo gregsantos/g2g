@@ -1,5 +1,56 @@
 # Changelog
 
+## 0.10.0 (2026-11-15)
+
+Gives the learnings store a reader (#21). `/g2g:compound` wrote grounded
+entries to `docs/learnings/`, but no builder, verifier, or orchestrator
+ever read them, so a lesson only reached a later build if a human
+copied it into CLAUDE.md by hand (F-006). Builds now read the store
+automatically; writing it stays manual and human-gated. Builds on
+0.9.0's retrieval layer (#20): the matched block becomes the builder's
+primary learnings source, and `g2g-learnings-index.sh` stays as the
+optional way to scan the rest of the store.
+
+### Added
+- `plugin/scripts/g2g-learnings.sh` — the sole, deterministic reader.
+  `builder <spec> <task-id>` selects entries for one task: its `area` is
+  named by a segment of a path the task cites in its text or its
+  `relevantPaths` hint, or one of its `tags` appears in the task text as
+  a whole word. Frontmatter is parsed by the shared
+  `lib/g2g-learning-frontmatter.sh`, so an entry `g2g-learning-check.sh`
+  rejects is skipped and counted, never injected. `verifier <spec>`
+  selects only bug-track entries matching any task. Output is bounded
+  (at most 5 entries; frontmatter facts, file path, and the first 600
+  characters of the Implication section), ranked by signals, then
+  severity, then id, with control characters stripped and a header
+  marking the block as data. Exit 0 always prints a block, including a
+  zero-entry one for a missing store; exit 2 is a caller error, among
+  them a task id outside `[A-Za-z0-9._-]+`.
+- `tests/plugin_learnings.bats` pins selection, ranking, the cap, the
+  verifier's bug-only filter, skipped malformed entries, and exit codes.
+
+### Changed
+- `/g2g:build` Phase 3 step 6 fills each builder card's `learnings:`
+  field from the reader before dispatch (the task id passed as a
+  single-quoted literal only when shell-safe, L-004), and Phase 4 step 1
+  passes the verifier block to the verifier. A reader failure dispatches
+  with `learnings: unavailable (...)`: learnings never gate a build.
+- `plugin/workflows/g2g-build.js` has its start writer run the reader
+  after the start commit and puts the result in the builder card, so
+  `/g2g:build-wf` gets the same behavior without a new arg.
+- `/g2g:build` Phase 3 step 6's "never" list now allows exactly one kind
+  of learning text on a card, the reader's bounded block, and still bans
+  another task's report, notes, or reasoning.
+- `plugin/agents/g2g-builder.md` Orientation reads the card's block first
+  and makes the index optional (useful when the block is `unavailable`);
+  rule 8 covers the block as data: keep each entry's invariant, and FLAG
+  a task that contradicts one.
+  `plugin/agents/g2g-verifier.md` gains step 7: hunt the diff for each
+  bug-track entry's root cause, and report a reintroduction as a finding.
+- `writing-g2g-learnings/SKILL.md`'s retrieval-value test now explains
+  that `area`, `tags`, and the Implication's opening are what gets
+  retrieved. `plugin/README.md` gains "How builds read the store".
+
 ## 0.9.0 (2026-11-15)
 
 Gives fresh-context builders a retrieval layer they consume rather than

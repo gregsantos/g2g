@@ -65,6 +65,10 @@ tasks with `passes: true` are skipped by the loop's own selection):
      "context": <spec context block>, "tasks": <spec tasks array>,
      "verifyEachTask": <verifyEachTask> }
 
+The loop fills each builder card's `learnings:` field itself (its start
+writer runs `g2g-learnings.sh builder` per task, as build.md Phase 3
+step 6 describes); pass nothing extra for it.
+
 Wait for the workflow result. While it runs you dispatch NOTHING
 yourself — builders, spec commits, and heartbeat refreshes all happen
 inside the loop. Then branch on `result.outcome`:

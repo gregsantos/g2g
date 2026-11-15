@@ -228,6 +228,7 @@ g2g/
 │   ├── scripts/g2g-lock.sh           # Checkout-lock protocol (sole implementation)
 │   ├── scripts/g2g-slug.sh           # Branch/spec-file slug derivation (sole implementation)
 │   ├── scripts/g2g-learning-check.sh # Validates docs/learnings entries
+│   ├── scripts/g2g-learnings.sh      # Selects docs/learnings entries for builder/verifier dispatches
 │   ├── templates/                    # /g2g:init config starters
 │   ├── routines/                     # Scheduled-run templates
 │   └── evals/                        # plugin-eval cases (status: its README)

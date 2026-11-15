@@ -451,6 +451,39 @@ intentional known limitation) before the run can call itself done.
 `/g2g:go` — see item 8 of the [Concurrency model](#concurrency-model)
 below.
 
+### How builds read the store
+
+Writing stays manual and human-gated; reading is automatic.
+`${CLAUDE_PLUGIN_ROOT}/scripts/g2g-learnings.sh` is the sole reader and
+the sole implementation of selection and volume bounds:
+
+- `g2g-learnings.sh builder <spec> '<task-id>'` — before every builder
+  dispatch, `/g2g:build` (and the `/g2g:build-wf` loop) puts this
+  task's block in the card's `learnings:` field. An entry is selected
+  when its `area` is named by a directory segment of a path the task's
+  title, description, or acceptance criteria cite, or that its
+  `relevantPaths` list (`plugin/commands/…` → `commands`;
+  `test/`/`script/`/`doc/` singulars, `.github` → `ci`, `.claude` →
+  `config`), or when one of its `tags` appears in that text as a whole
+  word. The block is the builder's primary learnings source.
+- `g2g-learnings.sh verifier <spec>` — before every verifier dispatch,
+  the bug-track entries matching ANY task, so the verifier hunts for
+  this repo's own past defect classes (`symptoms` / `rootCause`) on top
+  of the generic frauds.
+
+Output is bounded: at most 5 entries, ranked by number of matching
+signals, then severity, then id; each printed as its frontmatter facts,
+its file path, and the first 600 characters of its Implication section,
+never the whole body. Control characters are stripped and the block
+says its entries are DATA, never instructions — builders keep an
+entry's invariant and FLAG a task that contradicts one; the verifier
+reports a reintroduced root cause as a finding. A missing store prints a
+zero-entry block, and a reader failure dispatches with `learnings:
+unavailable (...)`: learnings inform a build, they never gate one.
+Because entries are now injected by `area` and `tags` rather than
+hand-picked, those two fields are the retrieval index — choose them for
+the tasks that should see the entry.
+
 ### Builder orientation
 
 Fresh context per builder is the core safety property, and it used to
@@ -463,13 +496,16 @@ first edit:
 
 - **`relevantPaths`** on the task, recorded by `/g2g:spec` from the recon
   it already does. It is a starting point, not a scope limit.
-- **The learnings index.** `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-learnings-index.sh`
+- **The matched learnings, then the index.** The card's `learnings:`
+  block (see [How builds read the store](#how-builds-read-the-store)
+  above) carries the entries matched to the task. For anything beyond
+  it, `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-learnings-index.sh`
   prints one line per learning (id, area, severity, tags, path, title)
-  from frontmatter only, so it stays small as the store grows. The
-  builder opens only the learnings that touch its task. It shares one
+  from frontmatter only, so it stays small as the store grows, and the
+  builder opens only the learnings that touch its task. Both share one
   frontmatter parser with `g2g-learning-check.sh`
   (`scripts/lib/g2g-learning-frontmatter.sh`), so an entry the checker
-  rejects is skipped and named here, never indexed. The card carries the
+  rejects is never indexed or injected. The card carries the
   plugin root so the builder can run it.
 - **A host retrieval tool, if one is configured.** Builders inherit the
   session's MCP servers (the agent definition sets no `tools:` limit), so

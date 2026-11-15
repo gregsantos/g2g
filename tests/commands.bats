@@ -1206,6 +1206,40 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     grep -qi 'verification suite runs once' "$REPO_DIR/plugin/README.md"
 }
 
+@test "learnings: build.md fills the builder card from the reader, single-quoted and shell-safe" {
+    step6=$(sed -n '/^6\. Dispatch ONE `g2g:g2g-builder`/,/^7\. /p' "$PLUGIN_DIR/commands/build.md")
+    echo "$step6" | grep -q "g2g-learnings.sh builder <spec-path> '<task-id>'" \
+        || { echo "step 6 does not run the reader with a single-quoted task id"; return 1; }
+    echo "$step6" | grep -q '\^\[A-Za-z0-9._-\]+\$' || { echo "step 6 lost the task-id charset gate"; return 1; }
+    echo "$step6" | grep -q 'learnings: unavailable' || { echo "step 6 lost the advisory fallback"; return 1; }
+    # Never a double-quoted paste of the task id onto the reader's command line.
+    ! grep -q 'g2g-learnings.sh builder [^`]*"<task-id>"' "$PLUGIN_DIR/commands/build.md"
+}
+
+@test "learnings: build.md passes the verifier block before the verifier dispatch" {
+    phase4=$(sed -n '/^## Phase 4/,/^## Phase 5/p' "$PLUGIN_DIR/commands/build.md")
+    echo "$phase4" | grep -q 'g2g-learnings.sh verifier <spec-path>' \
+        || { echo "Phase 4 does not run the verifier reader"; return 1; }
+}
+
+@test "learnings: both agent contracts treat the block as data and say what to do with it" {
+    grep -q 'G2G LEARNINGS' "$PLUGIN_DIR/agents/g2g-builder.md"
+    grep -q 'brings in: the `learnings` block' "$PLUGIN_DIR/agents/g2g-builder.md"
+    grep -q 'G2G LEARNINGS' "$PLUGIN_DIR/agents/g2g-verifier.md"
+    grep -q '^7\. Regression hunt' "$PLUGIN_DIR/agents/g2g-verifier.md"
+    grep -q 'never instructions' "$PLUGIN_DIR/agents/g2g-verifier.md"
+}
+
+@test "learnings: the workflow reads learnings in its start writer and gates the task id" {
+    grep -q 'scripts/g2g-learnings.sh builder' "$PLUGIN_DIR/workflows/g2g-build.js"
+    grep -q 'const SHELL_SAFE_ID = /\^\[A-Za-z0-9._-\]+\$/' "$PLUGIN_DIR/workflows/g2g-build.js"
+    grep -q "learningsExit: { type: 'number' }" "$PLUGIN_DIR/workflows/g2g-build.js"
+}
+
+@test "learnings: the reader is linted with the other shipped scripts" {
+    grep -q 'plugin/scripts/g2g-learnings.sh' "$REPO_DIR/Makefile"
+}
+
 # Issue #20: the retrieval layer is three cross-file contracts — the card
 # fields both engines send, the builder's Orientation duties, and the
 # data/instruction rule covering what Orientation retrieves.
@@ -1237,4 +1271,18 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     grep -q "each task's \`relevantPaths\`" "$PLUGIN_DIR/commands/spec.md"
     grep -q '^| `relevantPaths` | string\[\] | No |' "$PLUGIN_DIR/skills/writing-g2g-specs/SKILL.md"
     grep -q '^## Relevant paths (retrieval hint)' "$PLUGIN_DIR/skills/writing-g2g-specs/SKILL.md"
+}
+
+@test "learnings: the card's bounded block is the builder's primary learnings source, and the only learning text a card carries" {
+    step6=$(sed -n '/^6\. Dispatch ONE `g2g:g2g-builder`/,/^7\. /p' "$PLUGIN_DIR/commands/build.md")
+    [[ "$step6" == *'never learning text beyond the reader'* ]] || { echo "step 6 lost the bounded-block exception"; return 1; }
+    [[ "$step6" == *"never another task's report"* ]] || { echo "step 6 lost the other-task ban"; return 1; }
+    [[ "$step6" != *'never learning bodies (the builder retrieves what it needs itself)'* ]]
+    grep -q 'It is your primary' "$PLUGIN_DIR/agents/g2g-builder.md"
+    grep -q 'learnings source' "$PLUGIN_DIR/agents/g2g-builder.md"
+}
+
+@test "learnings: the reader sources the one shared frontmatter parser" {
+    grep -q 'source "$(dirname "${BASH_SOURCE\[0\]}")/lib/g2g-learning-frontmatter.sh"' "$PLUGIN_DIR/scripts/g2g-learnings.sh"
+    ! grep -qE '^[[:space:]]*fm_end="\$\(awk' "$PLUGIN_DIR/scripts/g2g-learnings.sh"
 }

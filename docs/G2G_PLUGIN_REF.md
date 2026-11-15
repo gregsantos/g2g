@@ -219,7 +219,11 @@ build — or one addressed finding — into exactly one grounded entry under
 `docs/learnings/` (schema and bar: the plugin README's "Compound
 learnings"; only compound when the lesson generalizes beyond the one
 fix). It is the flywheel's memory step, not a PR step: it writes a
-file, you commit it.
+file, you commit it. Once committed, later builds read it with no
+further hand-editing: `g2g-learnings.sh` puts the entries whose `area`
+or `tags` match each task into that builder's card, and the bug-track
+ones into the verifier's dispatch (plugin README, "How builds read the
+store").
 
 ## 6. Triggers
 

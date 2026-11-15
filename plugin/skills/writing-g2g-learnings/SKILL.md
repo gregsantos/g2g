@@ -184,6 +184,18 @@ silent no-op edits.
 
 ## The retrieval-value test
 
+This test is load-bearing: `g2g-learnings.sh` injects entries into
+builder and verifier dispatches automatically, matched by `area` (a
+directory segment of a path the task cites) and by `tags` (whole words
+in the task text), at most five per dispatch, each cut to its
+frontmatter plus the first 600 characters of `## Implication`. So pick
+`area` and `tags` for the tasks that SHOULD see the entry — a tag no
+task would ever mention never retrieves it, a generic one crowds out
+better entries — and write the Implication's opening sentences to stand
+alone, since that is all an agent sees without opening the file. A
+bug-track entry's `symptoms` and `rootCause` are what the verifier hunts
+for, so state them as a recognizable pattern, not a one-off narrative.
+
 Two learnings should stay separate only if someone retrieving one of
 them by `area` or `tag` would still need the other to have the full
 picture — a distinct root cause, a distinct decision, a distinct
