@@ -354,7 +354,13 @@ the schema:
   this is missing or empty — no independent verification, no evidence
   chain. This is a field on the spec JSON itself, distinct from
   `.claude/g2g.json`'s `verificationCommands` field above, which
-  `/g2g:build` never reads.
+  `/g2g:build` never reads. A command that verifies nothing (`true`,
+  `:`, `/bin/true`, `/usr/bin/true`, `exit`, `exit 0`, an empty
+  `bash -c`/`sh -c`, or only whitespace, compared after trimming and
+  collapsing whitespace) is an invalid spec: the script exits 2 and
+  names the entry. This is a floor against the degenerate case, not a
+  judgment of whether the commands are adequate; that stays the
+  verifier's job.
 
 `/g2g:build` also reads and writes two more fields not covered
 elsewhere:
