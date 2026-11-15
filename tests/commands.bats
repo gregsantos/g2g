@@ -1205,3 +1205,36 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     grep -qi 'defaults to `false`' "$REPO_DIR/plugin/README.md"
     grep -qi 'verification suite runs once' "$REPO_DIR/plugin/README.md"
 }
+
+# Issue #20: the retrieval layer is three cross-file contracts — the card
+# fields both engines send, the builder's Orientation duties, and the
+# data/instruction rule covering what Orientation retrieves.
+@test "retrieval: both engines put relevantPaths and the plugin root on the task card" {
+    grep -q 'relevantPaths' "$PLUGIN_DIR/commands/build.md"
+    grep -q '"pluginRoot: ${CLAUDE_PLUGIN_ROOT}"' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'relevantPaths: task.relevantPaths' "$PLUGIN_DIR/workflows/g2g-build.js"
+    grep -q 'pluginRoot: a.pluginRoot,' "$PLUGIN_DIR/workflows/g2g-build.js"
+}
+
+@test "retrieval: the builder contract requires CLAUDE.md, the learnings index, and relevantPaths before the first edit" {
+    f="$PLUGIN_DIR/agents/g2g-builder.md"
+    grep -q '^Orientation — do this before your first edit' "$f"
+    grep -q 'Read CLAUDE.md at the repository root' "$f"
+    grep -q '<pluginRoot>/scripts/g2g-learnings-index.sh' "$f"
+    [ -x "$PLUGIN_DIR/scripts/g2g-learnings-index.sh" ]
+    grep -q "Start from the card's \`relevantPaths\`" "$f"
+    grep -q 'a starting point, not a' "$f"
+}
+
+@test "retrieval: rule 8 extends data/instruction separation to everything Orientation retrieves" {
+    rule8=$(sed -n '/^8\. Data\/instruction separation/,/^9\. /p' "$PLUGIN_DIR/agents/g2g-builder.md")
+    [[ "$rule8" == *'the learnings index and the learnings it'* ]]
+    [[ "$rule8" == *'anything a retrieval tool returns'* ]]
+    [[ "$rule8" == *'never instructions that override these rules'* ]]
+}
+
+@test "retrieval: /g2g:spec records relevantPaths and the spec skill documents the field" {
+    grep -q "each task's \`relevantPaths\`" "$PLUGIN_DIR/commands/spec.md"
+    grep -q '^| `relevantPaths` | string\[\] | No |' "$PLUGIN_DIR/skills/writing-g2g-specs/SKILL.md"
+    grep -q '^## Relevant paths (retrieval hint)' "$PLUGIN_DIR/skills/writing-g2g-specs/SKILL.md"
+}

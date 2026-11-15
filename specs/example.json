@@ -27,6 +27,7 @@
         "Foreign key constraint to users table",
         "Index on user_id for fast lookups"
       ],
+      "relevantPaths": ["db/migrations/"],
       "dependsOn": [],
       "status": "pending",
       "passes": false,

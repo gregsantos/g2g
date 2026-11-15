@@ -1115,6 +1115,50 @@ run_one_task_loop() {
         || { echo "a bookkeeping commit lacks the spec pathspec: $all_prompts"; return 1; }
 }
 
+# Issue #20: the builder's task card carries the spec-time retrieval hint
+# and the plugin root (for the learnings index), and nothing from any
+# other task. Asserted on the prompt the SHIPPED script actually sends.
+builder_card_prompt() {
+    # builder_card_prompt <tasks-json>: prints the builder agent's prompt
+    local tasks="$1" now args queue input out
+    now=$(jq -n "$BUILD_START_EPOCH_JSON")
+    args=$(jq -cn --argjson a "$LOOP_ARGS" --argjson t "$tasks" '$a + {turnCap:8, tasks:$t}')
+    queue=$(jq -cn --argjson now "$now" '[
+        {refreshExit:0, refreshLine:"g2g-lock: refreshed", treeDirty:false, now:$now},
+        {ok:true, detail:"", head:"abc123"},
+        {result:"DONE", commit:"abc123", verified:["x: pass"], mutation:"n/a (no tests added)", notes:""},
+        {specDrift:false, restored:false, detail:""},
+        {ok:true, detail:"", commitExists:true}
+    ]')
+    input=$(jq -cn --argjson args "$args" --argjson queue "$queue" '{args:$args, queue:$queue}')
+    out=$(printf '%s' "$input" | node "$RUNNER" "$WORKFLOW_SCRIPT") || { echo "$out"; return 1; }
+    printf '%s' "$out" | jq -r '.trace as $t | [range(0; $t | length) | select($t[.] | test("build T-001"))][0] as $i | .prompts[$i]'
+}
+
+@test "workflow loop: the task card carries relevantPaths and pluginRoot (issue #20)" {
+    command -v node >/dev/null 2>&1 || skip "node not installed"
+    prompt=$(builder_card_prompt '[{"id":"T-001","title":"t","description":"d","acceptanceCriteria":["x"],
+        "relevantPaths":["plugin/scripts/g2g-evidence.sh","tests/"],
+        "dependsOn":[],"status":"pending","passes":false,"attempts":0}]')
+    card=$(printf '%s' "$prompt" | sed -n '/TASK CARD:$/,/^}$/p' | sed 1d)
+    [[ "$(printf '%s' "$card" | jq -c '.task.relevantPaths')" == '["plugin/scripts/g2g-evidence.sh","tests/"]' ]] \
+        || { echo "card: $card"; return 1; }
+    [[ "$(printf '%s' "$card" | jq -r '.pluginRoot')" == "/p" ]] || { echo "card: $card"; return 1; }
+    [[ "$(printf '%s' "$card" | jq -r '.conventions')" == "CLAUDE.md" ]] || { echo "card: $card"; return 1; }
+}
+
+@test "workflow loop: a task without relevantPaths gets no key, and no other task's state reaches its card (issue #20)" {
+    command -v node >/dev/null 2>&1 || skip "node not installed"
+    prompt=$(builder_card_prompt '[{"id":"T-001","title":"t","description":"d","acceptanceCriteria":["x"],
+        "dependsOn":[],"status":"pending","passes":false,"attempts":0},
+        {"id":"T-002","title":"other","description":"d2","acceptanceCriteria":["y"],
+         "dependsOn":[],"status":"complete","passes":true,"attempts":0,
+         "notes":"PRIOR-BUILDER-REASONING"}]')
+    card=$(printf '%s' "$prompt" | sed -n '/TASK CARD:$/,/^}$/p' | sed 1d)
+    [[ "$(printf '%s' "$card" | jq -c '.task | has("relevantPaths")')" == "false" ]] || { echo "card: $card"; return 1; }
+    [[ "$prompt" != *"PRIOR-BUILDER-REASONING"* ]] || { echo "leaked: $prompt"; return 1; }
+}
+
 @test "workflow loop: an unusable NEEDS_DECISION (no decision, blank decision, or a named commit) scores FAILED, never blocked" {
     # build.md Phase 3 step 7: NEEDS_DECISION is usable only with
     # `commit: none` and non-empty decision text. Blocking on anything less

@@ -1,5 +1,53 @@
 # Changelog
 
+## 0.9.0 (2026-11-15)
+
+Gives fresh-context builders a retrieval layer they consume rather than
+build (issue #20, F-006, F-007). Every builder used to start from the
+task card alone and rediscover the repository from zero, and the
+learnings store `/g2g:compound` writes was never read by any builder.
+g2g stays index-free: the task card now points the builder at where the
+work lives and at what earlier builds proved, and the builder contract
+makes reading both part of orientation.
+
+### Added
+- Optional per-task `relevantPaths` (repo-relative paths, at most 8)
+  in the spec schema. `/g2g:spec` records it from the recon it already
+  does, and `--from-findings` seeds it from each finding's `file`. It is
+  a starting point, never a scope limit. `g2g-evidence.sh` exits 2 on a
+  malformed value (non-array, an empty or multi-line entry, a leading
+  `/`, or a `..` segment), so a bad hint dies in preflight before any
+  task card carries it. The evidence block's output is unchanged.
+- `plugin/scripts/g2g-learnings-index.sh`: one line per learning (id,
+  area, severity, tags, path, title) read from frontmatter only, with a
+  frozen header, summary, and footer. An absent store is an empty index
+  (exit 0), and an invalid learning is skipped and named, never indexed.
+  Pinned by `tests/plugin_learnings_index.bats`.
+- `plugin/scripts/lib/g2g-learning-frontmatter.sh`: the one frontmatter
+  parser and validator, sourced by both the index and
+  `g2g-learning-check.sh`, so the two cannot disagree about which
+  learnings are well-formed.
+- An "Orientation" section in `agents/g2g-builder.md`: before its first
+  edit a builder reads CLAUDE.md (previously only named), runs the
+  learnings index and reads the learnings that touch its task, starts
+  from `relevantPaths`, and prefers a host-configured code-search MCP
+  tool over a Grep sweep when one is available.
+
+### Changed
+- Both engines' task cards carry the task's `relevantPaths` (when set)
+  and the plugin root (build.md Phase 3 step 6, `g2g-build.js`). build.md
+  now states what the card must never carry: another task's report,
+  notes, or reasoning, or learning bodies.
+- Builder rule 8 (data/instruction separation) now covers everything
+  Orientation retrieves: `relevantPaths`, the index, the learnings it
+  leads to, and retrieval-tool results.
+- `g2g-learning-check.sh` parses frontmatter through the shared library.
+  Its output and exit codes are unchanged.
+
+### Not covered
+- Batching several small tasks into one builder dispatch (the remaining
+  half of F-007) and warm resume for `--continue-branch`.
+
 ## 0.8.0 (2026-09-25)
 
 Enforces a read-only verifier with two layers instead of one (T-001).

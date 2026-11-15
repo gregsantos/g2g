@@ -58,6 +58,20 @@ CYCLE=$(jq -r '.tasks as $tasks
     | .remaining | map(.id | tostring) | join(", ") | gsub("[[:cntrl:]]"; " ")' "$SPEC")
 [[ -z "$CYCLE" ]] || fail 2 "dependsOn cycle among tasks: $CYCLE: $SPEC"
 
+# relevantPaths is an optional per-task retrieval hint (issue #20): paths
+# /g2g:spec's recon found relevant, carried to the builder's task card as
+# a starting point, never as a scope limit. Both engines hand it to a
+# builder verbatim, so a malformed value dies here, in preflight, rather
+# than reaching a task card: each entry must be a non-empty, single-line,
+# repo-relative path — no leading slash and no ".." segment, so a hint
+# can only ever point inside the checkout. Absent or null is no hint.
+jq -e 'all(.tasks[]; (.relevantPaths // []) | type == "array"
+        and all(.[]?; type == "string" and length > 0
+                and (test("[[:cntrl:]]") | not)
+                and (startswith("/") | not)
+                and (split("/") | any(. == "..") | not)))' "$SPEC" >/dev/null \
+    || fail 2 "relevantPaths must be an array of repo-relative, single-line path strings on every task: $SPEC"
+
 # verificationCommands must be an array of non-empty single-line strings.
 # A malformed value is an invalid spec (exit 2), not an empty one: a bare
 # length check passes a string, and jq's failed iteration inside process
