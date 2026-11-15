@@ -1147,3 +1147,70 @@ run_one_task_loop() {
     grep -q "'use strict'" "$RUNNER"
     ! grep -q "child_process\|process.env\|writeFileSync" "$RUNNER"
 }
+
+# Issue #21: the start writer reads the task's learnings and the builder
+# card carries them — driven through the SHIPPED loop, asserting the
+# prompts it actually sends.
+
+@test "workflow loop: the builder card carries the learnings block the start writer reported" {
+    command -v node >/dev/null 2>&1 || skip "node not installed"
+    now=$(jq -n "$BUILD_START_EPOCH_JSON")
+    args=$(jq -cn --argjson a "$LOOP_ARGS" \
+        '$a + {turnCap:8, tasks:[{id:"T-001",title:"t",description:"d",acceptanceCriteria:["x"],dependsOn:[],status:"pending",passes:false,attempts:0}]}')
+    block=$'=== G2G LEARNINGS ===\nmode: builder\n--- L-042\nsummary: 1 in store\n=== END G2G LEARNINGS ==='
+    queue=$(jq -cn --argjson now "$now" --arg block "$block" '[
+        {refreshExit:0, refreshLine:"g2g-lock: refreshed", treeDirty:false, now:$now},
+        {ok:true, detail:"", head:"abc123", learningsExit:0, learnings:$block},
+        {result:"DONE", commit:"abc123", verified:["x: pass"], mutation:"n/a (no tests added)", notes:""},
+        {specDrift:false, restored:false, detail:""},
+        {ok:true, detail:"", commitExists:true}
+    ]')
+    input=$(jq -cn --argjson args "$args" --argjson queue "$queue" '{args:$args, queue:$queue}')
+    run bash -c "printf '%s' \"\$1\" | node '$RUNNER' '$WORKFLOW_SCRIPT'" _ "$input"
+    [[ "$status" -eq 0 ]] || { echo "$output"; return 1; }
+    printf '%s' "$output" | jq -e '.prompts[1] | contains("/p/scripts/g2g-learnings.sh builder specs/sandbox.json '"'"'T-001'"'"'")' >/dev/null \
+        || { echo "start writer was not told to run the reader: $output"; return 1; }
+    printf '%s' "$output" | jq -e '.prompts[2] | contains("L-042") and contains("END G2G LEARNINGS")' >/dev/null \
+        || { echo "builder card lacks the learnings block: $output"; return 1; }
+}
+
+@test "workflow loop: a failed or unreported learnings read dispatches the builder anyway, marked unavailable" {
+    command -v node >/dev/null 2>&1 || skip "node not installed"
+    now=$(jq -n "$BUILD_START_EPOCH_JSON")
+    args=$(jq -cn --argjson a "$LOOP_ARGS" \
+        '$a + {turnCap:8, tasks:[{id:"T-001",title:"t",description:"d",acceptanceCriteria:["x"],dependsOn:[],status:"pending",passes:false,attempts:0}]}')
+    queue=$(jq -cn --argjson now "$now" '[
+        {refreshExit:0, refreshLine:"g2g-lock: refreshed", treeDirty:false, now:$now},
+        {ok:true, detail:"", head:"abc123", learningsExit:2, learnings:"g2g-learnings: boom"},
+        {result:"DONE", commit:"abc123", verified:["x: pass"], mutation:"n/a (no tests added)", notes:""},
+        {specDrift:false, restored:false, detail:""},
+        {ok:true, detail:"", commitExists:true}
+    ]')
+    input=$(jq -cn --argjson args "$args" --argjson queue "$queue" '{args:$args, queue:$queue}')
+    run bash -c "printf '%s' \"\$1\" | node '$RUNNER' '$WORKFLOW_SCRIPT'" _ "$input"
+    [[ "$status" -eq 0 ]] || { echo "$output"; return 1; }
+    [[ "$(printf '%s' "$output" | jq -r '.result.outcome')" == "complete" ]] || { echo "$output"; return 1; }
+    printf '%s' "$output" | jq -e '.prompts[2] | contains("unavailable (learnings reader exit 2)")' >/dev/null \
+        || { echo "builder card does not mark learnings unavailable: $output"; return 1; }
+}
+
+@test "workflow loop: a task id that is not shell-safe never reaches the reader's command line" {
+    command -v node >/dev/null 2>&1 || skip "node not installed"
+    now=$(jq -n "$BUILD_START_EPOCH_JSON")
+    args=$(jq -cn --argjson a "$LOOP_ARGS" \
+        '$a + {turnCap:8, tasks:[{id:"T-1 x",title:"t",description:"d",acceptanceCriteria:["x"],dependsOn:[],status:"pending",passes:false,attempts:0}]}')
+    queue=$(jq -cn --argjson now "$now" '[
+        {refreshExit:0, refreshLine:"g2g-lock: refreshed", treeDirty:false, now:$now},
+        {ok:true, detail:"", head:"abc123"},
+        {result:"DONE", commit:"abc123", verified:["x: pass"], mutation:"n/a (no tests added)", notes:""},
+        {specDrift:false, restored:false, detail:""},
+        {ok:true, detail:"", commitExists:true}
+    ]')
+    input=$(jq -cn --argjson args "$args" --argjson queue "$queue" '{args:$args, queue:$queue}')
+    run bash -c "printf '%s' \"\$1\" | node '$RUNNER' '$WORKFLOW_SCRIPT'" _ "$input"
+    [[ "$status" -eq 0 ]] || { echo "$output"; return 1; }
+    printf '%s' "$output" | jq -e '[.prompts[] | select(contains("g2g-learnings.sh"))] | length == 0' >/dev/null \
+        || { echo "reader ran with an unsafe id: $output"; return 1; }
+    printf '%s' "$output" | jq -e '.prompts[2] | contains("unavailable (task id is not shell-safe)")' >/dev/null \
+        || { echo "$output"; return 1; }
+}

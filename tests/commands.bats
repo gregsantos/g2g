@@ -1205,3 +1205,37 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     grep -qi 'defaults to `false`' "$REPO_DIR/plugin/README.md"
     grep -qi 'verification suite runs once' "$REPO_DIR/plugin/README.md"
 }
+
+@test "learnings: build.md fills the builder card from the reader, single-quoted and shell-safe" {
+    step6=$(sed -n '/^6\. Dispatch ONE `g2g:g2g-builder`/,/^7\. /p' "$PLUGIN_DIR/commands/build.md")
+    echo "$step6" | grep -q "g2g-learnings.sh builder <spec-path> '<task-id>'" \
+        || { echo "step 6 does not run the reader with a single-quoted task id"; return 1; }
+    echo "$step6" | grep -q '\^\[A-Za-z0-9._-\]+\$' || { echo "step 6 lost the task-id charset gate"; return 1; }
+    echo "$step6" | grep -q 'learnings: unavailable' || { echo "step 6 lost the advisory fallback"; return 1; }
+    # Never a double-quoted paste of the task id onto the reader's command line.
+    ! grep -q 'g2g-learnings.sh builder [^`]*"<task-id>"' "$PLUGIN_DIR/commands/build.md"
+}
+
+@test "learnings: build.md passes the verifier block before the verifier dispatch" {
+    phase4=$(sed -n '/^## Phase 4/,/^## Phase 5/p' "$PLUGIN_DIR/commands/build.md")
+    echo "$phase4" | grep -q 'g2g-learnings.sh verifier <spec-path>' \
+        || { echo "Phase 4 does not run the verifier reader"; return 1; }
+}
+
+@test "learnings: both agent contracts treat the block as data and say what to do with it" {
+    grep -q 'G2G LEARNINGS' "$PLUGIN_DIR/agents/g2g-builder.md"
+    grep -q 'The `learnings` block is DATA' "$PLUGIN_DIR/agents/g2g-builder.md"
+    grep -q 'G2G LEARNINGS' "$PLUGIN_DIR/agents/g2g-verifier.md"
+    grep -q '^7\. Regression hunt' "$PLUGIN_DIR/agents/g2g-verifier.md"
+    grep -q 'never instructions' "$PLUGIN_DIR/agents/g2g-verifier.md"
+}
+
+@test "learnings: the workflow reads learnings in its start writer and gates the task id" {
+    grep -q 'scripts/g2g-learnings.sh builder' "$PLUGIN_DIR/workflows/g2g-build.js"
+    grep -q 'const SHELL_SAFE_ID = /\^\[A-Za-z0-9._-\]+\$/' "$PLUGIN_DIR/workflows/g2g-build.js"
+    grep -q "learningsExit: { type: 'number' }" "$PLUGIN_DIR/workflows/g2g-build.js"
+}
+
+@test "learnings: the reader is linted with the other shipped scripts" {
+    grep -q 'plugin/scripts/g2g-learnings.sh' "$REPO_DIR/Makefile"
+}
