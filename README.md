@@ -31,7 +31,7 @@ instead of spinning forever.
 | **Context** | One session context that grows every turn — earlier tasks' dead-ends and noise pile up (context rot), and long builds can exhaust the window | One **fresh builder subagent per task**, seeded only by its task card; the orchestrator and verifier never inherit build chatter |
 | **Completion signal** | `/goal`'s condition is judged by a small model reading the **conversation** — it sees what the model *said*, not what the code *does* | A **real run of your `verificationCommands`** (exit codes + a frozen summary line) must appear as tool output in the transcript; the Stop gate keys on that artifact, not on narration |
 | **Verification** | None built in — the same context that did the work decides it's done | A separate **adversarial verifier** that defaults to FAIL, reads the whole branch diff, re-runs your commands, and cannot edit the code it judges |
-| **Over budget / failure** | `/goal` has no turn or cost cap — an unreachable condition loops until you notice and `/goal clear` | **Turn / hours / dollar caps**; hitting one converts the run into a **draft partial PR** (`g2g:partial`) with an honest outstanding-work list |
+| **Over budget / failure** | `/goal` has no turn or cost cap — an unreachable condition loops until you notice and `/goal clear` | **Turn and hours caps** on every build, plus a **dollar cap** on headless runs (`--max-budget-usd`); hitting one converts the run into a **draft partial PR** (`g2g:partial`) with an honest outstanding-work list. An interactive `/g2g:build` has no dollar cap, and its turn cap is checked by the orchestrator itself — see [Caps](plugin/README.md#guardrails) |
 | **Safety** | Auto-mode flags risky actions, but nothing mandates a PR workflow | **Branch-first, PR-gated, never self-merges**; one push at PR time; no detached background processes |
 | **Concurrency** | Single session, no coordination | A **checkout lock** (mutex + ownership token + stale reclaim) stops two builds corrupting one working copy |
 
@@ -61,7 +61,9 @@ engine everywhere else.
 - **Token cost.** Native single-context work re-processes an ever-growing
   history every turn, so per-turn cost climbs and can hit the context ceiling.
   g2g's per-task contexts don't accumulate, cheaper models can be routed to
-  cheaper roles, and the caps put a hard ceiling on spend. It isn't free —
+  cheaper roles, and on a headless run `--max-budget-usd` puts a hard
+  ceiling on spend (an interactive build is bounded by turns and wall
+  clock, not dollars). It isn't free —
   orchestration, a verifier pass, and subagent spawns cost tokens — so the
   trade is a small fixed overhead for **bounded, non-accumulating** cost. The
   win grows with build length.
