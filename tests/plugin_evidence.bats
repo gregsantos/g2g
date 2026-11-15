@@ -193,6 +193,34 @@ setup() {
     [[ "$output" == *"tasks: 3 total"* ]]
 }
 
+@test "evidence: exit 2 when relevantPaths is malformed or escapes the checkout (issue #20)" {
+    for paths in '"plugin/x.sh"' '[7]' '[""]' '[null]' '["/etc/passwd"]' '["../outside"]' \
+                 '["plugin/../../outside"]' '["a\nb"]' '{"p":"x"}'; do
+        make_spec "$SPEC" "[
+            {\"id\":\"T-001\",\"title\":\"First\",\"status\":\"pending\",\"passes\":false,\"relevantPaths\":$paths}
+        ]"
+        run "$EVIDENCE" "$SPEC"
+        [[ "$status" -eq 2 ]] || { echo "paths=$paths: expected exit 2, got $status: $output"; return 1; }
+        [[ "$output" == *"relevantPaths must be an array of repo-relative"* ]] \
+            || { echo "paths=$paths: wrong diagnostic: $output"; return 1; }
+        [[ "$output" != *"=== G2G EVIDENCE ==="* ]] \
+            || { echo "paths=$paths: printed an evidence block before failing"; return 1; }
+    done
+}
+
+@test "evidence: absent, null, empty, or well-formed relevantPaths is accepted, exit 0 (issue #20)" {
+    make_spec "$SPEC" '[
+        {"id":"T-001","title":"First","status":"pending","passes":false},
+        {"id":"T-002","title":"Second","status":"pending","passes":false,"relevantPaths":null},
+        {"id":"T-003","title":"Third","status":"pending","passes":false,"relevantPaths":[]},
+        {"id":"T-004","title":"Fourth","status":"pending","passes":false,
+         "relevantPaths":["plugin/scripts/g2g-evidence.sh","tests/","docs/..hidden/x.md"]}
+    ]'
+    run "$EVIDENCE" "$SPEC"
+    [[ "$status" -eq 0 ]] || { echo "expected exit 0, got $status: $output"; return 1; }
+    [[ "$output" == *"tasks: 4 total"* ]]
+}
+
 @test "evidence: exit 3 when verificationCommands missing or empty" {
     jq '.context.verificationCommands = []' "$SPEC" > "$BATS_TEST_TMPDIR/empty.json"
     run "$EVIDENCE" "$BATS_TEST_TMPDIR/empty.json"

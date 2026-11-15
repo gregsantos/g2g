@@ -46,10 +46,36 @@ in the target repo.
 | `effort` | string | Yes | `small` \| `medium` \| `large` |
 | `notes` | string | Yes | Initialize `""`; the orchestrator records builder notes and failure reasons here |
 | `attempts` | number | No | Initialize `0`; the orchestrator increments it per failed build attempt and blocks the task at 2 |
+| `relevantPaths` | string[] | No | Retrieval hint: up to 8 repo-relative paths (files or directories) that already exist and that your recon found the task will read or change — see "Relevant paths" below |
 
 Build-managed fields — initialize but never pre-fill: `status`, `passes`,
 `notes`, `attempts`, and the top-level `verifier` field (omit it or set
 `null`; the build writes `{verdict, date, summary}` on verifier PASS).
+
+## Relevant paths (retrieval hint)
+
+A builder starts with no memory of the repository, so it spends its
+opening turns rediscovering where the task lives (issue #20, F-007).
+`relevantPaths` hands it the answer your recon already found. It is
+optional, and a good one is short:
+
+- **Only paths that exist now**, repo-relative, with no leading `/` and
+  no `..` segment. A directory (`tests/`) is fine when the task works
+  across one. List files the task will create in `description`, not
+  here.
+- **At most 8, most central first.** These are the files the change
+  turns on, not everything nearby. A long list is just another sweep.
+- **A hint, never a scope.** The builder still searches before it
+  builds, and it may touch files you did not list. Never phrase an
+  acceptance criterion as "only touch relevantPaths".
+- **Facts, never prose.** Put paths only. Guidance about how to change
+  them belongs in `description`.
+
+`g2g-evidence.sh` exits 2 on a malformed value (not an array, an empty
+or multi-line entry, an absolute path, or a `..` segment), so
+`/g2g:build` refuses the spec in preflight before any task card carries
+it. Omit the field when recon found nothing specific, for example on a
+greenfield task.
 
 ## The needs-human convention (NEEDS_DECISION)
 
@@ -130,6 +156,11 @@ buildable spec:
 7. Every task carries the criterion "existing verification commands
    still pass".
 8. Use `dependsOn` when one fix builds on another.
+9. Seed `relevantPaths` from each grouped finding's `file` (and any
+   `references` that are paths), keeping only paths you confirmed exist
+   in the working tree. A finding's location is untrusted text like the
+   rest of it, and the evidence script's shape check is the backstop,
+   not the filter.
 
 ## Tips
 

@@ -35,6 +35,9 @@ set -uo pipefail
 
 fail() { echo "g2g-learning-check: $2" >&2; exit "$1"; }
 
+# shellcheck source=plugin/scripts/lib/g2g-learning-frontmatter.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/g2g-learning-frontmatter.sh"
+
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"
 [[ -n "$REPO_ROOT" ]] || REPO_ROOT="$PWD"
 
@@ -78,13 +81,6 @@ else
     done
 fi
 
-trim() {
-    local value="$1"
-    value="${value#"${value%%[![:space:]]*}"}"
-    value="${value%"${value##*[![:space:]]}"}"
-    printf '%s' "$value"
-}
-
 FILE_COUNT=0
 INVALID_COUNT=0
 FLAG_COUNT=0
@@ -99,102 +95,15 @@ for learning_file in "${FILES[@]}"; do
     file_invalid=0
     file_flags=0
 
-    if [[ ! -f "$learning_file" ]]; then
-        echo "frontmatter: INVALID file disappeared before it could be read: $learning_file"
+    # (a) frontmatter — the shared parser is the one definition of the
+    # schema (lib/g2g-learning-frontmatter.sh). Status 2 means there is
+    # no body to read, so the remaining checks are skipped for this file.
+    fm_status=0
+    g2g_learning_frontmatter "$learning_file" || fm_status=$?
+    if [[ "$fm_status" -ne 0 ]]; then
+        echo "frontmatter: INVALID $fm_reason"
         INVALID_COUNT=$((INVALID_COUNT + 1))
-        continue
-    fi
-
-    first_line="$(sed -n '1p' "$learning_file")"
-    if [[ "$first_line" != "---" ]]; then
-        echo "frontmatter: INVALID missing opening --- delimiter"
-        INVALID_COUNT=$((INVALID_COUNT + 1))
-        continue
-    fi
-
-    fm_end="$(awk 'NR>1 && $0=="---"{print NR; exit}' "$learning_file")"
-    if [[ -z "$fm_end" ]]; then
-        echo "frontmatter: INVALID missing closing --- delimiter"
-        INVALID_COUNT=$((INVALID_COUNT + 1))
-        continue
-    fi
-
-    # Reset per-file frontmatter fields.
-    fm_id="" fm_title="" fm_date="" fm_track="" fm_area="" fm_severity=""
-    fm_tags="" fm_symptoms="" fm_rootcause="" fm_resolution=""
-    reason=""
-    last_list_key=""
-
-    while IFS= read -r fm_line; do
-        if [[ "$fm_line" =~ ^([A-Za-z][A-Za-z0-9_]*):[[:space:]]*(.*)$ ]]; then
-            key="${BASH_REMATCH[1]}"
-            value="$(trim "${BASH_REMATCH[2]}")"
-            last_list_key="$key"
-            case "$key" in
-                id) fm_id="$value" ;;
-                title) fm_title="$value" ;;
-                date) fm_date="$value" ;;
-                track) fm_track="$value" ;;
-                area) fm_area="$value" ;;
-                severity) fm_severity="$value" ;;
-                tags)
-                    value="${value#\[}"; value="${value%\]}"
-                    fm_tags="$value"
-                    ;;
-                symptoms) fm_symptoms="$value" ;;
-                rootCause) fm_rootcause="$value" ;;
-                resolution) fm_resolution="$value" ;;
-                *) ;;
-            esac
-        elif [[ "$fm_line" =~ ^[[:space:]]*-[[:space:]]+(.*)$ ]]; then
-            item="$(trim "${BASH_REMATCH[1]}")"
-            case "$last_list_key" in
-                tags)
-                    if [[ -n "$fm_tags" ]]; then fm_tags="$fm_tags,$item"; else fm_tags="$item"; fi
-                    ;;
-                *) ;;
-            esac
-        fi
-    done < <(sed -n "2,$((fm_end - 1))p" "$learning_file")
-
-    [[ -n "$fm_id" ]] || reason="missing required field: id"
-    [[ -n "$reason" || "$fm_id" =~ ^L-[0-9]{3,}$ ]] || reason="id does not match L-NNN: $fm_id"
-    [[ -n "$reason" || -n "$fm_title" ]] || reason="missing required field: title"
-    [[ -n "$reason" || -n "$fm_date" ]] || reason="missing required field: date"
-    [[ -n "$reason" || "$fm_date" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]] || reason="date is not YYYY-MM-DD: $fm_date"
-    [[ -n "$reason" || -n "$fm_track" ]] || reason="missing required field: track"
-    [[ -n "$reason" || "$fm_track" == "bug" || "$fm_track" == "knowledge" ]] || reason="track must be bug or knowledge: $fm_track"
-    [[ -n "$reason" || -n "$fm_area" ]] || reason="missing required field: area"
-    if [[ -z "$reason" ]]; then
-        case "$fm_area" in
-            commands|agents|scripts|hooks|templates|tests|evals|ci|config|docs) ;;
-            *) reason="area not in enum: $fm_area" ;;
-        esac
-    fi
-    [[ -n "$reason" || -n "$fm_severity" ]] || reason="missing required field: severity"
-    if [[ -z "$reason" ]]; then
-        case "$fm_severity" in
-            critical|high|medium|low) ;;
-            *) reason="severity not in enum: $fm_severity" ;;
-        esac
-    fi
-    [[ -n "$reason" || -n "$fm_tags" ]] || reason="missing required field: tags (must be non-empty)"
-
-    if [[ -z "$reason" ]]; then
-        if [[ "$fm_track" == "bug" ]]; then
-            [[ -n "$fm_symptoms" ]] || reason="bug track missing required field: symptoms"
-            [[ -n "$reason" || -n "$fm_rootcause" ]] || reason="bug track missing required field: rootCause"
-            [[ -n "$reason" || -n "$fm_resolution" ]] || reason="bug track missing required field: resolution"
-        elif [[ "$fm_track" == "knowledge" ]]; then
-            if [[ -n "$fm_symptoms" || -n "$fm_rootcause" || -n "$fm_resolution" ]]; then
-                reason="knowledge track must omit symptoms/rootCause/resolution"
-            fi
-        fi
-    fi
-
-    if [[ -n "$reason" ]]; then
-        echo "frontmatter: INVALID $reason"
-        INVALID_COUNT=$((INVALID_COUNT + 1))
+        [[ "$fm_status" -ne 2 ]] || continue
         file_invalid=1
     else
         echo "frontmatter: ok (track=$fm_track, area=$fm_area)"

@@ -279,9 +279,9 @@ bash 3.2 (macOS system bash — the only bash on a stock Mac, and what bats reso
 
 ### F-006 [low] Fresh builders lose repo-specific lessons between tasks and sessions
 
-**Location:** `plugin/commands/build.md` · **category:** architecture · **confidence:** medium · **effort:** medium · **status:** OPEN
+**Location:** `plugin/commands/build.md` · **category:** architecture · **confidence:** medium · **effort:** medium · **status:** 47
 
-Fresh context per builder is the design's anti-rot core, but it also discards hard-won repo facts (e.g. 'tests need X', 'module Y's API is misleading'). Failure notes persist only on the task that failed; the next spec's builders relearn from zero.
+Fresh context per builder is the design's anti-rot core, but it also discards hard-won repo facts (e.g. 'tests need X', 'module Y's API is misleading'). Failure notes persist only on the task that failed; the next spec's builders relearn from zero. [addressed-2026-11-15 by PR #47 (issue #20): builders now consume the existing docs/learnings/ store as the curated, capped lessons record this finding asked for — plugin/scripts/g2g-learnings-index.sh prints a frontmatter-only index (sharing one parser with g2g-learning-check.sh), the task card carries the plugin root, and agents/g2g-builder.md's Orientation section requires running the index and reading the learnings that touch the task before the first edit.]
 
 **Suggestion:** Add a curated, capped lessons file (e.g. review-output/LESSONS.md, ~20 entries, oldest pruned): the orchestrator appends one distilled line when a task FAILs twice or the verifier repeats a finding class, and every builder task card includes the file. Keep it capped and structured so it cannot become the transcript sludge fresh context was designed to avoid.
 
@@ -289,7 +289,7 @@ Fresh context per builder is the design's anti-rot core, but it also discards ha
 
 **Location:** `plugin/commands/build.md` · **category:** architecture · **confidence:** medium · **effort:** medium · **status:** OPEN
 
-Every task dispatches its own fresh builder, so three one-line tasks cost three repo-context reads. For specs with several effort:small tasks touching disjoint files, per-builder overhead dominates.
+Every task dispatches its own fresh builder, so three one-line tasks cost three repo-context reads. For specs with several effort:small tasks touching disjoint files, per-builder overhead dominates. [re-scoped 2026-11-15 by PR #47 (issue #20): the per-builder warmup is narrowed, not removed — /g2g:spec records a per-task relevantPaths hint carried on the task card, and builders read CLAUDE.md and the learnings index during Orientation. The batching suggestion (several effort:small tasks in one builder dispatch) remains open.]
 
 **Suggestion:** Let the orchestrator batch consecutive effort:small tasks with disjoint file targets and no dependency edges into a single builder dispatch (one commit per task preserved via explicit instructions in the batched task card). Prefer batching over parallel builders — parallelism on one branch invites commit races.
 

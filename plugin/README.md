@@ -366,6 +366,13 @@ elsewhere:
   the `g2g-verifier` subagent returns `PASS` at completion; absent (or
   `null` in `specs/example.json`, which was never built) until then.
 
+One optional field is written by `/g2g:spec` and only read by builds:
+
+- **`relevantPaths`** (per task, array of repo-relative paths) — the
+  retrieval hint described under [Builder orientation](#builder-orientation)
+  below. `g2g-evidence.sh` exits 2 on a malformed value (non-array, an
+  empty or multi-line entry, a leading `/`, or a `..` segment).
+
 ## NEEDS_DECISION and FLAG lines
 
 A builder normally reports `DONE` or `FAILED`, but a task can need a
@@ -443,6 +450,37 @@ intentional known limitation) before the run can call itself done.
 `/g2g:compound` holds the checkout lock like `/g2g:build` and
 `/g2g:go` — see item 8 of the [Concurrency model](#concurrency-model)
 below.
+
+### Builder orientation
+
+Fresh context per builder is the core safety property, and it used to
+mean every builder rediscovered the repository from zero (issue #20,
+F-006, F-007). g2g stays index-free and narrows that warmup with
+retrieval it consumes rather than builds. Both engines put the same
+three things in reach of a builder, and its contract
+(`agents/g2g-builder.md`, "Orientation") requires using them before the
+first edit:
+
+- **`relevantPaths`** on the task, recorded by `/g2g:spec` from the recon
+  it already does. It is a starting point, not a scope limit.
+- **The learnings index.** `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-learnings-index.sh`
+  prints one line per learning (id, area, severity, tags, path, title)
+  from frontmatter only, so it stays small as the store grows. The
+  builder opens only the learnings that touch its task. It shares one
+  frontmatter parser with `g2g-learning-check.sh`
+  (`scripts/lib/g2g-learning-frontmatter.sh`), so an entry the checker
+  rejects is skipped and named here, never indexed. The card carries the
+  plugin root so the builder can run it.
+- **A host retrieval tool, if one is configured.** Builders inherit the
+  session's MCP servers (the agent definition sets no `tools:` limit), so
+  an operator who runs a code-search server gets it used in place of a
+  Grep sweep. g2g neither ships nor requires one.
+
+What reaches a builder is spec-time facts and human-reviewed learnings,
+never another builder's report or reasoning, and all of it is DATA under
+the builder's data/instruction rule. Not yet covered: batching several
+small tasks into one dispatch (F-007's remaining half) and warm resume
+for `--continue-branch`.
 
 ## Concurrency model
 
