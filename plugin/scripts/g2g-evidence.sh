@@ -1,13 +1,35 @@
 #!/usr/bin/env bash
 # g2g-evidence.sh — deterministic evidence block for the G2G goal evaluator.
-# Usage: g2g-evidence.sh <spec.json> [--full]
-# Exit: 0 evidence printed; 2 missing/invalid spec; 3 no verificationCommands.
+# Usage: g2g-evidence.sh <spec.json> [--full] [--exit-status]
+# Exit: 0 evidence printed; 2 missing/invalid spec or unknown argument;
+#       3 no verificationCommands; 4 (--exit-status only) evidence printed
+#       and the verdict is not "complete (proven)".
+#
+# By default the exit status says whether the block was produced, not what
+# it found: an "incomplete" verdict still exits 0, and g2g-stop.sh keys on
+# the verdict line, never on this status. --exit-status is the opt-in for
+# callers that branch on the status instead (CI, make, `if ...; then`): it
+# leaves the block byte-identical and only adds exit 4 for any verdict but
+# "complete (proven)" — which status mode can never earn, so without
+# --full it always exits 4 (issue #24).
 set -euo pipefail
 
-SPEC="${1:-}"
-MODE="${2:-}"
-
 fail() { echo "g2g-evidence: $2" >&2; exit "$1"; }
+
+SPEC="${1:-}"
+if (($#)); then shift; fi
+MODE=""
+EXIT_STATUS=0
+# An unrecognised argument is a caller error, not status mode: a mistyped
+# --exit-status silently falling back to exit 0 is the false green the
+# flag exists to prevent.
+for arg in "$@"; do
+    case "$arg" in
+        --full) MODE="--full" ;;
+        --exit-status) EXIT_STATUS=1 ;;
+        *) fail 2 "unknown argument: $(printf '%s' "$arg" | tr -d '[:cntrl:]')" ;;
+    esac
+done
 
 [[ -n "$SPEC" && -f "$SPEC" ]] || fail 2 "spec not found: ${SPEC:-<missing>}"
 jq empty "$SPEC" 2>/dev/null || fail 2 "spec is not valid JSON: $SPEC"
@@ -174,6 +196,7 @@ echo "verifier: $VERIFIER_VERDICT"
 # every one exit 0; 'assumed' rests solely on spec bookkeeping (status
 # mode never runs verification commands, so it can never earn 'proven').
 ALL_TASKS_PASS=0
+PROVEN=0
 if [[ "$TOTAL" -ge 1 && "$PASSED" -eq "$TOTAL" ]]; then
     ALL_TASKS_PASS=1
 fi
@@ -195,6 +218,7 @@ if [[ "$MODE" == "--full" ]]; then
         echo "verdict: incomplete [tasks $PASSED/$TOTAL; verify all exit 0; verifier $VERIFIER_VERDICT]"
     else
         echo "verdict: complete (proven) [tasks $PASSED/$TOTAL; verify all exit 0; verifier PASS]"
+        PROVEN=1
     fi
 else
     if [[ "$ALL_TASKS_PASS" -ne 1 ]]; then
@@ -207,3 +231,7 @@ else
 fi
 
 echo "=== END G2G EVIDENCE ==="
+
+if [[ "$EXIT_STATUS" -eq 1 && "$PROVEN" -ne 1 ]]; then
+    exit 4
+fi

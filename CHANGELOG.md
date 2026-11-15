@@ -1,5 +1,26 @@
 # Changelog
 
+## 0.10.1 (2026-11-15)
+
+Adds an opt-in strict exit status to the evidence script (#24).
+`g2g-evidence.sh --full` exits 0 whenever it prints a block, including
+an `incomplete` verdict, so a caller that branches on the status
+(`if g2g-evidence.sh spec.json --full; then ...`, CI, make) got a
+silent false green. The default contract and the frozen block are
+unchanged; `g2g-stop.sh` still keys on the verdict line only.
+
+### Added
+- `g2g-evidence.sh --exit-status` exits 4 when the verdict is not
+  `complete (proven)`, leaving the printed block byte-identical. Status
+  mode can never earn `(proven)`, so `--exit-status` without `--full`
+  always exits 4. Flags are accepted in any order after the spec path.
+
+### Changed
+- An unrecognised argument after the spec path now exits 2
+  (`unknown argument: ...`) before any output instead of silently
+  running status mode, so a mistyped `--exit-status` cannot fall back
+  to exit 0.
+
 ## 0.10.0 (2026-11-15)
 
 Gives the learnings store a reader (#21). `/g2g:compound` wrote grounded

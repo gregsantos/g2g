@@ -502,3 +502,75 @@ verdict: incomplete [tasks 1/2]
     [[ "$status" -eq 0 ]]
     [[ "$output" == *"head: none"* ]]
 }
+
+# --exit-status (issue #24): opt-in exit 4 for any verdict but
+# "complete (proven)". The block itself must be unchanged by the flag —
+# g2g-stop.sh keys on the verdict line, never on the exit status.
+
+make_full_spec() {
+    # make_full_spec <path> <verificationCommands-json>
+    jq -n --argjson cmds "$2" '{
+        context: { verificationCommands: $cmds },
+        tasks: [{"id":"T-001","title":"First","status":"complete","passes":true}],
+        verifier: {"verdict":"PASS"}
+    }' > "$1"
+}
+
+@test "evidence --exit-status: --full with a proven verdict exits 0" {
+    make_full_spec "$BATS_TEST_TMPDIR/good.json" '["true"]'
+    run "$EVIDENCE" "$BATS_TEST_TMPDIR/good.json" --full --exit-status
+    [[ "$status" -eq 0 ]] || { echo "expected exit 0, got $status: $output"; return 1; }
+    [[ "$output" == *"verdict: complete (proven)"* ]]
+}
+
+@test "evidence --exit-status: --full with a failing verification command exits 4" {
+    make_full_spec "$BATS_TEST_TMPDIR/bad.json" '["true", "false"]'
+    run "$EVIDENCE" "$BATS_TEST_TMPDIR/bad.json" --full --exit-status
+    [[ "$status" -eq 4 ]] || { echo "expected exit 4, got $status: $output"; return 1; }
+    [[ "$output" == *"verdict: incomplete"* ]]
+}
+
+@test "evidence --exit-status: --full with unpassed tasks exits 4" {
+    run "$EVIDENCE" "$SPEC" --full --exit-status
+    [[ "$status" -eq 4 ]] || { echo "expected exit 4, got $status: $output"; return 1; }
+}
+
+@test "evidence --exit-status: status mode exits 4 even on a complete (assumed) verdict" {
+    make_full_spec "$BATS_TEST_TMPDIR/good.json" '["true"]'
+    run "$EVIDENCE" "$BATS_TEST_TMPDIR/good.json" --exit-status
+    [[ "$status" -eq 4 ]] || { echo "expected exit 4, got $status: $output"; return 1; }
+    [[ "$output" == *"verdict: complete (assumed)"* ]]
+}
+
+@test "evidence --exit-status: flag order does not matter" {
+    make_full_spec "$BATS_TEST_TMPDIR/good.json" '["true"]'
+    run "$EVIDENCE" "$BATS_TEST_TMPDIR/good.json" --exit-status --full
+    [[ "$status" -eq 0 ]] || { echo "expected exit 0, got $status: $output"; return 1; }
+    [[ "$output" == *"verdict: complete (proven)"* ]]
+}
+
+@test "evidence --exit-status: output is byte-identical with and without the flag" {
+    make_full_spec "$BATS_TEST_TMPDIR/bad.json" '["true", "false"]'
+    run "$EVIDENCE" "$BATS_TEST_TMPDIR/bad.json" --full
+    [[ "$status" -eq 0 ]]
+    local plain="$output"
+    run "$EVIDENCE" "$BATS_TEST_TMPDIR/bad.json" --full --exit-status
+    [[ "$status" -eq 4 ]]
+    [[ "$output" == "$plain" ]] || { diff <(echo "$plain") <(echo "$output"); return 1; }
+}
+
+@test "evidence --exit-status: invalid spec and missing verificationCommands keep exits 2 and 3" {
+    echo '{' > "$BATS_TEST_TMPDIR/broken.json"
+    run "$EVIDENCE" "$BATS_TEST_TMPDIR/broken.json" --full --exit-status
+    [[ "$status" -eq 2 ]] || { echo "expected exit 2, got $status: $output"; return 1; }
+    make_full_spec "$BATS_TEST_TMPDIR/nocmds.json" '[]'
+    run "$EVIDENCE" "$BATS_TEST_TMPDIR/nocmds.json" --full --exit-status
+    [[ "$status" -eq 3 ]] || { echo "expected exit 3, got $status: $output"; return 1; }
+}
+
+@test "evidence: an unknown argument exits 2 with no evidence block" {
+    run "$EVIDENCE" "$SPEC" --exit-staus
+    [[ "$status" -eq 2 ]] || { echo "expected exit 2, got $status: $output"; return 1; }
+    [[ "$output" == *"unknown argument: --exit-staus"* ]]
+    [[ "$output" != *"=== G2G EVIDENCE ==="* ]]
+}
