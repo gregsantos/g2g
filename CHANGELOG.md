@@ -1,5 +1,42 @@
 # Changelog
 
+## 0.12.0 (2026-11-15)
+
+Pins the verification commands to the build that armed them (second
+half of #23). 0.11.0 refused commands that verify nothing, but a
+builder could still edit its own spec's `context.verificationCommands`
+mid-build and earn `complete (proven)` against the weaker list; only the
+verifier model stood in the way. The evidence block now carries a hash
+of the commands, the goal records it at arming, and a mismatch can no
+longer prove completion.
+
+### Added
+- `g2g-evidence.sh` prints a `commands-hash: <16 hex>` line after
+  `head:` in both modes: the first 16 hex digits of the SHA-256 of the
+  compact `context.verificationCommands` array (`sha256sum`, then
+  `shasum -a 256`, then `openssl`; `unavailable` if none is found).
+
+### Changed
+- `/g2g:build` Phase 1 step 5 records that value as COMMANDS_HASH
+  (aborting if it is not 16 hex digits), and Phase 2 writes it into
+  `.g2g-goal` as `verifyCommandsHash`. The goal is now `"version": 2`.
+  `/g2g:build-wf` gets this through build.md's Phases 1 and 2.
+- `g2g-evidence.sh` reads the goal at the worktree root; when it is for
+  the same spec and its pin differs, the verdict is `incomplete [tasks
+  P/T; verification commands changed since arming: <armed> -> <now>]`
+  in both modes. A command that rewrites the spec's commands during a
+  `--full` run is now state drift (`state changed during verify:
+  verification commands`).
+- `g2g-stop.sh` blocks a proven-armed stop whose paired block's
+  `commands-hash:` line differs from the goal's `verifyCommandsHash`, is
+  missing, or reads `unavailable`, naming both hashes. A goal without
+  the field (armed by an older plugin) is checked as before.
+- `/g2g:build` Phase 4 step 6 routes a final verdict naming the drift to
+  Phase 5 (draft partial PR) instead of opening a ready PR, and never
+  restores the commands itself.
+- `tests/plugin_evidence.bats` and `tests/plugin_stop.bats` pin all of
+  the above; the status-mode golden gains the `commands-hash:` line.
+
 ## 0.11.0 (2026-11-15)
 
 Refuses verification commands that verify nothing (first half of #23).

@@ -288,7 +288,7 @@ evidence_result=$(jq -rs --arg spec "$spec_path" --arg script "$evidence_script"
         | [.content] | flatten
         | map(if type=="object" then (.text // "") else tostring end)
         | join("\n") ] as $blocks
-    | if ($blocks | length) == 0 then "NO-EVIDENCE", ""
+    | if ($blocks | length) == 0 then "NO-EVIDENCE", "", ""
       else
         ($blocks | last) as $block
         # The head line the paired block certified (F-059, hook side): the
@@ -297,16 +297,20 @@ evidence_result=$(jq -rs --arg spec "$spec_path" --arg script "$evidence_script"
         # tree below. Empty when the block carries no head line at all (a
         # pre-head-binding g2g-evidence.sh run, or a forged/edited block).
         | ($block | split("\n") | map(select(startswith("head:"))) | (.[0] // "")) as $head_line
+        # Likewise the commands-hash line (issue #23), compared below
+        # against the pin the goal recorded at arming.
+        | ($block | split("\n") | map(select(startswith("commands-hash:"))) | (.[0] // "")) as $commands_line
         | ($block | split("\n") | map(select(startswith("verdict:")))) as $verdict_lines
         | (if ($verdict_lines | length) > 1 then "MULTIPLE-VERDICT-LINES:" + ($verdict_lines | join(" || "))
            elif ($verdict_lines | length) == 1
                 and ($verdict_lines[0] | startswith("verdict: complete (proven)")) then "EVIDENCE-OK"
            elif ($verdict_lines | length) == 1 then "VERDICT-LINE:" + $verdict_lines[0]
            else "NO-VERDICT-LINE"
-           end), $head_line
+           end), $head_line, $commands_line
       end' "$transcript_path" 2>/dev/null)
 evidence_check=$(printf '%s\n' "$evidence_result" | sed -n '1p')
 evidence_head_line=$(printf '%s\n' "$evidence_result" | sed -n '2p')
+evidence_commands_line=$(printf '%s\n' "$evidence_result" | sed -n '3p')
 
 if [ "$evidence_check" != "EVIDENCE-OK" ]; then
     case "$evidence_check" in
@@ -353,6 +357,29 @@ elif [ "$evidence_head_line" != "$current_head_line" ]; then
         head_drift="tracked-dirty $recorded_dirty -> $current_head_dirty"
     fi
     block "Condition not met: the proven evidence head is stale ($head_drift) -- the tree moved since g2g-evidence.sh ran, so the token no longer certifies what is about to ship; re-run \`g2g-evidence.sh $spec_path --full\` against this tree."
+fi
+
+# ---------------------------------------------------------------------------
+# Commands pin (issue #23). /g2g:build copies the evidence block's
+# commands-hash into the goal as verifyCommandsHash when it arms, before
+# any builder runs. A proven block whose hash differs ran a different set
+# of verification commands than the build armed with: a builder that
+# edits its own spec's verificationCommands would otherwise prove itself
+# done. g2g-evidence.sh already refuses 'proven' on this drift when it can
+# see the goal; this is the hook's own check of the block, so enforcement
+# never rests on the evidence script finding the goal file. A goal with
+# no pin (armed before the field existed) has nothing to compare; a
+# pinned goal and a block with no hash line fails closed.
+# ---------------------------------------------------------------------------
+
+armed_commands_hash=$(goal_field verifyCommandsHash)
+if [ -n "$armed_commands_hash" ]; then
+    evidence_commands_hash=${evidence_commands_line#commands-hash: }
+    if [ -z "$evidence_commands_line" ]; then
+        block "Condition not met: the goal pins the verification commands but the proven evidence block carries no commands-hash line -- re-run \`g2g-evidence.sh $spec_path --full\` with the current plugin."
+    elif [ "$evidence_commands_hash" = "unavailable" ] || [ "$evidence_commands_hash" != "$armed_commands_hash" ]; then
+        block "Condition not met: the verification commands changed since the goal was armed (armed $(printf '%s' "$armed_commands_hash" | tr -cd '[:alnum:]' | cut -c1-16), evidence $(printf '%s' "$evidence_commands_hash" | tr -cd '[:alnum:]' | cut -c1-16)) -- a re-run cannot fix this; restore the spec's context.verificationCommands to the list the build armed with, or end the build as partial (build.md Phase 5)."
+    fi
 fi
 
 # The verifier's own report must come from a real subagent dispatch after arming.

@@ -306,6 +306,20 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
     grep -q 'head: none' "$BATS_TEST_DIRNAME/plugin_evidence.bats"
 }
 
+@test "contract: build.md pins the verification commands in the goal the hook reads (issue #23)" {
+    # The pin is only enforced if the field build.md writes is the field
+    # g2g-stop.sh and g2g-evidence.sh read, its value comes from the line
+    # the evidence script prints, and a drifted final verdict never ships
+    # as a ready PR.
+    grep -q '"verifyCommandsHash": "<COMMANDS_HASH>"' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'goal_field verifyCommandsHash' "$PLUGIN_DIR/scripts/g2g-stop.sh"
+    grep -q '\.verifyCommandsHash' "$PLUGIN_DIR/scripts/g2g-evidence.sh"
+    grep -q 'echo "commands-hash: ' "$PLUGIN_DIR/scripts/g2g-evidence.sh"
+    grep -q 'after `commands-hash: ` in the printed block as COMMANDS_HASH' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'verification commands changed since arming' "$PLUGIN_DIR/scripts/g2g-evidence.sh"
+    grep -q 'verdict line contains `verification commands changed' "$PLUGIN_DIR/commands/build.md"
+}
+
 @test "safety: ownership loss is a terminal allow path in build.md and the hook" {
     # The ownership-lost path deletes nothing, so without the hook honouring
     # its marker the goal would block the session until the turn/time caps —

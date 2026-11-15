@@ -639,6 +639,20 @@ algorithm backing it).
   lets Phase 4 rebase onto the default branch before running the final
   evidence, so the proven token certifies the tree that is actually
   pushed rather than a pre-rebase snapshot.
+  The commands are pinned too (issue #23): the block's `commands-hash:`
+  line is the first 16 hex digits of the SHA-256 of the spec's compact
+  `context.verificationCommands` array, and `/g2g:build` copies it into
+  `.g2g-goal` as `verifyCommandsHash` when it arms, before any builder
+  runs. If a goal for the same spec is armed in the worktree and its pin
+  no longer matches, the verdict is `incomplete [...; verification
+  commands changed since arming: <armed> -> <now>]` in either mode, and
+  the hook independently blocks a proven block whose `commands-hash:`
+  line differs from the pin or is missing. A command that rewrites the
+  spec's commands while `--full` runs is caught as state drift. A goal
+  armed before the pin existed carries no `verifyCommandsHash` and is
+  checked as before. The pin covers the commands' text, not what they
+  run: weakening a Makefile target or a test file one level down is
+  still the verifier's job.
   The script's exit status says whether it produced a block, not what
   the block found: 0 evidence printed (an `incomplete` verdict included),
   2 missing/invalid spec or unknown argument, 3 no

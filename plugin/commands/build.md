@@ -125,7 +125,13 @@ build).
    builds don't run. Exit 2: ABORT — invalid spec. If the script fails to
    execute at all (e.g. permission denied on the plugin root), ABORT with
    that error rather than proceeding without a working evidence chain —
-   better to catch it here than mid-build.
+   better to catch it here than mid-build. On exit 0, record the value
+   after `commands-hash: ` in the printed block as COMMANDS_HASH, copied
+   character for character — never compute it yourself. It pins the
+   verification commands as they stand before any builder runs, and
+   Phase 2 writes it into the goal. If it is not exactly 16 lowercase
+   hex digits (`unavailable` means no SHA-256 tool was found), ABORT:
+   "cannot pin verification commands: commands-hash is <value>".
 6. Compute TURN_CAP = F × (number of tasks), where F is
    `.claude/g2g.json` → `defaultBudgets.buildTurnsFactor` if that
    file and field exist, else 2. Set HOURS_CAP from
@@ -162,7 +168,8 @@ command (confirmed by spike). Instead:
 2. Write a JSON object — with `<owner-token>`, `<spec-path>`, `<N>` (the
    spec's total task count), `<TURN_CAP>`, `<HOURS_CAP>`, and
    `<BUILD_START>` (ISO 8601, the same value used for the turn line and
-   the cap checks) filled in with their real values — to a file named
+   the cap checks), and `<COMMANDS_HASH>` (Phase 1 step 5) filled in
+   with their real values — to a file named
    `.g2g-goal`, using the Write tool. The location is THE ENCLOSING GIT
    WORKTREE ROOT — the absolute path printed by
    `git rev-parse --show-toplevel` run from your current directory, the
@@ -176,9 +183,13 @@ command (confirmed by spike). Instead:
    will never be enforced. Exactly this shape, and nothing else in the
    file:
 
-   {"version": 1, "ownerToken": "<owner-token>", "specPath": "<spec-path>",
+   {"version": 2, "ownerToken": "<owner-token>", "specPath": "<spec-path>",
     "taskTotal": <N>, "turnCap": <TURN_CAP>, "hoursCap": <HOURS_CAP>,
-    "buildStart": "<BUILD_START>"}
+    "buildStart": "<BUILD_START>", "verifyCommandsHash": "<COMMANDS_HASH>"}
+
+   `<spec-path>` here must be the exact string you pass to
+   `g2g-evidence.sh` everywhere in this build: both the evidence script
+   and the hook match the goal to the spec by that text.
 
    The goal file carries DATA, not prose. `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-stop.sh`
    — the Stop hook — reads these fields and decides deterministically
@@ -205,6 +216,11 @@ command (confirmed by spike). Instead:
      exactly one verdict line, reading `verdict: complete (proven)`,
      AND a `VERIFIER REPORT` with `verdict: PASS` arrived from a
      dispatched `g2g:g2g-verifier` subagent after the goal was armed,
+     AND the paired block's `commands-hash:` line equals the goal's
+     `verifyCommandsHash` — the verification commands that ran are the
+     ones the build armed with, so a spec whose commands were edited
+     after arming can never prove itself done (the evidence script
+     itself already prints `incomplete` for that drift),
      AND the paired block's `head:` line — short HEAD plus
      tracked-dirty count, derived exactly as the evidence script derives
      them — still matches the repository's state at stop time; a stale
@@ -842,7 +858,12 @@ finish line and burn the whole remaining budget before surfacing partial work.
    hand-write this block. Running it here, after the rebase, is what
    lets the resulting proven token certify the rebased HEAD that is
    about to be pushed, rather than a commit the rebase has since moved
-   past.
+   past. If its verdict line contains `verification commands changed
+   since arming`, the spec's `context.verificationCommands` no longer
+   match the ones this build armed with: do NOT continue to step 7 and
+   do NOT edit them back yourself. Go to Phase 5, naming the drift (the
+   verdict line, which carries both hashes) in the handoff so the
+   partial PR surfaces it for a human.
 7. Push ONCE (`git push -u origin <branch>`), then compose the body —
    evidence block + task table + verifier summary, plus the `## Needs
    your attention` section (where the verifier's flags lines now live) —
