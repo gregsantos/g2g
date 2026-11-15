@@ -79,7 +79,8 @@ shipped with the plugin.
   without updating `plugin/commands/build.md` in the same change.
 - **The evidence script's output is frozen.** `tests/plugin_evidence.bats`
   pins `g2g-evidence.sh`'s header, footer, summary line, and exit codes
-  (0 ok / 2 invalid spec / 3 no verificationCommands); `g2g-stop.sh` keys
+  (0 ok / 2 invalid spec / 3 no verificationCommands / 4 not proven,
+  `--exit-status` only); `g2g-stop.sh` keys
   its completion check on the verdict line, a head-binding check
   gating proven-armed stops (F-059, L-001), and a paired `gh pr create`
   result after arming (F-038). Change output format only

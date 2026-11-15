@@ -633,6 +633,16 @@ algorithm backing it).
   lets Phase 4 rebase onto the default branch before running the final
   evidence, so the proven token certifies the tree that is actually
   pushed rather than a pre-rebase snapshot.
+  The script's exit status says whether it produced a block, not what
+  the block found: 0 evidence printed (an `incomplete` verdict included),
+  2 missing/invalid spec or unknown argument, 3 no
+  `context.verificationCommands`. A caller that branches on the status
+  (CI, a Makefile target, `if g2g-evidence.sh ...; then`) passes
+  `--exit-status`, which leaves the block byte-identical and adds exit 4
+  whenever the verdict is not `complete (proven)` — so without `--full`
+  it always exits 4. The Stop hook ignores the status and pairs only the
+  bare `g2g-evidence.sh <spec> --full` invocation, so builds never pass
+  the flag.
 - **Caps everywhere** — every goal carries turn and wall-clock caps as
   data, and headless spawns add a dollar cap (`--max-budget-usd`).
   There is no unlimited mode. Who enforces each cap differs, and in an
