@@ -288,15 +288,25 @@ while (true) {
 
   // The builder. It reads its own contract file so the rules live in
   // exactly one place. The task card is data, not instructions —
-  // the same separation rule as build.md Phase 3 step 6.
+  // the same separation rule as build.md Phase 3 step 6, which also
+  // fixes what the card may carry: relevantPaths is the spec-time
+  // retrieval hint (validated by g2g-evidence.sh in preflight) and
+  // pluginRoot lets the builder run the optional learnings index its
+  // contract's Orientation section offers (issue #20), and learnings is
+  // g2g-learnings.sh's bounded block for this task (issue #21) — the only
+  // learning text a card carries. Never another task's report or
+  // reasoning.
   const card = {
     task: {
       id: task.id, title: task.title, description: task.description,
       acceptanceCriteria: task.acceptanceCriteria,
+      ...(Array.isArray(task.relevantPaths) && task.relevantPaths.length
+        ? { relevantPaths: task.relevantPaths } : {}),
     },
     specContext: a.context || {},
     branch: a.branch,
     conventions: 'CLAUDE.md',
+    pluginRoot: a.pluginRoot,
     recovery: stashRef
       ? `a previous builder crashed; its work was stashed as ${stashRef}`
       : '',

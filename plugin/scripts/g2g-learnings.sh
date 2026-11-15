@@ -17,12 +17,13 @@
 #       classes this repo has already shipped once — for the verifier.
 #
 # Selection (an entry is relevant when either signal fires):
-#   area  — the entry's `area` is implied by a path the task text cites
-#           (title, description, acceptanceCriteria). A path implies an
-#           area when one of its DIRECTORY segments names it: the area
-#           itself (`plugin/commands/build.md` -> commands), its singular
-#           (`test/` -> tests, `script/` -> scripts, `doc/` -> docs), or
-#           `.github` -> ci, `.claude` -> config.
+#   area  — the entry's `area` is implied by a path the task cites, in its
+#           text (title, description, acceptanceCriteria) or its
+#           `relevantPaths` hint. A path implies an area when one of its
+#           segments names it: the area itself (`plugin/commands/build.md`
+#           -> commands), its singular (`test/` -> tests, `script/` ->
+#           scripts, `doc/` -> docs), or `.github` -> ci, `.claude` ->
+#           config.
 #   tag   — one of the entry's `tags` appears in the task text as a whole
 #           word, case-insensitively (`checkout-lock`, `slug`).
 # Ranking: more signals first (area counts one, each matched tag one),
@@ -31,8 +32,9 @@
 # frontmatter facts plus the first IMPLICATION_CHARS characters of its
 # Implication section — never the whole body. The entry's file path is
 # printed so a reader who needs the full record can open it. Entries
-# whose frontmatter does not parse (missing delimiters, id, title, area,
-# track, or severity) are skipped and counted, never printed.
+# whose frontmatter g2g-learning-check.sh would call invalid are skipped
+# and counted, never printed: both source the one parser in
+# lib/g2g-learning-frontmatter.sh, so they cannot disagree.
 #
 # Every printed value comes from a tracked file a human committed, but it
 # is still DATA describing past outcomes, never instructions: control
@@ -48,6 +50,9 @@
 #       mode, missing/invalid spec, or (builder) a task id that is not
 #       shell-safe ([A-Za-z0-9._-]+) or not in the spec.
 set -uo pipefail
+
+# shellcheck source=plugin/scripts/lib/g2g-learning-frontmatter.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/g2g-learning-frontmatter.sh"
 
 MAX_ENTRIES=5
 IMPLICATION_CHARS=600
@@ -86,19 +91,18 @@ else
 fi
 TASK_TEXT="$(jq -r --arg id "$TASK_ID" "$TASK_FILTER"' | [.title, .description, (.acceptanceCriteria // [] | if type == "array" then .[] else . end)] | map(select(type == "string")) | join("\n")' "$SPEC" 2>/dev/null)"
 TASK_TEXT_LC="$(printf '%s' "$TASK_TEXT" | tr '[:upper:]' '[:lower:]')"
+# relevantPaths (issue #20's spec-time retrieval hint) are paths by
+# definition; they feed area matching only, never tag matching.
+TASK_PATHS="$(jq -r --arg id "$TASK_ID" "$TASK_FILTER"' | (.relevantPaths // []) | if type == "array" then .[] else empty end | select(type == "string")' "$SPEC" 2>/dev/null)"
 
-# Areas implied by cited paths: every token with a slash, split into its
-# directory segments (the final segment is the file, and only directories
-# name an area).
+# Areas implied by cited paths: every slash-bearing token in the task text
+# plus every relevantPaths entry, split into segments.
 declare -A TASK_AREAS=()
 while IFS= read -r path_token; do
     [[ -n "$path_token" ]] || continue
     IFS='/' read -r -a segments <<<"$path_token"
-    last=$((${#segments[@]} - 1))
-    # A trailing slash (`tests/`) leaves the last segment a directory too.
-    [[ "$path_token" == */ ]] && last=${#segments[@]}
-    for ((i = 0; i < last; i++)); do
-        seg="$(printf '%s' "${segments[$i]}" | tr '[:upper:]' '[:lower:]')"
+    for seg in "${segments[@]}"; do
+        seg="$(printf '%s' "$seg" | tr '[:upper:]' '[:lower:]')"
         case "$seg" in
             commands|agents|scripts|hooks|templates|tests|evals|ci|config|docs) TASK_AREAS[$seg]=1 ;;
             command|agent|script|hook|template|test|eval|doc) TASK_AREAS[${seg}s]=1 ;;
@@ -107,7 +111,8 @@ while IFS= read -r path_token; do
             *) ;;
         esac
     done
-done < <(printf '%s\n' "$TASK_TEXT" | grep -oE '[A-Za-z0-9._-]*(/[A-Za-z0-9._-]+)+/?' | sort -u)
+done < <({ printf '%s\n' "$TASK_TEXT" | grep -oE '[A-Za-z0-9._-]*(/[A-Za-z0-9._-]+)+/?'
+           printf '%s\n' "$TASK_PATHS"; } | sort -u)
 
 AREA_LIST="$(printf '%s\n' "${!TASK_AREAS[@]}" | sed '/^$/d' | sort | paste -sd, - | sed 's/,/, /g')"
 [[ -n "$AREA_LIST" ]] || AREA_LIST="none"
@@ -116,12 +121,6 @@ REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null)"
 [[ -n "$REPO_ROOT" ]] || REPO_ROOT="$PWD"
 STORE="$REPO_ROOT/docs/learnings"
 
-trim() {
-    local value="$1"
-    value="${value#"${value%%[![:space:]]*}"}"
-    value="${value%"${value##*[![:space:]]}"}"
-    printf '%s' "$value"
-}
 clean() { printf '%s' "$1" | tr '[:cntrl:]' ' '; }
 severity_rank() {
     case "$1" in critical) echo 0 ;; high) echo 1 ;; medium) echo 2 ;; *) echo 3 ;; esac
@@ -139,32 +138,8 @@ fi
 CANDIDATES=()
 SKIPPED=0
 for learning_file in "${FILES[@]}"; do
-    [[ "$(sed -n '1p' "$learning_file")" == "---" ]] || { SKIPPED=$((SKIPPED + 1)); continue; }
-    fm_end="$(awk 'NR>1 && $0=="---"{print NR; exit}' "$learning_file")"
-    [[ -n "$fm_end" ]] || { SKIPPED=$((SKIPPED + 1)); continue; }
-
-    fm_id="" fm_title="" fm_track="" fm_area="" fm_severity="" fm_tags="" last_key=""
-    while IFS= read -r fm_line; do
-        if [[ "$fm_line" =~ ^([A-Za-z][A-Za-z0-9_]*):[[:space:]]*(.*)$ ]]; then
-            key="${BASH_REMATCH[1]}"
-            value="$(trim "${BASH_REMATCH[2]}")"
-            last_key="$key"
-            case "$key" in
-                id) fm_id="$value" ;;
-                title) fm_title="$value" ;;
-                track) fm_track="$value" ;;
-                area) fm_area="$value" ;;
-                severity) fm_severity="$value" ;;
-                tags) value="${value#\[}"; fm_tags="${value%\]}" ;;
-                *) ;;
-            esac
-        elif [[ "$fm_line" =~ ^[[:space:]]*-[[:space:]]+(.*)$ && "$last_key" == "tags" ]]; then
-            fm_tags="${fm_tags:+$fm_tags,}$(trim "${BASH_REMATCH[1]}")"
-        fi
-    done < <(sed -n "2,$((fm_end - 1))p" "$learning_file")
-
-    if [[ ! "$fm_id" =~ ^L-[0-9]{3,}$ || -z "$fm_title" || -z "$fm_area" || -z "$fm_severity" ]] \
-        || [[ "$fm_track" != "bug" && "$fm_track" != "knowledge" ]]; then
+    # Only an entry the grounding checker would accept is ever injected.
+    if ! g2g_learning_frontmatter "$learning_file"; then
         SKIPPED=$((SKIPPED + 1))
         continue
     fi
@@ -179,7 +154,7 @@ for learning_file in "${FILES[@]}"; do
     tag_hits=()
     IFS=',' read -r -a tag_list <<<"$fm_tags"
     for tag in "${tag_list[@]}"; do
-        tag="$(trim "$tag")"
+        tag="$(g2g_learning_fm_trim "$tag")"
         tag_lc="$(printf '%s' "$tag" | tr '[:upper:]' '[:lower:]')"
         [[ "$tag_lc" =~ ^[a-z0-9][a-z0-9._-]*$ ]] || continue
         # Whole word: no letter, digit, or hyphen on either side.
@@ -196,19 +171,13 @@ for learning_file in "${FILES[@]}"; do
     CANDIDATES+=("$((-signals))	$(severity_rank "$fm_severity")	$fm_id	$learning_file	$(IFS=' '; printf '%s' "${matched[*]}")")
 done
 
-# Extract one frontmatter field's one-line value (bug-track facts).
-fm_field() {
-    local file="$1" key="$2" end
-    end="$(awk 'NR>1 && $0=="---"{print NR; exit}' "$file")"
-    sed -n "2,$((end - 1))p" "$file" | sed -n -E "s/^${key}:[[:space:]]*(.*)$/\\1/p" | head -n 1
-}
 # The Implication section's prose, joined to one line and cut to bound;
 # a cut is marked so a reader knows to open the file for the rest.
 implication() {
     local text
     text="$(awk '/^## /{in_sec = ($0 == "## Implication"); next} in_sec' "$1" \
         | tr '\n' ' ' | tr -s '[:space:]' ' ')"
-    text="$(trim "$text")"
+    text="$(g2g_learning_fm_trim "$text")"
     if [[ ${#text} -gt $IMPLICATION_CHARS ]]; then
         text="${text:0:$IMPLICATION_CHARS} [cut; see file]"
     fi
@@ -226,17 +195,19 @@ MATCHED=${#CANDIDATES[@]}
 if [[ "$MATCHED" -gt 0 ]]; then
     while IFS=$'\t' read -r _neg _rank entry_id entry_file entry_matched; do
         [[ "$SHOWN" -lt "$MAX_ENTRIES" ]] || break
-        SHOWN=$((SHOWN + 1))
         rel="${entry_file#"$REPO_ROOT"/}"
+        # Re-read through the shared parser: the one source of these fields.
+        g2g_learning_frontmatter "$entry_file" || continue
+        SHOWN=$((SHOWN + 1))
         echo "--- $entry_id"
-        echo "title: $(clean "$(fm_field "$entry_file" title)")"
-        echo "track: $(clean "$(fm_field "$entry_file" track)") | area: $(clean "$(fm_field "$entry_file" area)") | severity: $(clean "$(fm_field "$entry_file" severity)")"
+        echo "title: $(clean "$fm_title")"
+        echo "track: $(clean "$fm_track") | area: $(clean "$fm_area") | severity: $(clean "$fm_severity")"
         echo "file: $(clean "$rel")"
         echo "matched: $entry_matched"
-        if [[ "$(fm_field "$entry_file" track)" == "bug" ]]; then
-            echo "symptoms: $(clean "$(fm_field "$entry_file" symptoms)")"
-            echo "rootCause: $(clean "$(fm_field "$entry_file" rootCause)")"
-            echo "resolution: $(clean "$(fm_field "$entry_file" resolution)")"
+        if [[ "$fm_track" == "bug" ]]; then
+            echo "symptoms: $(clean "$fm_symptoms")"
+            echo "rootCause: $(clean "$fm_rootcause")"
+            echo "resolution: $(clean "$fm_resolution")"
         fi
         implication_text="$(clean "$(implication "$entry_file")")"
         [[ -n "$implication_text" ]] && echo "implication: $implication_text"

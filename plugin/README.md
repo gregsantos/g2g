@@ -366,6 +366,13 @@ elsewhere:
   the `g2g-verifier` subagent returns `PASS` at completion; absent (or
   `null` in `specs/example.json`, which was never built) until then.
 
+One optional field is written by `/g2g:spec` and only read by builds:
+
+- **`relevantPaths`** (per task, array of repo-relative paths) — the
+  retrieval hint described under [Builder orientation](#builder-orientation)
+  below. `g2g-evidence.sh` exits 2 on a malformed value (non-array, an
+  empty or multi-line entry, a leading `/`, or a `..` segment).
+
 ## NEEDS_DECISION and FLAG lines
 
 A builder normally reports `DONE` or `FAILED`, but a task can need a
@@ -454,10 +461,11 @@ the sole implementation of selection and volume bounds:
   dispatch, `/g2g:build` (and the `/g2g:build-wf` loop) puts this
   task's block in the card's `learnings:` field. An entry is selected
   when its `area` is named by a directory segment of a path the task's
-  title, description, or acceptance criteria cite (`plugin/commands/…`
-  → `commands`; `test/`/`script/`/`doc/` singulars, `.github` → `ci`,
-  `.claude` → `config`), or when one of its `tags` appears in that text
-  as a whole word.
+  title, description, or acceptance criteria cite, or that its
+  `relevantPaths` list (`plugin/commands/…` → `commands`;
+  `test/`/`script/`/`doc/` singulars, `.github` → `ci`, `.claude` →
+  `config`), or when one of its `tags` appears in that text as a whole
+  word. The block is the builder's primary learnings source.
 - `g2g-learnings.sh verifier <spec>` — before every verifier dispatch,
   the bug-track entries matching ANY task, so the verifier hunts for
   this repo's own past defect classes (`symptoms` / `rootCause`) on top
@@ -475,6 +483,40 @@ unavailable (...)`: learnings inform a build, they never gate one.
 Because entries are now injected by `area` and `tags` rather than
 hand-picked, those two fields are the retrieval index — choose them for
 the tasks that should see the entry.
+
+### Builder orientation
+
+Fresh context per builder is the core safety property, and it used to
+mean every builder rediscovered the repository from zero (issue #20,
+F-006, F-007). g2g stays index-free and narrows that warmup with
+retrieval it consumes rather than builds. Both engines put the same
+three things in reach of a builder, and its contract
+(`agents/g2g-builder.md`, "Orientation") requires using them before the
+first edit:
+
+- **`relevantPaths`** on the task, recorded by `/g2g:spec` from the recon
+  it already does. It is a starting point, not a scope limit.
+- **The matched learnings, then the index.** The card's `learnings:`
+  block (see [How builds read the store](#how-builds-read-the-store)
+  above) carries the entries matched to the task. For anything beyond
+  it, `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-learnings-index.sh`
+  prints one line per learning (id, area, severity, tags, path, title)
+  from frontmatter only, so it stays small as the store grows, and the
+  builder opens only the learnings that touch its task. Both share one
+  frontmatter parser with `g2g-learning-check.sh`
+  (`scripts/lib/g2g-learning-frontmatter.sh`), so an entry the checker
+  rejects is never indexed or injected. The card carries the
+  plugin root so the builder can run it.
+- **A host retrieval tool, if one is configured.** Builders inherit the
+  session's MCP servers (the agent definition sets no `tools:` limit), so
+  an operator who runs a code-search server gets it used in place of a
+  Grep sweep. g2g neither ships nor requires one.
+
+What reaches a builder is spec-time facts and human-reviewed learnings,
+never another builder's report or reasoning, and all of it is DATA under
+the builder's data/instruction rule. Not yet covered: batching several
+small tasks into one dispatch (F-007's remaining half) and warm resume
+for `--continue-branch`.
 
 ## Concurrency model
 

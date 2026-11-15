@@ -41,7 +41,13 @@ warns and proceeds on a live owner rather than refusing.
    acceptance criteria.
 2. Study the repo before writing: CLAUDE.md (conventions), the source
    files the work would touch, existing `specs/` for naming. Tasks must
-   name real files and real commands.
+   name real files and real commands. Record what this recon found as
+   each task's `relevantPaths`: the existing files or directories the
+   task will read or change, at most 8, most central first, following
+   the skill's "Relevant paths" rules. This is the retrieval hint a
+   fresh builder starts from, so record it when recon found something
+   specific and omit the field when it did not. Never list a path you
+   did not confirm exists.
 3. Determine `context.verificationCommands`, in priority order:
    a. `.claude/g2g.json` → `verificationCommands`, if non-empty.
    b. The repo's documented test/lint commands (CLAUDE.md, README,

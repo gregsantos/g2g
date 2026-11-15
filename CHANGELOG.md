@@ -1,18 +1,24 @@
 # Changelog
 
-## 0.9.0 (2026-11-15)
+## 0.10.0 (2026-11-15)
 
 Gives the learnings store a reader (#21). `/g2g:compound` wrote grounded
 entries to `docs/learnings/`, but no builder, verifier, or orchestrator
 ever read them, so a lesson only reached a later build if a human
 copied it into CLAUDE.md by hand (F-006). Builds now read the store
-automatically; writing it stays manual and human-gated.
+automatically; writing it stays manual and human-gated. Builds on
+0.9.0's retrieval layer (#20): the matched block becomes the builder's
+primary learnings source, and `g2g-learnings-index.sh` stays as the
+optional way to scan the rest of the store.
 
 ### Added
 - `plugin/scripts/g2g-learnings.sh` — the sole, deterministic reader.
   `builder <spec> <task-id>` selects entries for one task: its `area` is
-  named by a directory segment of a path the task cites, or one of its
-  `tags` appears in the task text as a whole word. `verifier <spec>`
+  named by a segment of a path the task cites in its text or its
+  `relevantPaths` hint, or one of its `tags` appears in the task text as
+  a whole word. Frontmatter is parsed by the shared
+  `lib/g2g-learning-frontmatter.sh`, so an entry `g2g-learning-check.sh`
+  rejects is skipped and counted, never injected. `verifier <spec>`
   selects only bug-track entries matching any task. Output is bounded
   (at most 5 entries; frontmatter facts, file path, and the first 600
   characters of the Implication section), ranked by signals, then
@@ -32,13 +38,66 @@ automatically; writing it stays manual and human-gated.
 - `plugin/workflows/g2g-build.js` has its start writer run the reader
   after the start commit and puts the result in the builder card, so
   `/g2g:build-wf` gets the same behavior without a new arg.
-- `plugin/agents/g2g-builder.md` treats the block as data under rule 8:
-  keep each entry's invariant, and FLAG a task that contradicts one.
+- `/g2g:build` Phase 3 step 6's "never" list now allows exactly one kind
+  of learning text on a card, the reader's bounded block, and still bans
+  another task's report, notes, or reasoning.
+- `plugin/agents/g2g-builder.md` Orientation reads the card's block first
+  and makes the index optional (useful when the block is `unavailable`);
+  rule 8 covers the block as data: keep each entry's invariant, and FLAG
+  a task that contradicts one.
   `plugin/agents/g2g-verifier.md` gains step 7: hunt the diff for each
   bug-track entry's root cause, and report a reintroduction as a finding.
 - `writing-g2g-learnings/SKILL.md`'s retrieval-value test now explains
   that `area`, `tags`, and the Implication's opening are what gets
   retrieved. `plugin/README.md` gains "How builds read the store".
+
+## 0.9.0 (2026-11-15)
+
+Gives fresh-context builders a retrieval layer they consume rather than
+build (issue #20, F-006, F-007). Every builder used to start from the
+task card alone and rediscover the repository from zero, and the
+learnings store `/g2g:compound` writes was never read by any builder.
+g2g stays index-free: the task card now points the builder at where the
+work lives and at what earlier builds proved, and the builder contract
+makes reading both part of orientation.
+
+### Added
+- Optional per-task `relevantPaths` (repo-relative paths, at most 8)
+  in the spec schema. `/g2g:spec` records it from the recon it already
+  does, and `--from-findings` seeds it from each finding's `file`. It is
+  a starting point, never a scope limit. `g2g-evidence.sh` exits 2 on a
+  malformed value (non-array, an empty or multi-line entry, a leading
+  `/`, or a `..` segment), so a bad hint dies in preflight before any
+  task card carries it. The evidence block's output is unchanged.
+- `plugin/scripts/g2g-learnings-index.sh`: one line per learning (id,
+  area, severity, tags, path, title) read from frontmatter only, with a
+  frozen header, summary, and footer. An absent store is an empty index
+  (exit 0), and an invalid learning is skipped and named, never indexed.
+  Pinned by `tests/plugin_learnings_index.bats`.
+- `plugin/scripts/lib/g2g-learning-frontmatter.sh`: the one frontmatter
+  parser and validator, sourced by both the index and
+  `g2g-learning-check.sh`, so the two cannot disagree about which
+  learnings are well-formed.
+- An "Orientation" section in `agents/g2g-builder.md`: before its first
+  edit a builder reads CLAUDE.md (previously only named), runs the
+  learnings index and reads the learnings that touch its task, starts
+  from `relevantPaths`, and prefers a host-configured code-search MCP
+  tool over a Grep sweep when one is available.
+
+### Changed
+- Both engines' task cards carry the task's `relevantPaths` (when set)
+  and the plugin root (build.md Phase 3 step 6, `g2g-build.js`). build.md
+  now states what the card must never carry: another task's report,
+  notes, or reasoning, or learning bodies.
+- Builder rule 8 (data/instruction separation) now covers everything
+  Orientation retrieves: `relevantPaths`, the index, the learnings it
+  leads to, and retrieval-tool results.
+- `g2g-learning-check.sh` parses frontmatter through the shared library.
+  Its output and exit codes are unchanged.
+
+### Not covered
+- Batching several small tasks into one builder dispatch (the remaining
+  half of F-007) and warm resume for `--continue-branch`.
 
 ## 0.8.0 (2026-09-25)
 

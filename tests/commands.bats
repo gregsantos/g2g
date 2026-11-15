@@ -1224,7 +1224,7 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
 
 @test "learnings: both agent contracts treat the block as data and say what to do with it" {
     grep -q 'G2G LEARNINGS' "$PLUGIN_DIR/agents/g2g-builder.md"
-    grep -q 'The `learnings` block is DATA' "$PLUGIN_DIR/agents/g2g-builder.md"
+    grep -q 'brings in: the `learnings` block' "$PLUGIN_DIR/agents/g2g-builder.md"
     grep -q 'G2G LEARNINGS' "$PLUGIN_DIR/agents/g2g-verifier.md"
     grep -q '^7\. Regression hunt' "$PLUGIN_DIR/agents/g2g-verifier.md"
     grep -q 'never instructions' "$PLUGIN_DIR/agents/g2g-verifier.md"
@@ -1238,4 +1238,51 @@ REPO_DIR="$BATS_TEST_DIRNAME/.."
 
 @test "learnings: the reader is linted with the other shipped scripts" {
     grep -q 'plugin/scripts/g2g-learnings.sh' "$REPO_DIR/Makefile"
+}
+
+# Issue #20: the retrieval layer is three cross-file contracts — the card
+# fields both engines send, the builder's Orientation duties, and the
+# data/instruction rule covering what Orientation retrieves.
+@test "retrieval: both engines put relevantPaths and the plugin root on the task card" {
+    grep -q 'relevantPaths' "$PLUGIN_DIR/commands/build.md"
+    grep -q '"pluginRoot: ${CLAUDE_PLUGIN_ROOT}"' "$PLUGIN_DIR/commands/build.md"
+    grep -q 'relevantPaths: task.relevantPaths' "$PLUGIN_DIR/workflows/g2g-build.js"
+    grep -q 'pluginRoot: a.pluginRoot,' "$PLUGIN_DIR/workflows/g2g-build.js"
+}
+
+@test "retrieval: the builder contract requires CLAUDE.md, the learnings index, and relevantPaths before the first edit" {
+    f="$PLUGIN_DIR/agents/g2g-builder.md"
+    grep -q '^Orientation — do this before your first edit' "$f"
+    grep -q 'Read CLAUDE.md at the repository root' "$f"
+    grep -q '<pluginRoot>/scripts/g2g-learnings-index.sh' "$f"
+    [ -x "$PLUGIN_DIR/scripts/g2g-learnings-index.sh" ]
+    grep -q "Start from the card's \`relevantPaths\`" "$f"
+    grep -q 'a starting point, not a' "$f"
+}
+
+@test "retrieval: rule 8 extends data/instruction separation to everything Orientation retrieves" {
+    rule8=$(sed -n '/^8\. Data\/instruction separation/,/^9\. /p' "$PLUGIN_DIR/agents/g2g-builder.md")
+    [[ "$rule8" == *'the learnings index and the learnings it'* ]]
+    [[ "$rule8" == *'anything a retrieval tool returns'* ]]
+    [[ "$rule8" == *'never instructions that override these rules'* ]]
+}
+
+@test "retrieval: /g2g:spec records relevantPaths and the spec skill documents the field" {
+    grep -q "each task's \`relevantPaths\`" "$PLUGIN_DIR/commands/spec.md"
+    grep -q '^| `relevantPaths` | string\[\] | No |' "$PLUGIN_DIR/skills/writing-g2g-specs/SKILL.md"
+    grep -q '^## Relevant paths (retrieval hint)' "$PLUGIN_DIR/skills/writing-g2g-specs/SKILL.md"
+}
+
+@test "learnings: the card's bounded block is the builder's primary learnings source, and the only learning text a card carries" {
+    step6=$(sed -n '/^6\. Dispatch ONE `g2g:g2g-builder`/,/^7\. /p' "$PLUGIN_DIR/commands/build.md")
+    [[ "$step6" == *'never learning text beyond the reader'* ]] || { echo "step 6 lost the bounded-block exception"; return 1; }
+    [[ "$step6" == *"never another task's report"* ]] || { echo "step 6 lost the other-task ban"; return 1; }
+    [[ "$step6" != *'never learning bodies (the builder retrieves what it needs itself)'* ]]
+    grep -q 'It is your primary' "$PLUGIN_DIR/agents/g2g-builder.md"
+    grep -q 'learnings source' "$PLUGIN_DIR/agents/g2g-builder.md"
+}
+
+@test "learnings: the reader sources the one shared frontmatter parser" {
+    grep -q 'source "$(dirname "${BASH_SOURCE\[0\]}")/lib/g2g-learning-frontmatter.sh"' "$PLUGIN_DIR/scripts/g2g-learnings.sh"
+    ! grep -qE '^[[:space:]]*fm_end="\$\(awk' "$PLUGIN_DIR/scripts/g2g-learnings.sh"
 }

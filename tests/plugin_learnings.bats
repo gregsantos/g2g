@@ -84,12 +84,35 @@ spec_with() {
     [[ "$output" != *"--- L-002"* ]]
 }
 
-@test "learnings: only directory segments imply an area, never the file name" {
+@test "learnings: a bare directory path implies its area too" {
     learning commands c L-001 knowledge medium "alpha"
-    spec_with "edit plugin/commands"
+    spec_with "edit everything under plugin/commands"
     run "$READER" builder "$SPEC" T-001
-    [[ "$output" == *"areas: none"* ]]
+    [[ "$output" == *"areas: commands"* ]]
+    [[ "$output" == *"--- L-001"* ]]
+}
+
+@test "learnings: a task's relevantPaths select entries by area, never by tag" {
+    learning hooks h L-001 knowledge medium "alpha"
+    learning scripts s L-002 knowledge medium "hooks.json"
+    spec_with "no paths in this prose"
+    jq '.tasks[0].relevantPaths = ["plugin/hooks/hooks.json"]' "$SPEC" > "$SPEC.tmp" && mv "$SPEC.tmp" "$SPEC"
+    run "$READER" builder "$SPEC" T-001
+    [[ "$status" -eq 0 ]]
+    [[ "$output" == *"areas: hooks"* ]]
+    [[ "$output" == *"--- L-001"* ]]
+    [[ "$output" != *"--- L-002"* ]]
+}
+
+@test "learnings: an entry the grounding checker rejects is never injected" {
+    learning commands c L-001 knowledge medium "alpha"
+    # Valid to a lax parser, invalid to the shared one: no date.
+    sed -i.bak '/^date: /d' "$REPO/docs/learnings/commands/c.md"
+    rm -f "$REPO/docs/learnings/commands/c.md.bak"
+    spec_with "edit plugin/commands/build.md"
+    run "$READER" builder "$SPEC" T-001
     [[ "$output" != *"--- L-001"* ]]
+    [[ "$output" == *"| 1 skipped"* ]]
 }
 
 @test "learnings: singular, .github, and .claude segments map to their areas" {
