@@ -83,8 +83,9 @@ section for the full picture.
 1. Caps: `.claude/g2g.json` → `defaultBudgets.improveTurns` (else 50)
    and `defaultBudgets.improveUsd` (else 25). Both must be positive
    JSON numbers — any other type or shape FAILS the launch; they cross
-   into the spawn command line. (`improveHours` is
-   approximated by the turn cap — no wall-clock flag exists.)
+   into the spawn command line. (There is no wall-clock cap: no
+   CLI flag exists for one, so `improveTurns` bounds the cycle and an
+   `improveHours` key is ignored.)
    Cycle model: `.claude/g2g.json` → `models.improveCycle`, defaulting
    to `sonnet` when the file or field is absent. `models.improveCycle`
    does not support `inherit`: a spawned headless process has no

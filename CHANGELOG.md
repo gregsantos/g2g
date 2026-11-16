@@ -29,6 +29,32 @@ at most.
   matching what the workflow engine already writes. It was unnamed, so
   interactive builds wrote free-form subjects.
 
+## 0.13.0 (2026-11-16)
+
+Adds a build dollar budget (#22, part B). Until now the only dollar cap
+on a build was a literal `--max-budget-usd 20` in the documented
+headless shape; nothing in a host's config sized it, and the improve
+spawn was the only one with a configurable cap.
+
+### Added
+- `defaultBudgets.buildUsd` (default 20) in every template, and in the
+  defaults `/g2g:init` writes. It is the value a headless build passes
+  as `--max-budget-usd`. The documented headless shapes (root README,
+  `plugin/README.md` for `/g2g:build` and `/g2g:dev`) read it with a
+  `jq` line that fails closed on a missing config file or a value that
+  is not a positive number. `/g2g:build` never reads the field: only
+  the CLI flag can enforce a dollar cap, so an interactive build still
+  has none, and the docs say so.
+
+### Changed
+- `make smoke` and `make smoke-wf` take their dollar cap from the
+  sandbox's `defaultBudgets.buildUsd` through the same `jq` expression,
+  instead of a literal 20, so the gate exercises the documented shape.
+- `improveHours` is reconciled: it was documented as approximated by
+  the turn cap but read by nothing. The docs and `/g2g:improve` now say
+  there is no improve wall-clock budget and the key is ignored, and
+  this repo's own `.claude/g2g.json` drops it.
+
 ## 0.12.0 (2026-11-15)
 
 Pins the verification commands to the build that armed them (second

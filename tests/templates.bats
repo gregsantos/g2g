@@ -27,7 +27,7 @@ TEMPLATES_DIR="$BATS_TEST_DIRNAME/../plugin/templates"
     for f in "$TEMPLATES_DIR"/*.json; do
         run jq -e '
             .defaultBudgets ==
-            { "buildTurnsFactor": 2, "buildHours": 2,
+            { "buildTurnsFactor": 2, "buildHours": 2, "buildUsd": 20,
               "improveTurns": 50, "improveUsd": 25, "improveFindings": 3 }
         ' "$f"
         [[ "$status" -eq 0 ]] || {

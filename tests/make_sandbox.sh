@@ -75,7 +75,7 @@ mkdir -p .claude review-output
 cat > .claude/g2g.json <<'EOF'
 {
   "verificationCommands": ["./verify.sh"],
-  "defaultBudgets": { "buildTurnsFactor": 4, "buildHours": 2 }
+  "defaultBudgets": { "buildTurnsFactor": 4, "buildHours": 2, "buildUsd": 20 }
 }
 EOF
 

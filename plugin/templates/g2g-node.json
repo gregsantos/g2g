@@ -4,6 +4,7 @@
   "defaultBudgets": {
     "buildTurnsFactor": 2,
     "buildHours": 2,
+    "buildUsd": 20,
     "improveTurns": 50,
     "improveUsd": 25,
     "improveFindings": 3

@@ -96,7 +96,8 @@ gitignored specs — see Artifact tracking below).
 
 `/g2g:dev` chains the two: spec generation, an optional `--review`
 pause for human approval, then the full build engine. Headless example
-(same flag requirements as the build invocation below):
+(same flag requirements as the build invocation below, with `$BUILD_USD`
+read from `defaultBudgets.buildUsd` the same way):
 
     claude -p "/g2g:dev Add feature X" \
       --plugin-dir /path/to/g2g/plugin \
@@ -104,7 +105,7 @@ pause for human approval, then the full build engine. Headless example
       --allowedTools "Agent,Bash,Read,Write,Edit,Glob,Grep" \
       --setting-sources project \
       --max-turns 80 \
-      --max-budget-usd 20
+      --max-budget-usd "$BUILD_USD"
 
 Do not pass `--review` headlessly — with no one to approve, the session
 ends after spec generation (safe, but probably not what you wanted).
@@ -332,7 +333,7 @@ karpathy/autoresearch's recon on prompt hill-climbing:
 Optional `.claude/g2g.json` in the host repo (see [`.claude/g2g.json`](../.claude/g2g.json) here for an example). Field status below — `verificationCommands`, `defaultBudgets`, `reviewFocus`, `sourceDirs`, and `models` are all live:
 
 - `verificationCommands` — **live now**: `/g2g:go` reads this to verify a one-off task, if the file exists and defines it (falls back to the repo's documented test/lint commands otherwise). `/g2g:spec` (and therefore `/g2g:dev`, which chains it) also reads this field as the priority source for a generated spec's `context.verificationCommands`, before falling back to the repo's documented test commands. **Not** read by `/g2g:build` — that command sources its verification commands from the spec's `context.verificationCommands` instead (already populated by `/g2g:spec` from this field, if present), see Spec format below.
-- `defaultBudgets` — **live now**: `buildTurnsFactor`/`buildHours` set `/g2g:build`'s TURN_CAP factor and wall-clock cap (defaults 2 / 2h); `improveTurns`/`improveUsd` cap the improve spawn (defaults 50 / $25); `improveFindings` sets findings-per-cycle (default 3). `improveHours` is documented-only: no wall-clock CLI flag exists, the turn cap approximates it.
+- `defaultBudgets` — **live now**: `buildTurnsFactor`/`buildHours` set `/g2g:build`'s TURN_CAP factor and wall-clock cap (defaults 2 / 2h); `buildUsd` is the dollar cap a headless build passes as `--max-budget-usd` (default $20; read by the caller, not by `/g2g:build`, see [Running headless](#running-headless--unattended)); `improveTurns`/`improveUsd` cap the improve spawn (defaults 50 / $25); `improveFindings` sets findings-per-cycle (default 3). There is no improve wall-clock budget: no CLI wall-clock flag exists, so `improveTurns` bounds the cycle, and an `improveHours` key (which older docs mentioned) is ignored.
 - `improve.enabled` — **live now**: hard opt-in gate for the improve flywheel (see Trust caveat above). Defaults to `false` in every template; `/g2g:improve` and `/g2g:improve-cycle` refuse to run unless it is exactly `true`.
 - `reviewFocus` — **live now**: the categories `/g2g:review` fans out across when `--focus` isn't given.
 - `sourceDirs` — **live now**: the default review targets when `--target` isn't given.
@@ -725,9 +726,11 @@ algorithm backing it).
     holds even if everything else about a run has gone wrong. It too
     permits the stop rather than forcing it, deliberately, so a build
     can never wedge.
-  - **Dollars** — only the CLI's `--max-budget-usd` on a headless spawn
-    (the improve tick, and the documented headless build shape). An
-    interactive `/g2g:build` has no dollar cap.
+  - **Dollars** — only the CLI's `--max-budget-usd` on a headless spawn:
+    the improve tick (from `defaultBudgets.improveUsd`) and the
+    documented headless build shape (from `defaultBudgets.buildUsd`).
+    An interactive `/g2g:build` has no dollar cap; `buildUsd` does
+    nothing there.
 
   `/g2g:build-wf` moves the turn and hours checks into the workflow
   script's counters, which is the code-enforced shape (#22).
@@ -772,19 +775,24 @@ algorithm backing it).
 Proven invocation shape (e.g. from `/loop` or a cloud routine):
 
 ```bash
+BUILD_USD=$(jq -er '.defaultBudgets.buildUsd // 20
+  | if type == "number" and . > 0 then .
+    else error("defaultBudgets.buildUsd must be a positive number") end' \
+  .claude/g2g.json) || exit 1
+
 claude -p "/g2g:build specs/feature.json" \
   --plugin-dir /path/to/g2g/plugin \
   --permission-mode acceptEdits \
   --allowedTools "Agent,Bash,Read,Write,Edit,Glob,Grep" \
   --setting-sources project \
   --max-turns 80 \
-  --max-budget-usd 20
+  --max-budget-usd "$BUILD_USD"
 ```
 
 - `--allowedTools` is required alongside `acceptEdits` (which only auto-approves `Edit`/`Write`) — otherwise `Bash` calls get rejected until the session dies (the full list including `Agent` was validated in recorded end-to-end spike runs).
 - `--setting-sources project` excludes the invoking user's personal settings — a real incident had a user-level `git push` approval gate silently deny a build's push.
 - `--max-turns` is a guillotine, not a target: when it fires mid-build there is no PR at all, unlike the inner TURN_CAP, which routes to a draft partial PR. The smoke gate (`make smoke`, `make smoke-wf`) runs a 2-task sandbox at 80; size up with task count.
-- `--max-budget-usd` is what backs the "headless spawns add a dollar cap" guardrail above — the recorded end-to-end spike runs predate this flag being added to the invocation and ran without it; include it for any new headless spawn.
+- `--max-budget-usd` is what backs the "headless spawns add a dollar cap" guardrail above — the recorded end-to-end spike runs predate this flag being added to the invocation and ran without it; include it for any new headless spawn. Its value comes from `defaultBudgets.buildUsd` (default $20), read by the caller as shown: `/g2g:build` never reads the field itself, because nothing inside a session can enforce a dollar cap; only the CLI flag can. The `jq` line fails closed on a missing `.claude/g2g.json` or a value that is not a positive number, so a typo can never launch an uncapped run; in a repo with no config file, pass a literal. `make smoke` and `make smoke-wf` launch the sandbox build exactly this way.
 - `--plugin-dir` is what loads the plugin, and with it the Stop hook. It is **not** optional: `--setting-sources project` excludes your personal settings, so a plugin enabled only in `~/.claude/settings.json` is not loaded at all in that session — no `/g2g:*` commands and no hook. The alternative to passing `--plugin-dir` is declaring the plugin in the repo's own `.claude/settings.json`, which `/g2g:init` sets up (see [New repo quickstart](#new-repo-quickstart)). Either is sufficient; this file's invocation uses `--plugin-dir`.
 
 ### Cloud sandbox / managed agent / CI: what a fresh clone needs
