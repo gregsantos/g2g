@@ -180,6 +180,19 @@ recorded_arg() {
     done
 }
 
+@test "smoke: both engines take the dollar cap from the sandbox's defaultBudgets.buildUsd" {
+    bash "$BATS_TEST_DIRNAME/make_sandbox.sh" "$BATS_TEST_TMPDIR/sb" > /dev/null
+    expected="$(jq -r '.defaultBudgets.buildUsd' "$BATS_TEST_TMPDIR/sb/.claude/g2g.json")"
+    [[ "$expected" =~ ^[0-9]+([.][0-9]+)?$ ]] || { echo "sandbox buildUsd not a number: $expected"; return 1; }
+    for engine in build build-wf; do
+        rm -f "$FAKE_ARGS"
+        run bash "$SMOKE" --engine "$engine"
+        cleanup_preserved_work "$output"
+        [[ "$(recorded_arg --max-budget-usd)" == "$expected" ]] \
+            || { echo "$engine: --max-budget-usd '$(recorded_arg --max-budget-usd)' != buildUsd '$expected'"; return 1; }
+    done
+}
+
 @test "smoke: the run records its engine in the work dir for --assert-only" {
     run bash "$SMOKE" --engine build-wf
     preserved=$(printf '%s\n' "$output" | sed -n 's/^sandbox preserved for inspection at: \([^ ]*\).*/\1/p' | head -1)

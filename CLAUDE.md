@@ -120,7 +120,8 @@ shipped with the plugin.
   writes to the default branch, nothing merges itself, one push at PR
   time); caps on every autonomous run, no unlimited mode — every goal
   carries turn and wall-clock caps, and headless spawns add a dollar
-  cap (`--max-budget-usd`). Be exact about who enforces what: an
+  cap (`--max-budget-usd`, sized by `defaultBudgets.buildUsd` /
+  `improveUsd`). Be exact about who enforces what: an
   interactive `/g2g:build` has no dollar cap, and its turn cap is
   enforced by the orchestrator checking its own `G2G TURN` line; the
   Stop hook only *permits* a stop at either cap, never forces one, and

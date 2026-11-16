@@ -66,7 +66,8 @@ silently.
    `${CLAUDE_PLUGIN_ROOT}/templates/`, applying the confirmed
    `verificationCommands` and the detected `sourceDirs`, and these
    defaults under `defaultBudgets`: `buildTurnsFactor` 2, `buildHours`
-   2, `improveTurns` 50, `improveUsd` 25, `improveFindings` 3; plus all
+   2, `buildUsd` 20, `improveTurns` 50, `improveUsd` 25,
+   `improveFindings` 3; plus all
    five `reviewFocus` categories (`code-quality`, `test-coverage`,
    `architecture`, `security`, `bug`); and `improve.enabled` false —
    the improve flywheel is strictly opt-in (review-finding text flows
