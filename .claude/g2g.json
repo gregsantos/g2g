@@ -8,8 +8,8 @@
   "defaultBudgets": {
     "buildTurnsFactor": 3,
     "buildHours": 3,
+    "buildUsd": 20,
     "improveTurns": 70,
-    "improveHours": 1,
     "improveUsd": 25,
     "improveFindings": 3
   },

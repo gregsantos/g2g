@@ -134,7 +134,16 @@ if (( ! ASSERT_ONLY_SET )); then
 fi
 
 if (( ! ASSERT_ONLY_SET )); then
-echo "smoke: building specs/sandbox.json headlessly with $COMMAND (caps: $MAX_TURNS turns / \$20, several minutes)..."
+# The dollar cap comes from the sandbox's own defaultBudgets.buildUsd, read
+# exactly as the documented headless shape reads it (plugin/README.md,
+# "Running headless / unattended"), so the smoke run exercises that shape
+# rather than a literal that could drift from it. An absent field falls back
+# to 20; a non-numeric or non-positive one fails here, before any spend.
+BUILD_USD=$(jq -er '.defaultBudgets.buildUsd // 20
+    | if type == "number" and . > 0 then .
+      else error("defaultBudgets.buildUsd must be a positive number") end' \
+    "$SB/.claude/g2g.json")
+echo "smoke: building specs/sandbox.json headlessly with $COMMAND (caps: $MAX_TURNS turns / \$$BUILD_USD, several minutes)..."
 # PR creation is expected to fail here (origin is a local bare repo, not
 # GitHub), so the claude exit code is not the signal — the artifacts are.
 # stream-json (which print mode only allows with --verbose) makes the run
@@ -150,7 +159,7 @@ trap deregister_sandbox_plugin EXIT
         --output-format stream-json \
         --verbose \
         --max-turns "$MAX_TURNS" \
-        --max-budget-usd 20 \
+        --max-budget-usd "$BUILD_USD" \
         > "$WORK/run.log" 2>&1
 ) || true
 

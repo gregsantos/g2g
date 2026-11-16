@@ -158,15 +158,28 @@ See [specs/example.json](specs/example.json) and the
 The proven invocation shape:
 
 ```bash
+BUILD_USD=$(jq -er '.defaultBudgets.buildUsd // 20
+  | if type == "number" and . > 0 then .
+    else error("defaultBudgets.buildUsd must be a positive number") end' \
+  .claude/g2g.json) || exit 1
+
 claude -p "/g2g:build specs/feature.json" \
   --permission-mode acceptEdits \
   --allowedTools "Agent,Bash,Read,Write,Edit,Glob,Grep" \
   --setting-sources project \
   --max-turns 80 \
-  --max-budget-usd 20
+  --max-budget-usd "$BUILD_USD"
 ```
 
 Notes:
+
+- **The dollar cap comes from `defaultBudgets.buildUsd`** in
+  `.claude/g2g.json` (default $20; `/g2g:init` writes it). The caller
+  reads it and hands it to the CLI's `--max-budget-usd`, which is what
+  enforces it; `/g2g:build` itself never reads the field, so an
+  interactive build still has no dollar cap. The `jq` line fails closed
+  when the file is missing or the value is not a positive number; in a
+  repo with no `.claude/g2g.json`, pass a literal instead.
 
 - **`--max-turns` is a guillotine, not a target.** When it fires mid-build
   there is no PR at all, unlike the inner caps, which route to a draft
