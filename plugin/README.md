@@ -524,6 +524,53 @@ the builder's data/instruction rule. Not yet covered: batching several
 small tasks into one dispatch (F-007's remaining half) and warm resume
 for `--continue-branch`.
 
+## Build timing
+
+Every build PR body ends with a `## Timing` section: the output of
+`${CLAUDE_PLUGIN_ROOT}/scripts/g2g-timing.sh <spec>`, one row per task
+plus a summary line.
+
+```
+=== G2G TIMING ===
+spec: specs/concurrency-safety.json
+range: <merge-base>..HEAD
+task   outcome      dispatches  wall
+T-001  complete     1           6m34s
+T-002  complete     1           9m47s
+T-003  complete     1           4m50s
+T-004  complete     1           9m03s
+T-005  complete     1           8m56s
+summary: tasks=5 measured=5 elapsed=40m42s serial=39m10s critical-path=22m49s fan-out-ceiling=1.71x
+=== END G2G TIMING ===
+```
+
+Nothing new is recorded during a build. The script reads the branch's
+existing bookkeeping commits: `chore(<id>): start` when a builder is
+dispatched, and `complete`, `needs-human`, or `attempt <n>[, blocked]`
+when the attempt is scored. A task's `wall` is the sum of its attempts'
+start-to-scored gaps, using author dates, which a rebase keeps.
+`dispatches` counts scored attempts; in `/g2g:build` each one is a
+single orchestrator turn. `outcome` is the last scored result, or
+`unfinished` (dispatched, never scored) or `unmeasured` (no commits in
+range).
+
+`serial` is the sum of every task's `wall`. `critical-path` is the
+longest `dependsOn` chain weighted the same way. `fan-out-ceiling` is
+serial divided by critical path: the most that running independent
+tasks in parallel could cut builder time on this spec, before any merge
+or extra verification cost. It is an upper bound, there to tell whether
+task-level parallelism (#25) is worth building; it is not a forecast.
+`elapsed` runs from the first bookkeeping commit to the last, so
+elapsed minus serial is time spent between attempts.
+
+The default range is the branch since its merge-base with the remote
+default branch (`origin/HEAD`, then `origin/main`, then
+`origin/master`). To measure a build that has already merged, pass its
+merge commit's range: `g2g-timing.sh specs/<spec>.json --range
+<merge>^1..<merge>`. This works from a fresh clone only because `g2g/*`
+PRs are merged, never squashed. Exit 0 prints the block, and exit 2
+means a bad spec, a bad argument, or no range to measure.
+
 ## Concurrency model
 
 This section is the single normative description of how g2g serializes

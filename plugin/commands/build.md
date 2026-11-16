@@ -612,7 +612,12 @@ condition is MET block the stop.
    `attempts` field (treat as 0 if absent, then increment); if attempts
    >= 2, set status: blocked with the failure reason in notes; commit the
    spec change as a BOOKKEEPING COMMIT — spec path only, which is what
-   keeps a path a verification command staged out of your commit.
+   keeps a path a verification command staged out of your commit —
+   with the subject `chore(<task-id>): attempt <n>`, `<n>` the new
+   `attempts` value, or `chore(<task-id>): attempt <n>, blocked` when
+   this commit sets blocked. These are the subjects the workflow engine
+   writes too, and `g2g-timing.sh` (PR BODY COMPOSITION) reads them as
+   attempt boundaries; put the reason in notes, never in the subject.
 9. End the turn by running
    `${CLAUDE_PLUGIN_ROOT}/scripts/g2g-evidence.sh <spec>` — with
    `--full` ONLY when the status table would show all tasks passed
@@ -749,6 +754,17 @@ empty (no needs-human tasks and no FLAG lines anywhere):
   step 2, per T-002) — the verifier's flags no longer sit in the body's
   main summary; they live here, alongside the builders' own FLAG lines,
   as the one place a human scans for everything nobody else checked.
+
+Every body also ends with a `## Timing` section, after everything
+above, including on the conflict and partial paths: run
+`${CLAUDE_PLUGIN_ROOT}/scripts/g2g-timing.sh <spec-path>` (read-only;
+it derives each task's wall clock and dispatch count from this
+branch's own bookkeeping commits, so it needs nothing recorded during
+the build) and put its whole `=== G2G TIMING ===` … `=== END G2G
+TIMING ===` output verbatim inside a fenced code block. On any nonzero
+exit, the section is the single line `timing unavailable (<the
+script's message>)`. Timing is measurement only (issue #25): it never
+blocks, delays, or changes the PR, and it is not evidence.
 
 ## Phase 4 — Completion (first turn where all tasks pass)
 Set REVERIFY_CAP = 2 (the maximum number of FAIL rounds before the build

@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.14.0 (2026-11-16)
+
+Measures build throughput before anything tries to raise it (first PR
+of #25). Tasks run one at a time even when their `dependsOn` graph says
+they are independent, but nothing recorded how long a task takes, so
+the payoff of fanning them out was a guess. Every build PR now reports
+per-task wall clock, dispatch counts, and how much a fan-out could save
+at most.
+
+### Added
+- `plugin/scripts/g2g-timing.sh <spec> [--range <rev-range>]`: a
+  read-only `=== G2G TIMING ===` block with one row per task (outcome,
+  dispatches, wall clock) and a summary of elapsed, serial, and
+  critical-path time plus the fan-out ceiling (serial over critical
+  path). It derives everything from the build branch's existing
+  bookkeeping commits, using author dates so the pre-PR rebase changes
+  nothing. Exit 0 prints the block; exit 2 is a bad spec, a bad
+  argument, or no range. Pinned by `tests/plugin_timing.bats`.
+
+### Changed
+- `/g2g:build` PR BODY COMPOSITION ends every PR body (clean, conflict,
+  and partial) with a `## Timing` section holding that block, or
+  `timing unavailable (<message>)` on a nonzero exit. It never blocks
+  the PR. `/g2g:build-wf` gets this through build.md's Phases 4 and 5.
+- `/g2g:build` Phase 3 step 8 names the FAILED bookkeeping commit's
+  subject: `chore(<task-id>): attempt <n>`, or `attempt <n>, blocked`,
+  matching what the workflow engine already writes. It was unnamed, so
+  interactive builds wrote free-form subjects.
+
 ## 0.12.0 (2026-11-15)
 
 Pins the verification commands to the build that armed them (second
