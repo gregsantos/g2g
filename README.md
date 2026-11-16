@@ -244,6 +244,7 @@ g2g/
 │   ├── scripts/g2g-slug.sh           # Branch/spec-file slug derivation (sole implementation)
 │   ├── scripts/g2g-learning-check.sh # Validates docs/learnings entries
 │   ├── scripts/g2g-learnings.sh      # Selects docs/learnings entries for builder/verifier dispatches
+│   ├── scripts/g2g-timing.sh         # Per-task wall clock read back from a build's bookkeeping commits
 │   ├── templates/                    # /g2g:init config starters
 │   ├── routines/                     # Scheduled-run templates
 │   └── evals/                        # plugin-eval cases (status: its README)
